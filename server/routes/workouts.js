@@ -56,6 +56,7 @@ router.get('/stats', authMiddleware, async (req, res) => {
       dateFilter = monthAgo.toISOString();
     }
 
+    // Try with elevation column, fallback without if column doesn't exist yet
     let query = supabase
       .from('workouts')
       .select('distance, moving_time, average_pace, average_heartrate, total_elevation_gain, date')
@@ -65,8 +66,23 @@ router.get('/stats', authMiddleware, async (req, res) => {
       query = query.gte('date', dateFilter);
     }
 
-    const { data, error } = await query;
-    if (error) throw error;
+    let { data, error } = await query;
+
+    // Fallback: if total_elevation_gain column doesn't exist yet
+    if (error && error.message && error.message.includes('total_elevation_gain')) {
+      let fallbackQuery = supabase
+        .from('workouts')
+        .select('distance, moving_time, average_pace, average_heartrate, date')
+        .eq('user_id', req.user.id);
+      if (dateFilter) {
+        fallbackQuery = fallbackQuery.gte('date', dateFilter);
+      }
+      const fallback = await fallbackQuery;
+      if (fallback.error) throw fallback.error;
+      data = fallback.data;
+    } else if (error) {
+      throw error;
+    }
 
     const totalDistance = data.reduce((sum, w) => sum + (w.distance || 0), 0);
     const totalTime = data.reduce((sum, w) => sum + (w.moving_time || 0), 0);

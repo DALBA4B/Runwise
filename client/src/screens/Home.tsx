@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import MetricCard from '../components/MetricCard';
 import WeekChart from '../components/WeekChart';
 import WorkoutRow from '../components/WorkoutRow';
@@ -24,6 +24,12 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
   const [selectedWidgets, setSelectedWidgets] = useState<string[]>(getSelectedWidgets);
   const [showSettings, setShowSettings] = useState(false);
   const [tempWidgets, setTempWidgets] = useState<string[]>([]);
+  const [editMode, setEditMode] = useState(false);
+
+  // Drag state for reordering cards on the grid
+  const dragItem = useRef<number | null>(null);
+  const dragOverItem = useRef<number | null>(null);
+  const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
 
   useEffect(() => {
     workoutsApi.comparison()
@@ -47,6 +53,7 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
     }
   };
 
+  // --- Settings modal ---
   const openSettings = () => {
     setTempWidgets([...selectedWidgets]);
     setShowSettings(true);
@@ -58,23 +65,101 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
     );
   };
 
-  const moveMetric = (id: string, direction: -1 | 1) => {
-    setTempWidgets(prev => {
-      const idx = prev.indexOf(id);
-      if (idx < 0) return prev;
-      const newIdx = idx + direction;
-      if (newIdx < 0 || newIdx >= prev.length) return prev;
-      const arr = [...prev];
-      [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
-      return arr;
-    });
-  };
-
   const saveSettings = () => {
     if (tempWidgets.length === 0) return;
     setSelectedWidgets(tempWidgets);
     saveSelectedWidgets(tempWidgets);
     setShowSettings(false);
+  };
+
+  // --- Drag to reorder on main grid ---
+  const handleDragStart = (idx: number) => {
+    dragItem.current = idx;
+    setDraggingIdx(idx);
+  };
+
+  const handleDragEnter = (idx: number) => {
+    dragOverItem.current = idx;
+  };
+
+  const handleDragEnd = () => {
+    if (dragItem.current !== null && dragOverItem.current !== null && dragItem.current !== dragOverItem.current) {
+      const arr = [...selectedWidgets];
+      const [removed] = arr.splice(dragItem.current, 1);
+      arr.splice(dragOverItem.current, 0, removed);
+      setSelectedWidgets(arr);
+      saveSelectedWidgets(arr);
+    }
+    dragItem.current = null;
+    dragOverItem.current = null;
+    setDraggingIdx(null);
+  };
+
+  // Touch drag support
+  const touchStartPos = useRef<{ x: number; y: number } | null>(null);
+  const touchClone = useRef<HTMLElement | null>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+
+  const handleTouchStart = (e: React.TouchEvent, idx: number) => {
+    if (!editMode) return;
+    const touch = e.touches[0];
+    touchStartPos.current = { x: touch.clientX, y: touch.clientY };
+    dragItem.current = idx;
+    setDraggingIdx(idx);
+
+    // Create a floating clone
+    const target = e.currentTarget as HTMLElement;
+    const clone = target.cloneNode(true) as HTMLElement;
+    clone.classList.add('metric-card-drag-clone');
+    clone.style.width = target.offsetWidth + 'px';
+    clone.style.position = 'fixed';
+    clone.style.left = touch.clientX - target.offsetWidth / 2 + 'px';
+    clone.style.top = touch.clientY - target.offsetHeight / 2 + 'px';
+    clone.style.zIndex = '9999';
+    clone.style.pointerEvents = 'none';
+    document.body.appendChild(clone);
+    touchClone.current = clone;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!editMode || dragItem.current === null) return;
+    const touch = e.touches[0];
+
+    if (touchClone.current) {
+      const target = e.currentTarget as HTMLElement;
+      touchClone.current.style.left = touch.clientX - target.offsetWidth / 2 + 'px';
+      touchClone.current.style.top = touch.clientY - target.offsetHeight / 2 + 'px';
+    }
+
+    // Find which card we're over
+    if (gridRef.current) {
+      const cards = gridRef.current.querySelectorAll('.metric-card-wrapper');
+      cards.forEach((card, i) => {
+        const rect = card.getBoundingClientRect();
+        if (
+          touch.clientX >= rect.left && touch.clientX <= rect.right &&
+          touch.clientY >= rect.top && touch.clientY <= rect.bottom
+        ) {
+          dragOverItem.current = i;
+        }
+      });
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (touchClone.current) {
+      document.body.removeChild(touchClone.current);
+      touchClone.current = null;
+    }
+    handleDragEnd();
+  };
+
+  const toggleEditMode = () => {
+    if (editMode) {
+      setEditMode(false);
+    } else {
+      setEditMode(true);
+    }
   };
 
   const activeMetrics = selectedWidgets
@@ -94,20 +179,53 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
     <div className="screen home-screen">
       <div className="home-header">
         <h2 className="screen-title">🏠 Главная</h2>
-        <button className="btn-icon" onClick={openSettings} title="Настроить виджеты">
-          ⚙️
-        </button>
+        <div className="home-header-actions">
+          {editMode && (
+            <button className="btn-icon" onClick={openSettings} title="Добавить/убрать виджеты">
+              ➕
+            </button>
+          )}
+          <button
+            className={`btn-icon ${editMode ? 'btn-icon-active' : ''}`}
+            onClick={toggleEditMode}
+            title={editMode ? 'Готово' : 'Настроить виджеты'}
+          >
+            {editMode ? '✓' : '⚙️'}
+          </button>
+        </div>
       </div>
 
-      <div className="metrics-grid">
-        {activeMetrics.map(metric => (
-          <MetricCard
+      <div className={`metrics-grid ${editMode ? 'metrics-grid-edit' : ''}`} ref={gridRef}>
+        {activeMetrics.map((metric, idx) => (
+          <div
             key={metric.id}
-            icon={metric.icon}
-            label={metric.label}
-            value={weekStats ? metric.getValue(weekStats) : '—'}
-            sub={metric.sub}
-          />
+            className={`metric-card-wrapper ${editMode ? 'editable' : ''} ${draggingIdx === idx ? 'dragging' : ''}`}
+            draggable={editMode}
+            onDragStart={() => handleDragStart(idx)}
+            onDragEnter={() => handleDragEnter(idx)}
+            onDragEnd={handleDragEnd}
+            onDragOver={(e) => e.preventDefault()}
+            onTouchStart={(e) => handleTouchStart(e, idx)}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+          >
+            <MetricCard
+              icon={metric.icon}
+              label={metric.label}
+              value={weekStats ? metric.getValue(weekStats) : '—'}
+              sub={metric.sub}
+            />
+            {editMode && (
+              <button
+                className="metric-card-remove"
+                onClick={() => {
+                  const updated = selectedWidgets.filter(id => id !== metric.id);
+                  setSelectedWidgets(updated);
+                  saveSelectedWidgets(updated);
+                }}
+              >✕</button>
+            )}
+          </div>
         ))}
       </div>
 
@@ -171,7 +289,6 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
             <div className="widget-settings-list">
               {ALL_METRICS.map(metric => {
                 const isSelected = tempWidgets.includes(metric.id);
-                const idx = tempWidgets.indexOf(metric.id);
                 return (
                   <div
                     key={metric.id}
@@ -186,20 +303,6 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
                       <span className="widget-settings-icon">{metric.icon}</span>
                       <span className="widget-settings-label">{metric.label}</span>
                     </label>
-                    {isSelected && (
-                      <div className="widget-settings-order">
-                        <button
-                          className="btn-order"
-                          disabled={idx === 0}
-                          onClick={() => moveMetric(metric.id, -1)}
-                        >↑</button>
-                        <button
-                          className="btn-order"
-                          disabled={idx === tempWidgets.length - 1}
-                          onClick={() => moveMetric(metric.id, 1)}
-                        >↓</button>
-                      </div>
-                    )}
                   </div>
                 );
               })}
