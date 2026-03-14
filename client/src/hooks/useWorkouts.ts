@@ -21,6 +21,7 @@ export interface Stats {
   avgPace: number;
   avgHeartrate: number;
   bestPace: number;
+  totalElevation: number;
   workoutCount: number;
 }
 
@@ -95,6 +96,7 @@ export function useWorkoutHistory() {
         avgPace,
         avgHeartrate: avgHr,
         bestPace,
+        totalElevation: 0,
         workoutCount: data.length
       });
     } catch (err) {

@@ -81,6 +81,7 @@ function parseActivity(activity, userId) {
       heartrate: s.average_heartrate || null,
       elevation: s.elevation_difference || 0
     }))) : null,
+    total_elevation_gain: activity.total_elevation_gain || 0,
     description: activity.description || null,
     raw_data: JSON.stringify(activity)
   };

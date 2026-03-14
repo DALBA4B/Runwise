@@ -54,6 +54,9 @@ CREATE TABLE IF NOT EXISTS goals (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Add elevation gain to workouts (run if column doesn't exist yet)
+ALTER TABLE workouts ADD COLUMN IF NOT EXISTS total_elevation_gain REAL DEFAULT 0;
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_workouts_user_id ON workouts(user_id);
 CREATE INDEX IF NOT EXISTS idx_workouts_date ON workouts(date);

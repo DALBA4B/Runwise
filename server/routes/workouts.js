@@ -58,7 +58,7 @@ router.get('/stats', authMiddleware, async (req, res) => {
 
     let query = supabase
       .from('workouts')
-      .select('distance, moving_time, average_pace, average_heartrate, date')
+      .select('distance, moving_time, average_pace, average_heartrate, total_elevation_gain, date')
       .eq('user_id', req.user.id);
 
     if (dateFilter) {
@@ -79,6 +79,7 @@ router.get('/stats', authMiddleware, async (req, res) => {
     const bestPace = data.length > 0
       ? Math.min(...data.filter(w => w.average_pace > 0).map(w => w.average_pace))
       : 0;
+    const totalElevation = data.reduce((sum, w) => sum + (w.total_elevation_gain || 0), 0);
 
     res.json({
       totalDistance,
@@ -86,6 +87,7 @@ router.get('/stats', authMiddleware, async (req, res) => {
       avgPace,
       avgHeartrate: avgHr,
       bestPace: bestPace === Infinity ? 0 : bestPace,
+      totalElevation: Math.round(totalElevation),
       workoutCount: data.length
     });
   } catch (err) {
