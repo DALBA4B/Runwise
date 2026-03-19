@@ -2,7 +2,8 @@
   "name": "runwise",
   "version": "1.0.0",
   "scripts": {
-    "build": "cd server && npm install",
+    "postinstall": "cd server && npm install",
+    "build": "echo done",
     "start": "cd server && node index.js"
   }
 }
