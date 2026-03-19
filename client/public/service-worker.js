@@ -1,6 +1,6 @@
 /* eslint-disable no-restricted-globals */
 
-const CACHE_NAME = 'runwise-v3';
+const CACHE_NAME = 'runwise-v4';
 const API_CACHE_NAME = 'runwise-api-v1';
 
 const urlsToCache = [
@@ -36,11 +36,11 @@ self.addEventListener('install', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Ignore non-http(s) requests (e.g. chrome-extension://)
-  if (!url.protocol.startsWith('http')) return;
+  // Ignore non-http(s) requests and non-GET methods (can't cache POST)
+  if (!url.protocol.startsWith('http') || event.request.method !== 'GET') return;
 
   // API requests: network-first, fallback to cache
-  if (isApiRequest(url) && event.request.method === 'GET') {
+  if (isApiRequest(url)) {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
