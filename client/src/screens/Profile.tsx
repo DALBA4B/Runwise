@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import MetricCard from '../components/MetricCard';
 import { workouts, strava, profile as profileApi } from '../api/api';
-import { useAuth } from '../hooks/useAuth';
 import { formatPace, formatDistance } from '../utils';
 
 interface Goal {
@@ -12,8 +11,11 @@ interface Goal {
   deadline: string | null;
 }
 
-const Profile: React.FC = () => {
-  const { logout } = useAuth();
+interface ProfileProps {
+  onLogout: () => void;
+}
+
+const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
   const [allTimeStats, setAllTimeStats] = useState<any>(null);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -163,7 +165,7 @@ const Profile: React.FC = () => {
 
   const handleLogout = () => {
     if (window.confirm('Ты уверен? Это разлогинит тебя.')) {
-      logout();
+      onLogout();
     }
   };
 

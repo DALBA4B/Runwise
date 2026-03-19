@@ -21,7 +21,7 @@ const SCREEN_ORDER: Record<string, number> = {
 };
 
 const App: React.FC = () => {
-  const { isAuthenticated, loading, loginWithStrava, handleCallback } = useAuth();
+  const { isAuthenticated, loading, loginWithStrava, handleCallback, logout } = useAuth();
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null);
   const [animating, setAnimating] = useState(false);
@@ -112,7 +112,7 @@ const App: React.FC = () => {
         <div style={{ display: currentScreen === 'ai' ? 'contents' : 'none' }}>
           <AIChat />
         </div>
-        {currentScreen === 'profile' && <Profile />}
+        {currentScreen === 'profile' && <Profile onLogout={logout} />}
         {currentScreen === 'workout-detail' && selectedWorkoutId && (
           <WorkoutDetail workoutId={selectedWorkoutId} onBack={handleBackFromDetail} />
         )}

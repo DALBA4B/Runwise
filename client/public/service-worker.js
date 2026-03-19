@@ -1,6 +1,6 @@
 /* eslint-disable no-restricted-globals */
 
-const CACHE_NAME = 'runwise-v4';
+const CACHE_NAME = 'runwise-v5';
 const API_CACHE_NAME = 'runwise-api-v1';
 
 const urlsToCache = [
