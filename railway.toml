@@ -2,5 +2,5 @@
   builder = "nixpacks"
 
 [deploy]
-  startCommand = "cd server && node index.js"
+  startCommand = "node index.js"
   restartPolicyType = "on_failure"
