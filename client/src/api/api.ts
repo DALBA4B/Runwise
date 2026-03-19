@@ -1,3 +1,4 @@
+// API URL: uses env variable in production, localhost for dev
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
 
 function getToken(): string | null {
