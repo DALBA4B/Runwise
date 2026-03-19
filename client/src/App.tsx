@@ -28,15 +28,18 @@ const App: React.FC = () => {
   const [animClass, setAnimClass] = useState('screen-enter');
   const prevScreenRef = useRef<Screen>('home');
 
+  const callbackCalledRef = useRef(false);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
     const error = params.get('error');
 
-    if (code) {
+    if (code && !callbackCalledRef.current) {
+      callbackCalledRef.current = true;
+      window.history.replaceState({}, document.title, window.location.pathname);
       handleCallback(code).then(success => {
         if (success) {
-          window.history.replaceState({}, document.title, window.location.pathname);
           setCurrentScreen('home');
         }
       });

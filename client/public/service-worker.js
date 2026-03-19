@@ -36,6 +36,9 @@ self.addEventListener('install', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
+  // Ignore non-http(s) requests (e.g. chrome-extension://)
+  if (!url.protocol.startsWith('http')) return;
+
   // API requests: network-first, fallback to cache
   if (isApiRequest(url) && event.request.method === 'GET') {
     event.respondWith(
