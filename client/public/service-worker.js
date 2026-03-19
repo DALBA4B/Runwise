@@ -1,6 +1,6 @@
 /* eslint-disable no-restricted-globals */
 
-const CACHE_NAME = 'runwise-v2';
+const CACHE_NAME = 'runwise-v3';
 const API_CACHE_NAME = 'runwise-api-v1';
 
 const urlsToCache = [
@@ -58,17 +58,25 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets: cache-first
+  // Static assets: network-first to avoid stale cache issues
   event.respondWith(
-    caches.match(event.request)
+    fetch(event.request)
       .then((response) => {
-        if (response) return response;
-        return fetch(event.request);
+        if (response.ok) {
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseClone);
+          });
+        }
+        return response;
       })
       .catch(() => {
-        if (event.request.destination === 'document') {
-          return caches.match('/index.html');
-        }
+        return caches.match(event.request).then((cached) => {
+          if (cached) return cached;
+          if (event.request.destination === 'document') {
+            return caches.match('/index.html');
+          }
+        });
       })
   );
 });
