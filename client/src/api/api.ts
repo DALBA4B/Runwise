@@ -87,7 +87,12 @@ export const workouts = {
 export const profile = {
   get: () => request('/api/profile'),
   update: (data: { age?: number | null; height_cm?: number | null; weight_kg?: number | null }) =>
-    request('/api/profile', { method: 'PUT', body: JSON.stringify(data) })
+    request('/api/profile', { method: 'PUT', body: JSON.stringify(data) }),
+  getRecords: () => request('/api/profile/records'),
+  updateRecord: (data: { distance_type: string; time_seconds: number; record_date?: string }) =>
+    request('/api/profile/records', { method: 'PUT', body: JSON.stringify(data) }),
+  deleteRecord: (type: string) =>
+    request(`/api/profile/records/${type}`, { method: 'DELETE' }),
 };
 
 // ============ AI ============

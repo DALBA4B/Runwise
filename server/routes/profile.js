@@ -39,4 +39,66 @@ router.put('/', authMiddleware, async (req, res) => {
   }
 });
 
+// GET /api/profile/records — get all personal records
+router.get('/records', authMiddleware, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('personal_records')
+      .select('*')
+      .eq('user_id', req.user.id)
+      .order('distance_type');
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch records' });
+  }
+});
+
+// PUT /api/profile/records — create or update a personal record (upsert)
+router.put('/records', authMiddleware, async (req, res) => {
+  try {
+    const { distance_type, time_seconds, record_date } = req.body;
+
+    if (!distance_type || !time_seconds) {
+      return res.status(400).json({ error: 'distance_type and time_seconds are required' });
+    }
+
+    const { data, error } = await supabase
+      .from('personal_records')
+      .upsert({
+        user_id: req.user.id,
+        distance_type,
+        time_seconds,
+        record_date: record_date || null,
+        source: 'manual'
+      }, {
+        onConflict: 'user_id,distance_type'
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to save record' });
+  }
+});
+
+// DELETE /api/profile/records/:type — delete a personal record by distance type
+router.delete('/records/:type', authMiddleware, async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('personal_records')
+      .delete()
+      .eq('user_id', req.user.id)
+      .eq('distance_type', req.params.type);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete record' });
+  }
+});
+
 module.exports = router;

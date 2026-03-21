@@ -133,10 +133,12 @@ ALTER TABLE goals ADD COLUMN IF NOT EXISTS deadline DATE;
 
 ```bash
 # Терминал 1
-cd server && npm run dev
+cd server
+npm run dev
 
 # Терминал 2
-cd client && npm start
+cd client
+npm start
 ```
 
 Приложение откроется на http://localhost:3000

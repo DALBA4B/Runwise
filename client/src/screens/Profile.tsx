@@ -1,7 +1,25 @@
 import React, { useState, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import MetricCard from '../components/MetricCard';
 import { workouts, strava, profile as profileApi } from '../api/api';
 import { formatPace, formatDistance } from '../utils';
+
+interface PersonalRecord {
+  id: string;
+  distance_type: string;
+  time_seconds: number;
+  record_date: string | null;
+  source: string;
+}
+
+const RECORD_TYPES = [
+  { key: '1km', label: '1 км' },
+  { key: '3km', label: '3 км' },
+  { key: '5km', label: '5 км' },
+  { key: '10km', label: '10 км' },
+  { key: '21km', label: 'Полумарафон' },
+  { key: '42km', label: 'Марафон' },
+];
 
 interface Goal {
   id: string;
@@ -29,10 +47,27 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
   const [timeSeconds, setTimeSeconds] = useState('');
   const [newGoalDeadline, setNewGoalDeadline] = useState('');
   const [creatingGoal, setCreatingGoal] = useState(false);
+  const [showGoalModal, setShowGoalModal] = useState(false);
+  const [goalModalClosing, setGoalModalClosing] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [settingsModalClosing, setSettingsModalClosing] = useState(false);
   const [age, setAge] = useState('');
   const [height, setHeight] = useState('');
   const [weight, setWeight] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
+  const [showParamsModal, setShowParamsModal] = useState(false);
+  const [paramsModalClosing, setParamsModalClosing] = useState(false);
+  const [records, setRecords] = useState<PersonalRecord[]>([]);
+  const [showRecordModal, setShowRecordModal] = useState(false);
+  const [recordModalClosing, setRecordModalClosing] = useState(false);
+  const [newRecordType, setNewRecordType] = useState<string | null>(null);
+  const [recordType, setRecordType] = useState('5km');
+  const [recordHours, setRecordHours] = useState('');
+  const [recordMinutes, setRecordMinutes] = useState('');
+  const [recordSeconds, setRecordSeconds] = useState('');
+  const [recordDate, setRecordDate] = useState('');
+  const [savingRecord, setSavingRecord] = useState(false);
+  const [removingRecord, setRemovingRecord] = useState<string | null>(null);
 
   const GOAL_TYPES = [
     { value: 'monthly_distance', label: 'Месячный объём', inputType: 'distance' as const },
@@ -71,12 +106,13 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
   const loadProfileData = async () => {
     setLoading(true);
     try {
-      const [statsData, goalsData, syncData, predsData, profileData] = await Promise.allSettled([
+      const [statsData, goalsData, syncData, predsData, profileData, recordsData] = await Promise.allSettled([
         workouts.stats('all'),
         workouts.getGoals(),
         strava.syncStatus(),
         workouts.goalPredictions(),
-        profileApi.get()
+        profileApi.get(),
+        profileApi.getRecords()
       ]);
 
       if (statsData.status === 'fulfilled') {
@@ -95,6 +131,9 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
         if (profileData.value.age) setAge(profileData.value.age.toString());
         if (profileData.value.height_cm) setHeight(profileData.value.height_cm.toString());
         if (profileData.value.weight_kg) setWeight(profileData.value.weight_kg.toString());
+      }
+      if (recordsData.status === 'fulfilled') {
+        setRecords(recordsData.value);
       }
     } catch (err) {
       console.error('Failed to load profile:', err);
@@ -130,7 +169,12 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
       setTimeMinutes('');
       setTimeSeconds('');
       setNewGoalDeadline('');
-      await loadProfileData();
+      setGoalModalClosing(true);
+      setTimeout(async () => {
+        setShowGoalModal(false);
+        setGoalModalClosing(false);
+        await loadProfileData();
+      }, 1000);
     } catch (err) {
       console.error('Failed to create goal:', err);
     } finally {
@@ -156,10 +200,110 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
         height_cm: height ? parseFloat(height) : null,
         weight_kg: weight ? parseFloat(weight) : null
       });
+      closeParamsModal();
     } catch (err) {
       console.error('Failed to save profile:', err);
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  const closeRecordModal = () => {
+    setRecordModalClosing(true);
+    setTimeout(() => {
+      setShowRecordModal(false);
+      setRecordModalClosing(false);
+    }, 1000);
+  };
+
+  const closeSettingsModal = () => {
+    setSettingsModalClosing(true);
+    setTimeout(() => {
+      setShowSettingsModal(false);
+      setSettingsModalClosing(false);
+    }, 1000);
+  };
+
+  const closeGoalModal = () => {
+    setGoalModalClosing(true);
+    setTimeout(() => {
+      setShowGoalModal(false);
+      setGoalModalClosing(false);
+    }, 1000);
+  };
+
+  const closeParamsModal = () => {
+    setParamsModalClosing(true);
+    setTimeout(() => {
+      setShowParamsModal(false);
+      setParamsModalClosing(false);
+    }, 1000);
+  };
+
+  const formatRecordTime = (seconds: number) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return h > 0
+      ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+      : `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const handleAddRecord = async () => {
+    const h = parseInt(recordHours) || 0;
+    const m = parseInt(recordMinutes) || 0;
+    const s = parseInt(recordSeconds) || 0;
+    const totalSeconds = h * 3600 + m * 60 + s;
+    if (totalSeconds <= 0) return;
+
+    setSavingRecord(true);
+    try {
+      const saved = await profileApi.updateRecord({
+        distance_type: recordType,
+        time_seconds: totalSeconds,
+        record_date: recordDate || undefined
+      });
+      // 1. Animate modal closing
+      setRecordModalClosing(true);
+      setRecordHours('');
+      setRecordMinutes('');
+      setRecordSeconds('');
+      setRecordDate('');
+      // 2. After modal is gone, update list
+      setTimeout(() => {
+        setShowRecordModal(false);
+        setRecordModalClosing(false);
+        setNewRecordType(saved.distance_type);
+        setRecords(prev => {
+          const exists = prev.findIndex(r => r.distance_type === saved.distance_type);
+          if (exists >= 0) {
+            const updated = [...prev];
+            updated[exists] = saved;
+            return updated;
+          }
+          return [...prev, saved];
+        });
+        // 3. Remove "new" class after animation ends
+        setTimeout(() => setNewRecordType(null), 1000);
+      }, 1050);
+    } catch (err) {
+      console.error('Failed to save record:', err);
+    } finally {
+      setSavingRecord(false);
+    }
+  };
+
+  const handleDeleteRecord = async (type: string) => {
+    if (!window.confirm('Удалить этот рекорд?')) return;
+    try {
+      await profileApi.deleteRecord(type);
+      setRemovingRecord(type);
+      setTimeout(() => {
+        setRecords(prev => prev.filter(r => r.distance_type !== type));
+        setRemovingRecord(null);
+      }, 450);
+    } catch (err) {
+      console.error('Failed to delete record:', err);
     }
   };
 
@@ -180,65 +324,74 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
 
   return (
     <div className="screen profile-screen">
-      <h2 className="screen-title">👤 Профиль</h2>
+      <div className="profile-header">
+        <h2 className="screen-title">👤 Профиль</h2>
+        <button className="settings-btn" onClick={() => setShowSettingsModal(true)} title="Настройки">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+      </div>
 
       <div className="profile-section">
         <h3 className="section-title">📏 Физические параметры</h3>
-        <div className="physical-params-form">
-          <div className="param-row">
-            <label className="param-label">Возраст</label>
-            <div className="param-input-wrap">
-              <input
-                type="number"
-                className="input-field"
-                placeholder="25"
-                value={age}
-                onChange={e => setAge(e.target.value)}
-                min="10"
-                max="99"
-              />
-              <span className="param-unit">лет</span>
-            </div>
+        {(age || height || weight) ? (
+          <div className="params-summary">
+            {age && <div className="params-summary-item"><span className="params-summary-label">Возраст</span><span className="params-summary-value">{age} лет</span></div>}
+            {height && <div className="params-summary-item"><span className="params-summary-label">Рост</span><span className="params-summary-value">{height} см</span></div>}
+            {weight && <div className="params-summary-item"><span className="params-summary-label">Вес</span><span className="params-summary-value">{weight} кг</span></div>}
           </div>
-          <div className="param-row">
-            <label className="param-label">Рост</label>
-            <div className="param-input-wrap">
-              <input
-                type="number"
-                className="input-field"
-                placeholder="175"
-                value={height}
-                onChange={e => setHeight(e.target.value)}
-                min="100"
-                max="250"
-              />
-              <span className="param-unit">см</span>
-            </div>
+        ) : (
+          <p className="empty-text">Параметры не указаны</p>
+        )}
+        <button
+          className="btn btn-accent btn-full"
+          onClick={() => setShowParamsModal(true)}
+        >
+          ✏️ {(age || height || weight) ? 'Изменить' : 'Указать параметры'}
+        </button>
+      </div>
+
+      <div className="profile-section">
+        <h3 className="section-title">🏆 Мои рекорды</h3>
+
+        {records.length > 0 ? (
+          <div className="records-list">
+            {records.map(record => {
+              const typeInfo = RECORD_TYPES.find(t => t.key === record.distance_type);
+              return (
+                <div key={record.id} className={`record-item${removingRecord === record.distance_type ? ' record-removing' : ''}${newRecordType === record.distance_type ? ' record-new' : ''}`}>
+                  <div className="record-header">
+                    <span className="record-distance">{typeInfo?.label || record.distance_type}</span>
+                    <button
+                      className="goal-delete-btn"
+                      onClick={() => handleDeleteRecord(record.distance_type)}
+                      title="Удалить рекорд"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="record-time">{formatRecordTime(record.time_seconds)}</div>
+                  {record.record_date && (
+                    <div className="record-date">
+                      {new Date(record.record_date).toLocaleDateString('ru-RU')}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-          <div className="param-row">
-            <label className="param-label">Вес</label>
-            <div className="param-input-wrap">
-              <input
-                type="number"
-                className="input-field"
-                placeholder="70"
-                value={weight}
-                onChange={e => setWeight(e.target.value)}
-                min="30"
-                max="250"
-                step="0.1"
-              />
-              <span className="param-unit">кг</span>
-            </div>
-          </div>
-          <button
-            className="btn btn-accent btn-full"
-            onClick={handleSaveProfile}
-            disabled={savingProfile}
-          >
-            {savingProfile ? '⏳ Сохраняю...' : '💾 Сохранить'}
-          </button>
-        </div>
+        ) : (
+          <p className="empty-text records-empty">Рекордов пока нет. Добавь свой первый!</p>
+        )}
+
+        <button
+          className="btn btn-outline btn-full"
+          onClick={() => setShowRecordModal(true)}
+        >
+          ➕ Добавить рекорд
+        </button>
       </div>
 
       {allTimeStats && (
@@ -271,54 +424,6 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
             </div>
           </div>
 
-          {syncStatus && (
-            <div className="profile-section">
-              <h3 className="section-title">🔄 Синхронизация Strava</h3>
-              <div className="sync-status">
-                <p className="sync-status-text">
-                  ✅ Подключена к Strava
-                </p>
-                {syncStatus.total_imported && (
-                  <p className="sync-details">
-                    Загружено {syncStatus.total_imported} тренировок
-                  </p>
-                )}
-                {syncStatus.is_syncing && (
-                  <div className="sync-progress">
-                    <div className="progress-bar">
-                      <div
-                        className="progress-fill"
-                        style={{
-                          width: `${
-                            syncStatus.total_workouts > 0
-                              ? (syncStatus.total_imported / syncStatus.total_workouts) * 100
-                              : 0
-                          }%`
-                        }}
-                      ></div>
-                    </div>
-                    <p className="progress-text">
-                      Загружаем историю: {syncStatus.total_imported}/{syncStatus.total_workouts} тренировок
-                    </p>
-                  </div>
-                )}
-              </div>
-              <button
-                className="btn btn-secondary"
-                style={{ marginTop: '8px', fontSize: '13px' }}
-                onClick={async () => {
-                  try {
-                    await strava.syncSplits();
-                    alert('Загрузка сплитов запущена в фоне!');
-                  } catch (err) {
-                    console.error(err);
-                  }
-                }}
-              >
-                📊 Загрузить сплиты по км
-              </button>
-            </div>
-          )}
         </>
       )}
 
@@ -386,114 +491,351 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
           <p className="empty-text">Целей пока нет. Создай первую!</p>
         )}
 
-        <div className="add-goal-form">
-          <select
-            className="input-field"
-            value={newGoalType}
-            onChange={e => setNewGoalType(e.target.value)}
-          >
-            {GOAL_TYPES.map(gt => (
-              <option key={gt.value} value={gt.value}>{gt.label}</option>
-            ))}
-          </select>
-
-          {currentGoalConfig?.inputType === 'distance' && (
-            <div className="distance-input-row">
-              <input
-                type="number"
-                className="input-field"
-                placeholder="Значение"
-                value={newGoalTarget}
-                onChange={e => setNewGoalTarget(e.target.value)}
-              />
-              <select
-                className="input-field unit-select"
-                value={newGoalUnit}
-                onChange={e => setNewGoalUnit(e.target.value as 'km' | 'm')}
-              >
-                <option value="km">км</option>
-                <option value="m">м</option>
-              </select>
-            </div>
-          )}
-
-          {currentGoalConfig?.inputType === 'time' && (
-            <div className="time-input-row">
-              <input
-                type="number"
-                className="input-field time-input"
-                placeholder="ч"
-                min="0"
-                max="23"
-                value={timeHours}
-                onChange={e => setTimeHours(e.target.value)}
-              />
-              <span className="time-separator">:</span>
-              <input
-                type="number"
-                className="input-field time-input"
-                placeholder="мин"
-                min="0"
-                max="59"
-                value={timeMinutes}
-                onChange={e => setTimeMinutes(e.target.value)}
-              />
-              <span className="time-separator">:</span>
-              <input
-                type="number"
-                className="input-field time-input"
-                placeholder="сек"
-                min="0"
-                max="59"
-                value={timeSeconds}
-                onChange={e => setTimeSeconds(e.target.value)}
-              />
-            </div>
-          )}
-
-          {currentGoalConfig?.inputType === 'number' && (
-            <input
-              type="number"
-              className="input-field"
-              placeholder="Количество"
-              value={newGoalTarget}
-              onChange={e => setNewGoalTarget(e.target.value)}
-            />
-          )}
-
-          <div className="deadline-input-row">
-            <label className="deadline-label">Дедлайн (необязательно):</label>
-            <input
-              type="date"
-              className="input-field"
-              value={newGoalDeadline}
-              onChange={e => setNewGoalDeadline(e.target.value)}
-              min={new Date().toISOString().split('T')[0]}
-            />
-          </div>
-
-          <button
-            className="btn btn-accent btn-full"
-            onClick={handleAddGoal}
-            disabled={creatingGoal}
-          >
-            {creatingGoal ? '⏳ Создаю...' : '➕ Добавить цель'}
-          </button>
-        </div>
-      </div>
-
-      <div className="profile-section">
         <button
-          className="btn btn-secondary btn-full"
-          onClick={handleLogout}
+          className="btn btn-outline btn-full"
+          onClick={() => setShowGoalModal(true)}
         >
-          🚪 Выход
+          ➕ Добавить цель
         </button>
       </div>
 
       <div className="profile-footer">
         <p>Runwise v1.0</p>
       </div>
+
+      {showSettingsModal && ReactDOM.createPortal(
+        <div className={`modal-overlay${settingsModalClosing ? ' modal-closing' : ''}`} onClick={closeSettingsModal}>
+          <div className={`modal-content${settingsModalClosing ? ' modal-content-closing' : ''}`} onClick={e => e.stopPropagation()}>
+            <h3 className="modal-title">Настройки</h3>
+
+            <div className="settings-section">
+              <div className="settings-item">
+                <div className="settings-item-icon">🟠</div>
+                <div className="settings-item-info">
+                  <span className="settings-item-label">Strava</span>
+                  <span className="settings-item-status">Подключена</span>
+                </div>
+              </div>
+
+              {syncStatus?.total_imported && (
+                <div className="settings-item">
+                  <div className="settings-item-icon">📊</div>
+                  <div className="settings-item-info">
+                    <span className="settings-item-label">Тренировок загружено</span>
+                    <span className="settings-item-status">{syncStatus.total_imported}</span>
+                  </div>
+                </div>
+              )}
+
+              <button
+                className="btn btn-secondary btn-full"
+                style={{ marginTop: 'var(--spacing-sm)', fontSize: '13px' }}
+                onClick={async () => {
+                  try {
+                    await strava.syncSplits();
+                    alert('Загрузка сплитов запущена в фоне!');
+                  } catch (err) {
+                    console.error(err);
+                  }
+                }}
+              >
+                📊 Загрузить сплиты по км
+              </button>
+            </div>
+
+            <button
+              className="btn btn-danger btn-full"
+              onClick={() => {
+                closeSettingsModal();
+                setTimeout(() => handleLogout(), 1000);
+              }}
+            >
+              🚪 Выйти из аккаунта
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {showParamsModal && ReactDOM.createPortal(
+        <div className={`modal-overlay${paramsModalClosing ? ' modal-closing' : ''}`} onClick={closeParamsModal}>
+          <div className={`modal-content${paramsModalClosing ? ' modal-content-closing' : ''}`} onClick={e => e.stopPropagation()}>
+            <h3 className="modal-title">Физические параметры</h3>
+
+            <div className="modal-field">
+              <label className="param-label">Возраст</label>
+              <div className="param-input-wrap">
+                <input
+                  type="number"
+                  className="input-field"
+                  placeholder="25"
+                  value={age}
+                  onChange={e => setAge(e.target.value)}
+                  min="10"
+                  max="99"
+                />
+                <span className="param-unit">лет</span>
+              </div>
+            </div>
+
+            <div className="modal-field">
+              <label className="param-label">Рост</label>
+              <div className="param-input-wrap">
+                <input
+                  type="number"
+                  className="input-field"
+                  placeholder="175"
+                  value={height}
+                  onChange={e => setHeight(e.target.value)}
+                  min="100"
+                  max="250"
+                />
+                <span className="param-unit">см</span>
+              </div>
+            </div>
+
+            <div className="modal-field">
+              <label className="param-label">Вес</label>
+              <div className="param-input-wrap">
+                <input
+                  type="number"
+                  className="input-field"
+                  placeholder="70"
+                  value={weight}
+                  onChange={e => setWeight(e.target.value)}
+                  min="30"
+                  max="250"
+                  step="0.1"
+                />
+                <span className="param-unit">кг</span>
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                className="btn btn-secondary"
+                onClick={closeParamsModal}
+              >
+                Отмена
+              </button>
+              <button
+                className="btn btn-accent"
+                onClick={handleSaveProfile}
+                disabled={savingProfile}
+              >
+                {savingProfile ? '⏳ Сохраняю...' : '💾 Сохранить'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {showGoalModal && ReactDOM.createPortal(
+        <div className={`modal-overlay${goalModalClosing ? ' modal-closing' : ''}`} onClick={closeGoalModal}>
+          <div className={`modal-content${goalModalClosing ? ' modal-content-closing' : ''}`} onClick={e => e.stopPropagation()}>
+            <h3 className="modal-title">Добавить цель</h3>
+
+            <div className="modal-field">
+              <label className="param-label">Тип цели</label>
+              <select
+                className="input-field"
+                value={newGoalType}
+                onChange={e => setNewGoalType(e.target.value)}
+              >
+                {GOAL_TYPES.map(gt => (
+                  <option key={gt.value} value={gt.value}>{gt.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {currentGoalConfig?.inputType === 'distance' && (
+              <div className="modal-field">
+                <label className="param-label">Значение</label>
+                <div className="distance-input-row">
+                  <input
+                    type="number"
+                    className="input-field"
+                    placeholder="Значение"
+                    value={newGoalTarget}
+                    onChange={e => setNewGoalTarget(e.target.value)}
+                  />
+                  <select
+                    className="input-field unit-select"
+                    value={newGoalUnit}
+                    onChange={e => setNewGoalUnit(e.target.value as 'km' | 'm')}
+                  >
+                    <option value="km">км</option>
+                    <option value="m">м</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {currentGoalConfig?.inputType === 'time' && (
+              <div className="modal-field">
+                <label className="param-label">Время</label>
+                <div className="time-input-row">
+                  <input
+                    type="number"
+                    className="input-field time-input"
+                    placeholder="ч"
+                    min="0"
+                    max="23"
+                    value={timeHours}
+                    onChange={e => setTimeHours(e.target.value)}
+                  />
+                  <span className="time-separator">:</span>
+                  <input
+                    type="number"
+                    className="input-field time-input"
+                    placeholder="мин"
+                    min="0"
+                    max="59"
+                    value={timeMinutes}
+                    onChange={e => setTimeMinutes(e.target.value)}
+                  />
+                  <span className="time-separator">:</span>
+                  <input
+                    type="number"
+                    className="input-field time-input"
+                    placeholder="сек"
+                    min="0"
+                    max="59"
+                    value={timeSeconds}
+                    onChange={e => setTimeSeconds(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+
+            {currentGoalConfig?.inputType === 'number' && (
+              <div className="modal-field">
+                <label className="param-label">Количество</label>
+                <input
+                  type="number"
+                  className="input-field"
+                  placeholder="Количество"
+                  value={newGoalTarget}
+                  onChange={e => setNewGoalTarget(e.target.value)}
+                />
+              </div>
+            )}
+
+            <div className="modal-field">
+              <label className="param-label">Дедлайн (необязательно)</label>
+              <input
+                type="date"
+                className="input-field"
+                value={newGoalDeadline}
+                onChange={e => setNewGoalDeadline(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+              />
+            </div>
+
+            <div className="modal-actions">
+              <button
+                className="btn btn-secondary"
+                onClick={closeGoalModal}
+              >
+                Отмена
+              </button>
+              <button
+                className="btn btn-accent"
+                onClick={handleAddGoal}
+                disabled={creatingGoal}
+              >
+                {creatingGoal ? '⏳ Создаю...' : '💾 Сохранить'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {showRecordModal && ReactDOM.createPortal(
+        <div className={`modal-overlay${recordModalClosing ? ' modal-closing' : ''}`} onClick={closeRecordModal}>
+          <div className={`modal-content${recordModalClosing ? ' modal-content-closing' : ''}`} onClick={e => e.stopPropagation()}>
+            <h3 className="modal-title">Добавить рекорд</h3>
+
+            <div className="modal-field">
+              <label className="param-label">Дистанция</label>
+              <select
+                className="input-field"
+                value={recordType}
+                onChange={e => setRecordType(e.target.value)}
+              >
+                {RECORD_TYPES.map(t => (
+                  <option key={t.key} value={t.key}>{t.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="modal-field">
+              <label className="param-label">Время</label>
+              <div className="time-input-row">
+                <input
+                  type="number"
+                  className="input-field time-input"
+                  placeholder="ч"
+                  min="0"
+                  max="23"
+                  value={recordHours}
+                  onChange={e => setRecordHours(e.target.value)}
+                />
+                <span className="time-separator">:</span>
+                <input
+                  type="number"
+                  className="input-field time-input"
+                  placeholder="мин"
+                  min="0"
+                  max="59"
+                  value={recordMinutes}
+                  onChange={e => setRecordMinutes(e.target.value)}
+                />
+                <span className="time-separator">:</span>
+                <input
+                  type="number"
+                  className="input-field time-input"
+                  placeholder="сек"
+                  min="0"
+                  max="59"
+                  value={recordSeconds}
+                  onChange={e => setRecordSeconds(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="modal-field">
+              <label className="param-label">Дата (необязательно)</label>
+              <input
+                type="date"
+                className="input-field"
+                value={recordDate}
+                onChange={e => setRecordDate(e.target.value)}
+                max={new Date().toISOString().split('T')[0]}
+              />
+            </div>
+
+            <div className="modal-actions">
+              <button
+                className="btn btn-secondary"
+                onClick={closeRecordModal}
+              >
+                Отмена
+              </button>
+              <button
+                className="btn btn-accent"
+                onClick={handleAddRecord}
+                disabled={savingRecord}
+              >
+                {savingRecord ? '⏳ Сохраняю...' : '💾 Сохранить'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

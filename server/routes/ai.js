@@ -188,6 +188,44 @@ async function callDeepSeekStream(systemPrompt, userMessage, maxTokens = 2500, c
   return response.data;
 }
 
+// Helper: get user personal records
+async function getUserRecords(userId) {
+  const { data } = await supabase
+    .from('personal_records')
+    .select('distance_type, time_seconds, record_date')
+    .eq('user_id', userId);
+
+  return data || [];
+}
+
+// Helper: format personal records for AI context
+function formatRecordsForAI(records) {
+  if (!records.length) return 'Личные рекорды не указаны.';
+
+  const DISTANCE_LABELS = {
+    '1km': '1 км',
+    '3km': '3 км',
+    '5km': '5 км',
+    '10km': '10 км',
+    '21km': 'Полумарафон (21.1 км)',
+    '42km': 'Марафон (42.2 км)'
+  };
+
+  return records.map(r => {
+    const label = DISTANCE_LABELS[r.distance_type] || r.distance_type;
+    const h = Math.floor(r.time_seconds / 3600);
+    const m = Math.floor((r.time_seconds % 3600) / 60);
+    const s = r.time_seconds % 60;
+    const time = h > 0
+      ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+      : `${m}:${s.toString().padStart(2, '0')}`;
+    const date = r.record_date
+      ? ` (${new Date(r.record_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })})`
+      : '';
+    return `- ${label}: ${time}${date}`;
+  }).join('\n');
+}
+
 // Helper: get user physical params
 async function getUserProfile(userId) {
   const { data } = await supabase
@@ -209,7 +247,7 @@ function formatProfileForAI(profile) {
 }
 
 // Helper: build chat system prompt
-function buildChatSystemPrompt(workoutsData, goals, currentPlan, userProfile) {
+function buildChatSystemPrompt(workoutsData, goals, currentPlan, userProfile, records) {
   const today = new Date();
   const dayNames = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
   const todayStr = `${today.toISOString().split('T')[0]} (${dayNames[today.getDay()]})`;
@@ -231,6 +269,10 @@ ${JSON.stringify(workoutsData, null, 2)}
 
 Цели:
 ${formatGoalsForAI(goals)}
+
+Личные рекорды:
+${formatRecordsForAI(records || [])}
+Используй рекорды для расчёта тренировочных темпов и зон.
 
 ${formatPlanForAI(currentPlan)}
 
@@ -340,14 +382,15 @@ async function loadChatContext(userId) {
     content: m.content
   }));
 
-  const [workoutsData, goals, currentPlan, userProfile] = await Promise.all([
+  const [workoutsData, goals, currentPlan, userProfile, records] = await Promise.all([
     getWorkoutsContext(userId),
     getUserGoals(userId),
     getCurrentPlan(userId),
-    getUserProfile(userId)
+    getUserProfile(userId),
+    getUserRecords(userId)
   ]);
 
-  const systemPrompt = buildChatSystemPrompt(workoutsData, goals, currentPlan, userProfile);
+  const systemPrompt = buildChatSystemPrompt(workoutsData, goals, currentPlan, userProfile, records);
 
   return { chatHistory, systemPrompt, currentPlan };
 }
@@ -529,7 +572,10 @@ router.post('/generate-plan', authMiddleware, async (req, res) => {
       .gte('date', fourWeeksAgo.toISOString())
       .order('date', { ascending: false });
 
-    const goals = await getUserGoals(req.user.id);
+    const [goals, records] = await Promise.all([
+      getUserGoals(req.user.id),
+      getUserRecords(req.user.id)
+    ]);
 
     // Calculate average weekly distance from recent workouts
     const weeklyDistances = [];
@@ -553,6 +599,10 @@ router.post('/generate-plan', authMiddleware, async (req, res) => {
 
 ЦЕЛИ ПОЛЬЗОВАТЕЛЯ:
 ${formatGoalsForAI(goals)}
+
+ЛИЧНЫЕ РЕКОРДЫ ПОЛЬЗОВАТЕЛЯ:
+${formatRecordsForAI(records)}
+Используй рекорды для расчёта тренировочных темпов и зон.
 
 ПРАВИЛА ГЕНЕРАЦИИ ПЛАНА:
 1. План должен быть направлен на достижение целей пользователя.

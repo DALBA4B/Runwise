@@ -64,6 +64,19 @@ CREATE INDEX IF NOT EXISTS idx_workouts_user_date ON workouts(user_id, date);
 CREATE INDEX IF NOT EXISTS idx_plans_user_id ON plans(user_id);
 CREATE INDEX IF NOT EXISTS idx_goals_user_id ON goals(user_id);
 
+-- Personal records table
+CREATE TABLE IF NOT EXISTS personal_records (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  distance_type TEXT NOT NULL,  -- '1km', '3km', '5km', '10km', '21km', '42km'
+  time_seconds INTEGER NOT NULL,
+  record_date DATE,
+  source TEXT DEFAULT 'manual', -- 'manual' | 'strava'
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, distance_type)
+);
+CREATE INDEX IF NOT EXISTS idx_personal_records_user ON personal_records(user_id);
+
 -- Enable Row Level Security (optional, since we use service key on backend)
 -- ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 -- ALTER TABLE workouts ENABLE ROW LEVEL SECURITY;
