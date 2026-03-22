@@ -87,6 +87,18 @@ function parseActivity(activity, userId) {
   };
 }
 
+// Columns that may not exist in DB yet — detected at runtime
+let missingColumns = new Set();
+
+function stripMissingColumns(rows) {
+  if (missingColumns.size === 0) return rows;
+  return rows.map(row => {
+    const clean = { ...row };
+    for (const col of missingColumns) delete clean[col];
+    return clean;
+  });
+}
+
 // Helper: bulk upsert workouts — avoids N+1 queries
 async function bulkUpsertWorkouts(workoutsToSave, userId) {
   if (workoutsToSave.length === 0) return 0;
@@ -107,10 +119,33 @@ async function bulkUpsertWorkouts(workoutsToSave, userId) {
   if (newWorkouts.length === 0) return 0;
 
   // 3. Insert all new workouts in ONE batch insert
-  const { error } = await supabase.from('workouts').insert(newWorkouts);
+  let toInsert = stripMissingColumns(newWorkouts);
+  const { error } = await supabase.from('workouts').insert(toInsert);
   if (error) {
-    console.error('Bulk insert error:', error.message);
-    throw error;
+    // If a column doesn't exist in DB, detect it and retry without that column
+    const colMatch = error.message.match(/Could not find the '(\w+)' column/);
+    if (colMatch) {
+      missingColumns.add(colMatch[1]);
+      console.warn(`Column '${colMatch[1]}' missing in DB, retrying without it`);
+      toInsert = stripMissingColumns(newWorkouts);
+      const { error: retryError } = await supabase.from('workouts').insert(toInsert);
+      if (retryError) {
+        // Could be another missing column — try once more
+        const colMatch2 = retryError.message.match(/Could not find the '(\w+)' column/);
+        if (colMatch2) {
+          missingColumns.add(colMatch2[1]);
+          console.warn(`Column '${colMatch2[1]}' also missing, retrying`);
+          toInsert = stripMissingColumns(newWorkouts);
+          const { error: finalError } = await supabase.from('workouts').insert(toInsert);
+          if (finalError) { console.error('Bulk insert error:', finalError.message); throw finalError; }
+        } else {
+          console.error('Bulk insert error:', retryError.message); throw retryError;
+        }
+      }
+    } else {
+      console.error('Bulk insert error:', error.message);
+      throw error;
+    }
   }
 
   return newWorkouts.length;
@@ -341,7 +376,18 @@ router.post('/webhook', async (req, res) => {
       .single();
 
     if (!existing) {
-      await supabase.from('workouts').insert(parsed);
+      const toInsert = stripMissingColumns([parsed])[0];
+      const { error } = await supabase.from('workouts').insert(toInsert);
+      if (error) {
+        const colMatch = error.message.match(/Could not find the '(\w+)' column/);
+        if (colMatch) {
+          missingColumns.add(colMatch[1]);
+          const cleaned = stripMissingColumns([parsed])[0];
+          await supabase.from('workouts').insert(cleaned);
+        } else {
+          throw error;
+        }
+      }
       console.log(`Webhook: new workout saved for user ${user.id}`);
     }
   } catch (err) {
