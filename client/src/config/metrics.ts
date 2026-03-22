@@ -81,6 +81,26 @@ export function saveSelectedWidgets(ids: string[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
 }
 
+const PROFILE_STORAGE_KEY = 'runwise_profile_widgets';
+const PROFILE_DEFAULT_WIDGETS = ['distance', 'workouts', 'best_pace', 'avg_pace'];
+
+export function getProfileWidgets(): string[] {
+  try {
+    const saved = localStorage.getItem(PROFILE_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.filter((id: string) => ALL_METRICS.some(m => m.id === id));
+      }
+    }
+  } catch {}
+  return PROFILE_DEFAULT_WIDGETS;
+}
+
+export function saveProfileWidgets(ids: string[]): void {
+  localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(ids));
+}
+
 export function getHistoryWidgets(): string[] {
   try {
     const saved = localStorage.getItem(HISTORY_STORAGE_KEY);

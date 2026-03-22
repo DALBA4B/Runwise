@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import MetricCard from '../components/MetricCard';
 import { workouts, strava, profile as profileApi } from '../api/api';
 import { formatPace, formatDistance } from '../utils';
+import { ALL_METRICS, getProfileWidgets, saveProfileWidgets } from '../config/metrics';
 
 interface PersonalRecord {
   id: string;
@@ -69,6 +70,17 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
   const [savingRecord, setSavingRecord] = useState(false);
   const [removingRecord, setRemovingRecord] = useState<string | null>(null);
 
+  // Widget edit state
+  const [selectedWidgets, setSelectedWidgets] = useState<string[]>(getProfileWidgets);
+  const [widgetEditMode, setWidgetEditMode] = useState(false);
+  const [showWidgetSettings, setShowWidgetSettings] = useState(false);
+  const [tempWidgets, setTempWidgets] = useState<string[]>([]);
+  const dragItem = useRef<number | null>(null);
+  const dragOverItem = useRef<number | null>(null);
+  const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const touchClone = useRef<HTMLElement | null>(null);
+
   const GOAL_TYPES = [
     { value: 'monthly_distance', label: 'Месячный объём', inputType: 'distance' as const },
     { value: 'weekly_distance', label: 'Недельный объём', inputType: 'distance' as const },
@@ -98,6 +110,102 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
     }
     return value.toString();
   };
+
+  // Widget edit helpers
+  const openWidgetSettings = () => {
+    setTempWidgets([...selectedWidgets]);
+    setShowWidgetSettings(true);
+  };
+
+  const toggleWidgetMetric = (id: string) => {
+    setTempWidgets(prev =>
+      prev.includes(id) ? prev.filter(w => w !== id) : [...prev, id]
+    );
+  };
+
+  const saveWidgetSettings = () => {
+    if (tempWidgets.length === 0) return;
+    setSelectedWidgets(tempWidgets);
+    saveProfileWidgets(tempWidgets);
+    setShowWidgetSettings(false);
+  };
+
+  const handleDragStart = (idx: number) => {
+    dragItem.current = idx;
+    setDraggingIdx(idx);
+  };
+
+  const handleDragEnter = (idx: number) => {
+    dragOverItem.current = idx;
+  };
+
+  const handleDragEnd = () => {
+    if (dragItem.current !== null && dragOverItem.current !== null && dragItem.current !== dragOverItem.current) {
+      const arr = [...selectedWidgets];
+      const [removed] = arr.splice(dragItem.current, 1);
+      arr.splice(dragOverItem.current, 0, removed);
+      setSelectedWidgets(arr);
+      saveProfileWidgets(arr);
+    }
+    dragItem.current = null;
+    dragOverItem.current = null;
+    setDraggingIdx(null);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent, idx: number) => {
+    if (!widgetEditMode) return;
+    const touch = e.touches[0];
+    dragItem.current = idx;
+    setDraggingIdx(idx);
+
+    const target = e.currentTarget as HTMLElement;
+    const clone = target.cloneNode(true) as HTMLElement;
+    clone.classList.add('metric-card-drag-clone');
+    clone.style.width = target.offsetWidth + 'px';
+    clone.style.position = 'fixed';
+    clone.style.left = touch.clientX - target.offsetWidth / 2 + 'px';
+    clone.style.top = touch.clientY - target.offsetHeight / 2 + 'px';
+    clone.style.zIndex = '9999';
+    clone.style.pointerEvents = 'none';
+    document.body.appendChild(clone);
+    touchClone.current = clone;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!widgetEditMode || dragItem.current === null) return;
+    const touch = e.touches[0];
+
+    if (touchClone.current) {
+      const target = e.currentTarget as HTMLElement;
+      touchClone.current.style.left = touch.clientX - target.offsetWidth / 2 + 'px';
+      touchClone.current.style.top = touch.clientY - target.offsetHeight / 2 + 'px';
+    }
+
+    if (gridRef.current) {
+      const cards = gridRef.current.querySelectorAll('.metric-card-wrapper');
+      cards.forEach((card, i) => {
+        const rect = card.getBoundingClientRect();
+        if (
+          touch.clientX >= rect.left && touch.clientX <= rect.right &&
+          touch.clientY >= rect.top && touch.clientY <= rect.bottom
+        ) {
+          dragOverItem.current = i;
+        }
+      });
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (touchClone.current) {
+      document.body.removeChild(touchClone.current);
+      touchClone.current = null;
+    }
+    handleDragEnd();
+  };
+
+  const activeProfileMetrics = selectedWidgets
+    .map(id => ALL_METRICS.find(m => m.id === id))
+    .filter(Boolean) as typeof ALL_METRICS;
 
   useEffect(() => {
     loadProfileData();
@@ -336,30 +444,55 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
 
       {allTimeStats && (
         <div className="profile-section">
-          <h3 className="section-title">📊 Статистика за всё время</h3>
-          <div className="metrics-grid">
-            <MetricCard
-              icon="📏"
-              label="Суммарный км"
-              value={formatDistance(allTimeStats.totalDistance)}
-            />
-            <MetricCard
-              icon="🏃"
-              label="Всего пробежек"
-              value={allTimeStats.workoutCount.toString()}
-            />
-            <MetricCard
-              icon="⚡"
-              label="Лучший темп"
-              value={formatPace(allTimeStats.bestPace)}
-              sub="мин/км"
-            />
-            <MetricCard
-              icon="⏱️"
-              label="Среднее время"
-              value={allTimeStats.avgPace ? formatPace(allTimeStats.avgPace) : '—'}
-              sub="мин/км"
-            />
+          <div className="home-header" style={{ marginBottom: 'var(--spacing-sm)' }}>
+            <h3 className="section-title" style={{ margin: 0 }}>📊 Статистика за всё время</h3>
+            <div className="home-header-actions">
+              {widgetEditMode && (
+                <button className="btn-icon" onClick={openWidgetSettings} title="Добавить/убрать виджеты">
+                  ➕
+                </button>
+              )}
+              <button
+                className={`btn-icon ${widgetEditMode ? 'btn-icon-active' : ''}`}
+                onClick={() => setWidgetEditMode(!widgetEditMode)}
+                title={widgetEditMode ? 'Готово' : 'Настроить виджеты'}
+              >
+                {widgetEditMode ? '✓' : '⚙️'}
+              </button>
+            </div>
+          </div>
+          <div className={`metrics-grid ${widgetEditMode ? 'metrics-grid-edit' : ''}`} ref={gridRef}>
+            {activeProfileMetrics.map((metric, idx) => (
+              <div
+                key={metric.id}
+                className={`metric-card-wrapper ${widgetEditMode ? 'editable' : ''} ${draggingIdx === idx ? 'dragging' : ''}`}
+                draggable={widgetEditMode}
+                onDragStart={() => handleDragStart(idx)}
+                onDragEnter={() => handleDragEnter(idx)}
+                onDragEnd={handleDragEnd}
+                onDragOver={(e) => e.preventDefault()}
+                onTouchStart={(e) => handleTouchStart(e, idx)}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+              >
+                <MetricCard
+                  icon={metric.icon}
+                  label={metric.label}
+                  value={metric.getValue(allTimeStats)}
+                  sub={metric.sub}
+                />
+                {widgetEditMode && (
+                  <button
+                    className="metric-card-remove"
+                    onClick={() => {
+                      const updated = selectedWidgets.filter(id => id !== metric.id);
+                      setSelectedWidgets(updated);
+                      saveProfileWidgets(updated);
+                    }}
+                  >✕</button>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -833,6 +966,46 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
           </div>
         </div>,
         document.body
+      )}
+      {showWidgetSettings && (
+        <div className="widget-settings-overlay" onClick={() => setShowWidgetSettings(false)}>
+          <div className="widget-settings-modal" onClick={e => e.stopPropagation()}>
+            <div className="widget-settings-header">
+              <h3>Настройка виджетов</h3>
+              <button className="btn-icon" onClick={() => setShowWidgetSettings(false)}>✕</button>
+            </div>
+
+            <div className="widget-settings-list">
+              {ALL_METRICS.map(metric => {
+                const isSelected = tempWidgets.includes(metric.id);
+                return (
+                  <div
+                    key={metric.id}
+                    className={`widget-settings-item ${isSelected ? 'active' : ''}`}
+                  >
+                    <label className="widget-settings-toggle">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleWidgetMetric(metric.id)}
+                      />
+                      <span className="widget-settings-icon">{metric.icon}</span>
+                      <span className="widget-settings-label">{metric.label}</span>
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button
+              className="btn btn-accent widget-settings-save"
+              onClick={saveWidgetSettings}
+              disabled={tempWidgets.length === 0}
+            >
+              Сохранить ({tempWidgets.length})
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
