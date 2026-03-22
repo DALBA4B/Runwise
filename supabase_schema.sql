@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS goals (
 -- Add extra columns to workouts (run if columns don't exist yet)
 ALTER TABLE workouts ADD COLUMN IF NOT EXISTS total_elevation_gain REAL DEFAULT 0;
 ALTER TABLE workouts ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE workouts ADD COLUMN IF NOT EXISTS splits_500m JSONB;
 
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_workouts_user_id ON workouts(user_id);

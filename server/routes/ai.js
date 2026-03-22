@@ -548,7 +548,8 @@ ${JSON.stringify(recentWorkouts.slice(0, 10), null, 2)}`;
 - Темп: ${formatPace(workout.average_pace)} мин/км
 - Пульс: ${workout.average_heartrate || 'нет данных'} (макс: ${workout.max_heartrate || 'нет данных'})
 - Тип: ${workout.type}
-${workout.splits ? `- Сплиты по км: ${workout.splits}` : ''}`;
+${workout.splits ? `- Сплиты по км: ${workout.splits}` : ''}
+${workout.splits_500m ? `- Сплиты по 500м: ${workout.splits_500m}` : ''}`;
 
     const reply = await callDeepSeek(systemPrompt, workoutInfo);
     res.json({ analysis: reply });

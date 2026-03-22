@@ -334,6 +334,36 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
         </button>
       </div>
 
+      {allTimeStats && (
+        <div className="profile-section">
+          <h3 className="section-title">📊 Статистика за всё время</h3>
+          <div className="metrics-grid">
+            <MetricCard
+              icon="📏"
+              label="Суммарный км"
+              value={formatDistance(allTimeStats.totalDistance)}
+            />
+            <MetricCard
+              icon="🏃"
+              label="Всего пробежек"
+              value={allTimeStats.workoutCount.toString()}
+            />
+            <MetricCard
+              icon="⚡"
+              label="Лучший темп"
+              value={formatPace(allTimeStats.bestPace)}
+              sub="мин/км"
+            />
+            <MetricCard
+              icon="⏱️"
+              label="Среднее время"
+              value={allTimeStats.avgPace ? formatPace(allTimeStats.avgPace) : '—'}
+              sub="мин/км"
+            />
+          </div>
+        </div>
+      )}
+
       <div className="profile-section">
         <h3 className="section-title">📏 Физические параметры</h3>
         {(age || height || weight) ? (
@@ -394,38 +424,6 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
         </button>
       </div>
 
-      {allTimeStats && (
-        <>
-          <div className="profile-section">
-            <h3 className="section-title">📊 Статистика за всё время</h3>
-            <div className="metrics-grid">
-              <MetricCard
-                icon="📏"
-                label="Суммарный км"
-                value={formatDistance(allTimeStats.totalDistance)}
-              />
-              <MetricCard
-                icon="🏃"
-                label="Всего пробежек"
-                value={allTimeStats.workoutCount.toString()}
-              />
-              <MetricCard
-                icon="⚡"
-                label="Лучший темп"
-                value={formatPace(allTimeStats.bestPace)}
-                sub="мин/км"
-              />
-              <MetricCard
-                icon="⏱️"
-                label="Среднее время"
-                value={allTimeStats.avgPace ? formatPace(allTimeStats.avgPace) : '—'}
-                sub="мин/км"
-              />
-            </div>
-          </div>
-
-        </>
-      )}
 
       <div className="profile-section">
         <h3 className="section-title">🎯 Твои цели</h3>

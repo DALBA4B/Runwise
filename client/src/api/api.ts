@@ -52,6 +52,7 @@ export const strava = {
   sync: () => request('/api/strava/sync', { method: 'POST' }),
   syncAll: () => request('/api/strava/sync-all', { method: 'POST' }),
   syncSplits: () => request('/api/strava/sync-splits', { method: 'POST' }),
+  syncSplits500: (workoutId: string) => request(`/api/strava/sync-splits-500/${workoutId}`, { method: 'POST' }),
   syncStatus: () => request('/api/strava/sync-status')
 };
 

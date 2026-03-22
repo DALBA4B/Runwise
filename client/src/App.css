@@ -881,6 +881,69 @@ input[type="number"] {
   margin-bottom: var(--spacing-lg);
 }
 
+.splits-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-md);
+}
+
+.splits-header .section-title {
+  margin-bottom: 0;
+}
+
+.splits-tabs {
+  display: flex;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.splits-tab {
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.splits-tab:hover {
+  color: var(--color-text);
+}
+
+.splits-tab-active {
+  background: var(--color-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.splits-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.splits-loading .loader {
+  width: 18px;
+  height: 18px;
+}
+
+.splits-error {
+  text-align: center;
+  padding: 16px 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
 .splits-list {
   display: flex;
   flex-direction: column;
@@ -896,9 +959,10 @@ input[type="number"] {
 .split-km {
   font-size: 12px;
   color: var(--color-text-secondary);
-  width: 20px;
+  width: 32px;
   text-align: right;
   flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .split-bar-container {

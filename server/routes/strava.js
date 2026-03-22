@@ -87,6 +87,96 @@ function parseActivity(activity, userId) {
   };
 }
 
+// Helper: calculate 500m splits from GPS streams (distance, time, heartrate arrays)
+function calculate500mSplits(distArr, timeArr, hrArr) {
+  const SPLIT_DISTANCE = 500; // meters
+  const splits = [];
+  let splitStart = 0; // index of current split start
+
+  const totalDist = distArr[distArr.length - 1];
+  const numFullSplits = Math.floor(totalDist / SPLIT_DISTANCE);
+
+  for (let s = 0; s <= numFullSplits; s++) {
+    const targetDist = (s + 1) * SPLIT_DISTANCE;
+    const startDist = s * SPLIT_DISTANCE;
+
+    // Last partial split
+    if (targetDist > totalDist && startDist >= totalDist) break;
+
+    const isPartial = targetDist > totalDist;
+    const endDist = isPartial ? totalDist : targetDist;
+    const splitDist = endDist - startDist;
+
+    if (splitDist < 1) break; // skip trivially short
+
+    // Find interpolated start time
+    let startTime;
+    if (s === 0) {
+      startTime = timeArr[0];
+    } else {
+      // Interpolate at startDist
+      for (let i = 1; i < distArr.length; i++) {
+        if (distArr[i] >= startDist) {
+          const ratio = (startDist - distArr[i - 1]) / (distArr[i] - distArr[i - 1] || 1);
+          startTime = timeArr[i - 1] + ratio * (timeArr[i] - timeArr[i - 1]);
+          splitStart = i - 1;
+          break;
+        }
+      }
+    }
+
+    // Find interpolated end time
+    let endTime;
+    let splitEnd = splitStart;
+    for (let i = splitStart + 1; i < distArr.length; i++) {
+      if (distArr[i] >= endDist) {
+        const ratio = (endDist - distArr[i - 1]) / (distArr[i] - distArr[i - 1] || 1);
+        endTime = timeArr[i - 1] + ratio * (timeArr[i] - timeArr[i - 1]);
+        splitEnd = i;
+        break;
+      }
+    }
+
+    // If we couldn't find end point, use last point
+    if (endTime === undefined) {
+      endTime = timeArr[timeArr.length - 1];
+      splitEnd = distArr.length - 1;
+    }
+    if (startTime === undefined) {
+      startTime = timeArr[0];
+    }
+
+    const time = endTime - startTime;
+    const pace = splitDist > 0 ? (time / (splitDist / 1000)) : 0; // sec per km
+
+    // Average heartrate for this split range
+    let heartrate = null;
+    if (hrArr && hrArr.length > 0) {
+      let hrSum = 0;
+      let hrCount = 0;
+      for (let i = splitStart; i <= Math.min(splitEnd, hrArr.length - 1); i++) {
+        if (hrArr[i]) {
+          hrSum += hrArr[i];
+          hrCount++;
+        }
+      }
+      if (hrCount > 0) heartrate = Math.round(hrSum / hrCount);
+    }
+
+    splits.push({
+      km: (s + 1) * 0.5,
+      time: Math.round(time),
+      pace: Math.round(pace),
+      distance: Math.round(splitDist),
+      heartrate
+    });
+
+    splitStart = splitEnd;
+  }
+
+  return splits;
+}
+
 // Columns that may not exist in DB yet — detected at runtime
 let missingColumns = new Set();
 
@@ -324,6 +414,121 @@ router.get('/sync-status', authMiddleware, async (req, res) => {
   }
 });
 
+// POST /api/strava/sync-splits-500/:workoutId — fetch streams and compute 500m splits
+router.post('/sync-splits-500/:workoutId', authMiddleware, async (req, res) => {
+  try {
+    const { workoutId } = req.params;
+
+    // 1. Get workout from DB
+    const { data: workout, error: wErr } = await supabase
+      .from('workouts')
+      .select('id, strava_id, splits_500m, user_id')
+      .eq('id', workoutId)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (wErr || !workout) {
+      return res.status(404).json({ error: 'Workout not found' });
+    }
+
+    // 2. Return cached if available
+    if (workout.splits_500m) {
+      const cached = typeof workout.splits_500m === 'string'
+        ? JSON.parse(workout.splits_500m) : workout.splits_500m;
+      return res.json({ splits_500m: cached, cached: true });
+    }
+
+    // 3. Fetch streams from Strava
+    const fullUser = await loadUserWithTokens(req.user.id);
+    const token = await getValidToken(fullUser);
+
+    let streamsData;
+    try {
+      const streamsResp = await axios.get(
+        `https://www.strava.com/api/v3/activities/${workout.strava_id}/streams`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          params: { keys: 'distance,time,heartrate', key_type: 'value' }
+        }
+      );
+      streamsData = streamsResp.data;
+    } catch (streamErr) {
+      if (streamErr.response?.status === 429) {
+        return res.status(429).json({ error: 'Strava rate limit, try again later' });
+      }
+      if (streamErr.response?.status === 404) {
+        return res.status(404).json({ error: 'GPS data not available for this workout' });
+      }
+      throw streamErr;
+    }
+
+    // 4. Parse streams
+    const distStream = streamsData.find(s => s.type === 'distance');
+    const timeStream = streamsData.find(s => s.type === 'time');
+    const hrStream = streamsData.find(s => s.type === 'heartrate');
+
+    if (!distStream || !timeStream) {
+      return res.status(404).json({ error: 'GPS data not available for this workout' });
+    }
+
+    // 5. Calculate 500m splits
+    const splits500m = calculate500mSplits(
+      distStream.data,
+      timeStream.data,
+      hrStream ? hrStream.data : null
+    );
+
+    // 6. Cache in DB
+    await supabase
+      .from('workouts')
+      .update({ splits_500m: JSON.stringify(splits500m) })
+      .eq('id', workoutId);
+
+    res.json({ splits_500m: splits500m, cached: false });
+  } catch (err) {
+    console.error('500m splits error:', err.response?.data || err.message);
+    res.status(500).json({ error: 'Failed to compute 500m splits' });
+  }
+});
+
+// Helper: fire-and-forget 500m splits calculation for a workout
+async function fetchAndSave500mSplits(workoutId, stravaId, userId) {
+  try {
+    const fullUser = await loadUserWithTokens(userId);
+    const token = await getValidToken(fullUser);
+
+    const streamsResp = await axios.get(
+      `https://www.strava.com/api/v3/activities/${stravaId}/streams`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { keys: 'distance,time,heartrate', key_type: 'value' }
+      }
+    );
+
+    const distStream = streamsResp.data.find(s => s.type === 'distance');
+    const timeStream = streamsResp.data.find(s => s.type === 'time');
+    const hrStream = streamsResp.data.find(s => s.type === 'heartrate');
+
+    if (!distStream || !timeStream) return;
+
+    const splits500m = calculate500mSplits(
+      distStream.data,
+      timeStream.data,
+      hrStream ? hrStream.data : null
+    );
+
+    await supabase
+      .from('workouts')
+      .update({ splits_500m: JSON.stringify(splits500m) })
+      .eq('id', workoutId);
+
+    console.log(`500m splits saved for workout ${workoutId}`);
+  } catch (err) {
+    // Silently fail — will be computed on-demand later
+    console.error(`Failed to pre-compute 500m splits for ${workoutId}:`, err.message);
+  }
+}
+
 // Strava Webhook verification (GET)
 router.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
@@ -377,16 +582,22 @@ router.post('/webhook', async (req, res) => {
 
     if (!existing) {
       const toInsert = stripMissingColumns([parsed])[0];
-      const { error } = await supabase.from('workouts').insert(toInsert);
+      const { data: inserted, error } = await supabase.from('workouts').insert(toInsert).select('id').single();
       if (error) {
         const colMatch = error.message.match(/Could not find the '(\w+)' column/);
         if (colMatch) {
           missingColumns.add(colMatch[1]);
           const cleaned = stripMissingColumns([parsed])[0];
-          await supabase.from('workouts').insert(cleaned);
+          const { data: inserted2 } = await supabase.from('workouts').insert(cleaned).select('id').single();
+          if (inserted2) {
+            fetchAndSave500mSplits(inserted2.id, parsed.strava_id, user.id).catch(() => {});
+          }
         } else {
           throw error;
         }
+      } else if (inserted) {
+        // Fire-and-forget: pre-compute 500m splits
+        fetchAndSave500mSplits(inserted.id, parsed.strava_id, user.id).catch(() => {});
       }
       console.log(`Webhook: new workout saved for user ${user.id}`);
     }
