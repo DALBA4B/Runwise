@@ -23,6 +23,9 @@ export function useAuth() {
       const data = await auth.me();
       setUser(data.user);
       setIsAuthenticated(true);
+
+      // Sync latest workouts from Strava on every app open
+      strava.sync().catch(() => {});
     } catch {
       localStorage.removeItem('runwise_token');
       setIsAuthenticated(false);

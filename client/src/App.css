@@ -1203,6 +1203,10 @@ input[type="number"] {
   margin-bottom: var(--spacing-lg);
 }
 
+.profile-section .section-title {
+  margin-bottom: var(--spacing-md);
+}
+
 .params-summary {
   background-color: var(--color-bg-secondary);
   border: 1px solid var(--color-border);
@@ -1474,7 +1478,6 @@ input[type="number"] {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-md);
-  margin-top: var(--spacing-md);
   margin-bottom: var(--spacing-lg);
 }
 
