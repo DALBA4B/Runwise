@@ -91,8 +91,15 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
     } else if (s.time && s.distance) {
       pace = Math.round(s.time / (s.distance / 1000));
     }
+
+    // Last split — show actual distance if not a full km
+    const isLast = i === splits.length - 1;
+    const distMeters = s.distance || 1000;
+    const isPartial = isLast && Math.abs(distMeters - 1000) > 10;
+    const km = isPartial ? `${(distMeters / 1000).toFixed(2)}` : `${i + 1}`;
+
     return {
-      km: `${i + 1}`,
+      km,
       pace,
       heartrate: s.heartrate || null
     };
