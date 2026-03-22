@@ -213,7 +213,7 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
               icon={metric.icon}
               label={metric.label}
               value={weekStats ? metric.getValue(weekStats) : '—'}
-              sub={metric.sub}
+              sub={metric.id === 'workouts' ? 'пн — вс' : metric.sub}
             />
             {editMode && (
               <button

@@ -658,20 +658,6 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                 </div>
               )}
 
-              <button
-                className="btn btn-secondary btn-full"
-                style={{ marginTop: 'var(--spacing-sm)', fontSize: '13px' }}
-                onClick={async () => {
-                  try {
-                    await strava.syncSplits();
-                    alert('Загрузка сплитов запущена в фоне!');
-                  } catch (err) {
-                    console.error(err);
-                  }
-                }}
-              >
-                📊 Загрузить сплиты по км
-              </button>
             </div>
 
             <button

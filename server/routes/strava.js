@@ -256,6 +256,9 @@ router.post('/sync', authMiddleware, async (req, res) => {
     const parsed = activities.map(a => parseActivity(a, req.user.id));
     const imported = await bulkUpsertWorkouts(parsed, req.user.id);
 
+    // Fire-and-forget: auto-load splits for workouts missing them
+    runSplitsSync(req.user.id).catch(() => {});
+
     res.json({ imported, total: activities.length });
   } catch (err) {
     console.error('Sync error:', err.response?.data || err.message);
@@ -300,6 +303,8 @@ router.post('/sync-all', authMiddleware, async (req, res) => {
     console.log(`Full sync complete for user ${req.user.id}: ${totalImported} new workouts`);
     // Save sync result to user record
     await supabase.from('users').update({ last_sync_status: 'done', last_sync_count: totalImported }).eq('id', req.user.id);
+    // Fire-and-forget: auto-load splits for workouts missing them
+    runSplitsSync(req.user.id).catch(() => {});
   } catch (err) {
     console.error('Full sync error:', err.response?.data || err.message);
     // Save error to user record
@@ -310,28 +315,25 @@ router.post('/sync-all', authMiddleware, async (req, res) => {
 // Track active splits syncs to prevent duplicates
 const activeSplitsSyncs = new Set();
 
-// POST /api/strava/sync-splits — fetch detailed splits for all workouts missing them
-router.post('/sync-splits', authMiddleware, async (req, res) => {
-  if (activeSplitsSyncs.has(req.user.id)) {
-    return res.json({ status: 'already_running' });
-  }
-  activeSplitsSyncs.add(req.user.id);
-  res.json({ status: 'started' });
+// Core logic: fetch detailed splits for all workouts missing them
+async function runSplitsSync(userId) {
+  if (activeSplitsSyncs.has(userId)) return;
+  activeSplitsSyncs.add(userId);
 
   try {
-    const fullUser = await loadUserWithTokens(req.user.id);
+    const fullUser = await loadUserWithTokens(userId);
     const token = await getValidToken(fullUser);
 
     // Find workouts without splits
     const { data: workoutsWithoutSplits } = await supabase
       .from('workouts')
       .select('id, strava_id')
-      .eq('user_id', req.user.id)
+      .eq('user_id', userId)
       .is('splits', null)
       .order('date', { ascending: false });
 
     if (!workoutsWithoutSplits || workoutsWithoutSplits.length === 0) {
-      console.log(`Splits sync: all workouts already have splits for user ${req.user.id}`);
+      console.log(`Splits sync: all workouts already have splits for user ${userId}`);
       return;
     }
 
@@ -381,13 +383,14 @@ router.post('/sync-splits', authMiddleware, async (req, res) => {
       }
     }
 
-    console.log(`Splits sync complete for user ${req.user.id}: ${updated} workouts updated`);
+    console.log(`Splits sync complete for user ${userId}: ${updated} workouts updated`);
   } catch (err) {
     console.error('Splits sync error:', err.message);
   } finally {
-    activeSplitsSyncs.delete(req.user.id);
+    activeSplitsSyncs.delete(userId);
   }
-});
+}
+
 
 // GET /api/strava/sync-status — check how many workouts loaded
 router.get('/sync-status', authMiddleware, async (req, res) => {

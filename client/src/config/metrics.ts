@@ -35,7 +35,6 @@ export const ALL_METRICS: MetricConfig[] = [
     label: 'Тренировки',
     icon: '🏋️',
     getValue: (s) => `${s.workoutCount}`,
-    sub: 'пн — вс',
   },
   {
     id: 'total_time',
