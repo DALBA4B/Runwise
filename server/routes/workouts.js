@@ -332,111 +332,234 @@ router.get('/goals/predictions', authMiddleware, async (req, res) => {
       return res.json([]);
     }
 
-    // Get last 8 weeks of workouts for trend analysis
+    // Helper dates
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const dayOfMonth = now.getDate();
+    const daysRemainingInMonth = daysInMonth - dayOfMonth;
+
+    // Week start = Monday
+    const weekStart = new Date(now);
+    const dow = now.getDay(); // 0=Sun
+    const dayOfWeek = dow === 0 ? 7 : dow; // 1=Mon..7=Sun
+    weekStart.setDate(now.getDate() - (dayOfWeek - 1));
+    weekStart.setHours(0, 0, 0, 0);
+    const daysRemainingInWeek = 7 - dayOfWeek;
+
+    // Fetch workouts: max(8 weeks ago, monthStart)
     const eightWeeksAgo = new Date();
     eightWeeksAgo.setDate(eightWeeksAgo.getDate() - 56);
+    const fetchFrom = monthStart < eightWeeksAgo ? monthStart : eightWeeksAgo;
 
     const { data: recentWorkouts } = await supabase
       .from('workouts')
-      .select('distance, moving_time, average_pace, date')
+      .select('distance, moving_time, average_pace, date, best_efforts')
       .eq('user_id', req.user.id)
-      .gte('date', eightWeeksAgo.toISOString())
+      .gte('date', fetchFrom.toISOString())
       .order('date', { ascending: true });
 
     const workoutsArr = recentWorkouts || [];
 
+    // Pre-filter workouts for current month and current week
+    const monthWorkouts = workoutsArr.filter(w => new Date(w.date) >= monthStart);
+    const weekWorkouts = workoutsArr.filter(w => new Date(w.date) >= weekStart);
+
+    const fmtTime = (s) => {
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sec = Math.round(s % 60);
+      return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}` : `${m}:${sec.toString().padStart(2, '0')}`;
+    };
+
     const predictions = goals.map(goal => {
       const prediction = { goalId: goal.id, type: goal.type };
 
-      if (['monthly_distance', 'weekly_distance'].includes(goal.type)) {
-        // Calculate weekly volume trend
-        const weeks = [];
-        for (let w = 0; w < 8; w++) {
-          const start = new Date();
-          start.setDate(start.getDate() - (w + 1) * 7);
-          const end = new Date();
-          end.setDate(end.getDate() - w * 7);
-          const weekKm = workoutsArr
-            .filter(wr => { const d = new Date(wr.date); return d >= start && d < end; })
-            .reduce((s, wr) => s + (wr.distance || 0), 0) / 1000;
-          weeks.unshift(weekKm);
+      if (goal.type === 'monthly_distance') {
+        const targetKm = goal.target_value / 1000;
+        const computedCurrentValue = monthWorkouts.reduce((s, w) => s + (w.distance || 0), 0);
+        const currentKm = Math.round((computedCurrentValue / 1000) * 10) / 10;
+
+        prediction.computedCurrentValue = computedCurrentValue;
+
+        if (currentKm >= targetKm) {
+          prediction.percent = 100;
+          prediction.onTrack = true;
+          prediction.message = `Цель достигнута! Пробежал ${currentKm} из ${targetKm} км`;
+        } else if (monthWorkouts.length === 0) {
+          prediction.percent = 0;
+          prediction.onTrack = false;
+          prediction.message = 'Пока нет пробежек в этом месяце';
+        } else {
+          const projection = dayOfMonth > 0 ? (currentKm / dayOfMonth) * daysInMonth : 0;
+          const remaining = Math.round((targetKm - currentKm) * 10) / 10;
+
+          if (daysRemainingInMonth === 0) {
+            prediction.percent = Math.min(100, Math.round((currentKm / targetKm) * 100));
+            prediction.onTrack = currentKm >= targetKm * 0.9;
+            prediction.message = `Сегодня последний день! Пробежал ${currentKm} из ${targetKm} км`;
+          } else {
+            const dailyNeeded = Math.round((remaining / daysRemainingInMonth) * 10) / 10;
+            prediction.percent = Math.min(100, Math.round((currentKm / targetKm) * 100));
+            prediction.onTrack = projection >= targetKm * 0.9;
+            prediction.message = `Пробежал ${currentKm} из ${targetKm} км, осталось ${daysRemainingInMonth} дн. — нужно ещё ${dailyNeeded} км/день`;
+          }
         }
 
-        const recentWeeks = weeks.slice(-4);
-        const avgWeeklyKm = recentWeeks.reduce((a, b) => a + b, 0) / recentWeeks.length;
+      } else if (goal.type === 'weekly_distance') {
         const targetKm = goal.target_value / 1000;
+        const computedCurrentValue = weekWorkouts.reduce((s, w) => s + (w.distance || 0), 0);
+        const currentKm = Math.round((computedCurrentValue / 1000) * 10) / 10;
 
-        if (goal.type === 'weekly_distance') {
-          prediction.currentRate = Math.round(avgWeeklyKm * 10) / 10;
-          prediction.targetRate = Math.round(targetKm * 10) / 10;
-          prediction.onTrack = avgWeeklyKm >= targetKm * 0.9;
-          prediction.percent = Math.min(100, Math.round((avgWeeklyKm / targetKm) * 100));
-          prediction.message = avgWeeklyKm >= targetKm
-            ? `В среднем ${prediction.currentRate} км/нед — цель достигнута!`
-            : `В среднем ${prediction.currentRate} км/нед, нужно ${prediction.targetRate} км/нед`;
+        prediction.computedCurrentValue = computedCurrentValue;
+
+        if (currentKm >= targetKm) {
+          prediction.percent = 100;
+          prediction.onTrack = true;
+          prediction.message = `Цель достигнута! Пробежал ${currentKm} из ${targetKm} км на этой неделе`;
+        } else if (weekWorkouts.length === 0) {
+          prediction.percent = 0;
+          prediction.onTrack = false;
+          prediction.message = 'Пока нет пробежек на этой неделе';
         } else {
-          const avgMonthlyKm = avgWeeklyKm * 4.33;
-          prediction.currentRate = Math.round(avgMonthlyKm * 10) / 10;
-          prediction.targetRate = Math.round(targetKm * 10) / 10;
-          prediction.onTrack = avgMonthlyKm >= targetKm * 0.9;
-          prediction.percent = Math.min(100, Math.round((avgMonthlyKm / targetKm) * 100));
-          prediction.message = avgMonthlyKm >= targetKm
-            ? `В среднем ${prediction.currentRate} км/мес — цель достигнута!`
-            : `В среднем ${prediction.currentRate} км/мес, нужно ${prediction.targetRate} км/мес`;
+          const remaining = Math.round((targetKm - currentKm) * 10) / 10;
+          const projection = dayOfWeek > 0 ? (currentKm / dayOfWeek) * 7 : 0;
+
+          if (daysRemainingInWeek === 0) {
+            prediction.percent = Math.min(100, Math.round((currentKm / targetKm) * 100));
+            prediction.onTrack = currentKm >= targetKm * 0.9;
+            prediction.message = `Сегодня воскресенье! Пробежал ${currentKm} из ${targetKm} км`;
+          } else {
+            const dailyNeeded = Math.round((remaining / daysRemainingInWeek) * 10) / 10;
+            prediction.percent = Math.min(100, Math.round((currentKm / targetKm) * 100));
+            prediction.onTrack = projection >= targetKm * 0.9;
+            prediction.message = `Пробежал ${currentKm} из ${targetKm} км на этой неделе, нужно ещё ${dailyNeeded} км/день`;
+          }
         }
 
       } else if (['pb_5k', 'pb_10k', 'pb_21k', 'pb_42k'].includes(goal.type)) {
-        // Pace-based goals — estimate from recent pace improvement
         const distMap = { pb_5k: 5, pb_10k: 10, pb_21k: 21.1, pb_42k: 42.2 };
-        const targetDist = distMap[goal.type];
-        const targetTimeSec = goal.target_value; // seconds
+        const targetDist = distMap[goal.type]; // km
+        const targetDistM = targetDist * 1000; // meters
+        const targetTimeSec = goal.target_value;
 
-        // Find workouts close to this distance (within 20%)
-        const relevantWorkouts = workoutsArr.filter(w => {
-          const km = w.distance / 1000;
-          return km >= targetDist * 0.8 && km <= targetDist * 1.2;
-        });
+        // Strava best_efforts name mapping
+        const bestEffortNameMap = { pb_5k: '5K', pb_10k: '10K', pb_21k: 'Half-Marathon', pb_42k: 'Marathon' };
+        const targetBEName = bestEffortNameMap[goal.type];
 
-        // Get best pace from all recent workouts
-        const paces = workoutsArr
-          .filter(w => w.average_pace > 0)
-          .map(w => w.average_pace);
-
-        if (paces.length > 0) {
-          const bestPace = Math.min(...paces);
-          const estimatedTime = Math.round(bestPace * targetDist);
-
-          prediction.estimatedTime = estimatedTime;
-          prediction.targetTime = targetTimeSec;
-          prediction.gap = estimatedTime - targetTimeSec;
-          prediction.percent = Math.min(100, Math.round((targetTimeSec / estimatedTime) * 100));
-          prediction.onTrack = estimatedTime <= targetTimeSec * 1.05;
-
-          // Format times
-          const fmtTime = (s) => {
-            const h = Math.floor(s / 3600);
-            const m = Math.floor((s % 3600) / 60);
-            const sec = Math.round(s % 60);
-            return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}` : `${m}:${sec.toString().padStart(2, '0')}`;
-          };
-
-          prediction.message = `Прогноз ~${fmtTime(estimatedTime)}`;
-
-          // Trend from pace improvement
-          const recentPaces = workoutsArr.slice(-5).filter(w => w.average_pace > 0).map(w => w.average_pace);
-          const olderPaces = workoutsArr.slice(0, 5).filter(w => w.average_pace > 0).map(w => w.average_pace);
-          if (recentPaces.length > 0 && olderPaces.length > 0) {
-            const avgRecent = recentPaces.reduce((a, b) => a + b, 0) / recentPaces.length;
-            const avgOlder = olderPaces.reduce((a, b) => a + b, 0) / olderPaces.length;
-            prediction.trend = Math.round(((avgOlder - avgRecent) / avgOlder) * 100);
+        // --- Priority 1: Strava best_efforts ---
+        let bestEffortTime = null;
+        for (const w of workoutsArr) {
+          if (!w.best_efforts) continue;
+          const efforts = typeof w.best_efforts === 'string' ? JSON.parse(w.best_efforts) : w.best_efforts;
+          for (const e of efforts) {
+            if (e.name === targetBEName && e.moving_time > 0) {
+              if (bestEffortTime === null || e.moving_time < bestEffortTime) {
+                bestEffortTime = e.moving_time;
+              }
+            }
           }
-        } else {
-          prediction.message = 'Недостаточно данных для прогноза';
-          prediction.percent = 0;
         }
+
+        if (bestEffortTime !== null) {
+          prediction.computedCurrentValue = bestEffortTime;
+          prediction.estimatedTime = bestEffortTime;
+          prediction.targetTime = targetTimeSec;
+          prediction.gap = bestEffortTime - targetTimeSec;
+          prediction.percent = Math.min(100, Math.round((targetTimeSec / bestEffortTime) * 100));
+          prediction.onTrack = bestEffortTime <= targetTimeSec * 1.05;
+          prediction.source = 'best_effort';
+
+          prediction.message = bestEffortTime <= targetTimeSec
+            ? `Цель достигнута! Лучший результат ${fmtTime(bestEffortTime)}`
+            : `Лучший результат ${fmtTime(bestEffortTime)}, цель ${fmtTime(targetTimeSec)}`;
+        } else {
+          // --- Priority 2: Riegel formula from relevant workouts (±30% distance) ---
+          const relevantWorkouts = workoutsArr.filter(w => {
+            const km = w.distance / 1000;
+            return km >= targetDist * 0.5 && km <= targetDist * 1.5 && w.moving_time > 0 && w.distance > 0;
+          });
+
+          if (relevantWorkouts.length > 0) {
+            // Riegel: T2 = T1 * (D2 / D1) ^ 1.06
+            let bestRiegelTime = Infinity;
+            for (const w of relevantWorkouts) {
+              const riegelTime = w.moving_time * Math.pow(targetDistM / w.distance, 1.06);
+              if (riegelTime < bestRiegelTime) {
+                bestRiegelTime = riegelTime;
+              }
+            }
+            bestRiegelTime = Math.round(bestRiegelTime);
+
+            // computedCurrentValue = best moving_time from workouts close to target distance (±20%)
+            const closeWorkouts = relevantWorkouts.filter(w => {
+              const km = w.distance / 1000;
+              return km >= targetDist * 0.8 && km <= targetDist * 1.2;
+            });
+            const closeTimes = closeWorkouts.filter(w => w.moving_time > 0).map(w => w.moving_time);
+            prediction.computedCurrentValue = closeTimes.length > 0 ? Math.min(...closeTimes) : 0;
+
+            prediction.estimatedTime = bestRiegelTime;
+            prediction.targetTime = targetTimeSec;
+            prediction.gap = bestRiegelTime - targetTimeSec;
+            prediction.percent = Math.min(100, Math.round((targetTimeSec / bestRiegelTime) * 100));
+            prediction.onTrack = bestRiegelTime <= targetTimeSec * 1.05;
+            prediction.source = 'riegel';
+
+            prediction.message = bestRiegelTime <= targetTimeSec
+              ? `Цель достигнута! Прогноз ~${fmtTime(bestRiegelTime)}`
+              : `Прогноз ~${fmtTime(bestRiegelTime)}, цель ${fmtTime(targetTimeSec)}`;
+
+            // Trend from pace improvement
+            const recentPaces = relevantWorkouts.slice(-5).filter(w => w.average_pace > 0).map(w => w.average_pace);
+            const olderPaces = relevantWorkouts.slice(0, 5).filter(w => w.average_pace > 0).map(w => w.average_pace);
+            if (recentPaces.length > 0 && olderPaces.length > 0) {
+              const avgRecent = recentPaces.reduce((a, b) => a + b, 0) / recentPaces.length;
+              const avgOlder = olderPaces.reduce((a, b) => a + b, 0) / olderPaces.length;
+              prediction.trend = Math.round(((avgOlder - avgRecent) / avgOlder) * 100);
+            }
+          } else {
+            // --- No data at all ---
+            prediction.message = `Нет тренировок на подходящей дистанции (~${targetDist} км)`;
+            prediction.percent = 0;
+            prediction.computedCurrentValue = 0;
+          }
+        }
+
+      } else if (goal.type === 'monthly_runs') {
+        const currentRuns = monthWorkouts.length;
+        const target = goal.target_value;
+
+        prediction.computedCurrentValue = currentRuns;
+
+        if (currentRuns >= target) {
+          prediction.percent = 100;
+          prediction.onTrack = true;
+          prediction.message = `Цель достигнута! ${currentRuns} из ${target} пробежек`;
+        } else if (currentRuns === 0) {
+          prediction.percent = 0;
+          prediction.onTrack = false;
+          prediction.message = 'Пока нет пробежек в этом месяце';
+        } else {
+          const remaining = target - currentRuns;
+
+          if (daysRemainingInMonth === 0) {
+            prediction.percent = Math.min(100, Math.round((currentRuns / target) * 100));
+            prediction.onTrack = currentRuns >= target * 0.9;
+            prediction.message = `Сегодня последний день! ${currentRuns} из ${target} пробежек`;
+          } else {
+            const projection = (currentRuns / dayOfMonth) * daysInMonth;
+            const runsPerDay = Math.round((remaining / daysRemainingInMonth) * 10) / 10;
+            prediction.percent = Math.min(100, Math.round((currentRuns / target) * 100));
+            prediction.onTrack = projection >= target * 0.9;
+            prediction.message = `${currentRuns} из ${target} пробежек в этом месяце, нужно ещё ${remaining} (${runsPerDay}/день)`;
+          }
+        }
+
       } else {
         prediction.message = '';
         prediction.percent = 0;
+        prediction.computedCurrentValue = 0;
       }
 
       return prediction;

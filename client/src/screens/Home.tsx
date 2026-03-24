@@ -20,6 +20,7 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
   const [comparison, setComparison] = useState<any>(null);
   const [comparisonLoading, setComparisonLoading] = useState(true);
   const [goals, setGoals] = useState<any[]>([]);
+  const [goalPreds, setGoalPreds] = useState<any[]>([]);
 
   const [selectedWidgets, setSelectedWidgets] = useState<string[]>(getSelectedWidgets);
   const [showSettings, setShowSettings] = useState(false);
@@ -38,6 +39,9 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
       .finally(() => setComparisonLoading(false));
     workoutsApi.getGoals()
       .then(data => setGoals(data || []))
+      .catch(() => {});
+    workoutsApi.goalPredictions()
+      .then(data => setGoalPreds(data || []))
       .catch(() => {});
   }, []);
 
@@ -229,7 +233,10 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
         ))}
       </div>
 
-      <GoalProgressMini goals={goals} onNavigate={onNavigate} />
+      <GoalProgressMini goals={goals.map(g => {
+        const pred = goalPreds.find((p: any) => p.goalId === g.id);
+        return { ...g, current_value: pred?.computedCurrentValue ?? g.current_value };
+      })} onNavigate={onNavigate} />
 
       <WeekChart data={weeklyData} />
 

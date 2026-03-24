@@ -634,7 +634,10 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
 
         {goals.length > 0 ? (
           <div className="goals-list">
-            {goals.map(goal => (
+            {goals.map(goal => {
+              const pred = predictions.find((p: any) => p.goalId === goal.id);
+              const currentValue = pred?.computedCurrentValue ?? goal.current_value;
+              return (
               <div key={goal.id} className={`goal-item${removingGoalId === goal.id ? ' goal-removing' : ''}${newGoalId === goal.id ? ' goal-new' : ''}`}>
                 <div className="goal-header">
                   <span className="goal-type">{getGoalLabel(goal.type)}</span>
@@ -656,12 +659,11 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                   </div>
                 </div>
                 <div className="goal-values">
-                  <span>{formatGoalValue(goal.type, goal.current_value)}</span>
+                  <span>{formatGoalValue(goal.type, currentValue)}</span>
                   <span> / </span>
                   <span>{formatGoalValue(goal.type, goal.target_value)}</span>
                 </div>
                 {(() => {
-                  const pred = predictions.find((p: any) => p.goalId === goal.id);
                   if (!pred || !pred.message) return null;
                   return (
                     <div className={`goal-prediction ${pred.onTrack ? 'prediction-good' : 'prediction-warn'}`}>
@@ -685,13 +687,14 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                     <div
                       className="progress-fill"
                       style={{
-                        width: `${Math.min((goal.current_value / goal.target_value) * 100, 100)}%`
+                        width: `${Math.min((currentValue / goal.target_value) * 100, 100)}%`
                       }}
                     ></div>
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <p className="empty-text">Целей пока нет. Создай первую!</p>

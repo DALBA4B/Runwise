@@ -83,6 +83,13 @@ function parseActivity(activity, userId) {
     }))) : null,
     total_elevation_gain: activity.total_elevation_gain || 0,
     description: activity.description || null,
+    best_efforts: activity.best_efforts
+      ? JSON.stringify(activity.best_efforts.map(e => ({
+          name: e.name,
+          distance: e.distance,
+          moving_time: e.moving_time
+        })))
+      : null,
     raw_data: JSON.stringify(activity)
   };
 }
@@ -324,23 +331,23 @@ async function runSplitsSync(userId) {
     const fullUser = await loadUserWithTokens(userId);
     const token = await getValidToken(fullUser);
 
-    // Find workouts without splits
-    const { data: workoutsWithoutSplits } = await supabase
+    // Find workouts without splits OR without best_efforts
+    const { data: workoutsNeedingDetail } = await supabase
       .from('workouts')
-      .select('id, strava_id')
+      .select('id, strava_id, splits, best_efforts')
       .eq('user_id', userId)
-      .is('splits', null)
+      .or('splits.is.null,best_efforts.is.null')
       .order('date', { ascending: false });
 
-    if (!workoutsWithoutSplits || workoutsWithoutSplits.length === 0) {
-      console.log(`Splits sync: all workouts already have splits for user ${userId}`);
+    if (!workoutsNeedingDetail || workoutsNeedingDetail.length === 0) {
+      console.log(`Splits sync: all workouts already have splits & best_efforts for user ${userId}`);
       return;
     }
 
-    console.log(`Splits sync: fetching details for ${workoutsWithoutSplits.length} workouts`);
+    console.log(`Splits sync: fetching details for ${workoutsNeedingDetail.length} workouts`);
     let updated = 0;
 
-    for (const workout of workoutsWithoutSplits) {
+    for (const workout of workoutsNeedingDetail) {
       try {
         const detail = await axios.get(`https://www.strava.com/api/v3/activities/${workout.strava_id}`, {
           headers: { Authorization: `Bearer ${token}` }
@@ -349,7 +356,7 @@ async function runSplitsSync(userId) {
         const splits = detail.data.splits_metric;
         const updateData = {};
 
-        if (splits && splits.length > 0) {
+        if (!workout.splits && splits && splits.length > 0) {
           updateData.splits = JSON.stringify(splits.map((s, i) => ({
             km: i + 1,
             time: s.moving_time,
@@ -357,6 +364,14 @@ async function runSplitsSync(userId) {
             distance: s.distance,
             heartrate: s.average_heartrate || null,
             elevation: s.elevation_difference || 0
+          })));
+        }
+
+        if (!workout.best_efforts && detail.data.best_efforts && detail.data.best_efforts.length > 0) {
+          updateData.best_efforts = JSON.stringify(detail.data.best_efforts.map(e => ({
+            name: e.name,
+            distance: e.distance,
+            moving_time: e.moving_time
           })));
         }
 
