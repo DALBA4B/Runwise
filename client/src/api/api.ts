@@ -77,6 +77,10 @@ export const workouts = {
     method: 'POST',
     body: JSON.stringify({ type, target_value: targetValue, deadline: deadline || null })
   }),
+  updateGoal: (id: string, targetValue: number, deadline?: string) => request(`/api/workouts/goals/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ target_value: targetValue, deadline: deadline || null })
+  }),
   deleteGoal: (id: string) => request(`/api/workouts/goals/${id}`, { method: 'DELETE' }),
   goalPredictions: () => request('/api/workouts/goals/predictions'),
   comparison: () => request('/api/workouts/comparison')

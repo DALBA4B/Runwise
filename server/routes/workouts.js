@@ -276,6 +276,34 @@ router.post('/goals', authMiddleware, async (req, res) => {
   }
 });
 
+// PUT /api/workouts/goals/:id — update target_value and/or deadline
+router.put('/goals/:id', authMiddleware, async (req, res) => {
+  try {
+    const { target_value, deadline } = req.body;
+    const updates = {};
+    if (target_value !== undefined) updates.target_value = target_value;
+    if (deadline !== undefined) updates.deadline = deadline;
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'Nothing to update' });
+    }
+
+    const { data, error } = await supabase
+      .from('goals')
+      .update(updates)
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    console.error('Update goal error:', err.message);
+    res.status(500).json({ error: 'Failed to update goal' });
+  }
+});
+
 // DELETE /api/workouts/goals/:id
 router.delete('/goals/:id', authMiddleware, async (req, res) => {
   try {

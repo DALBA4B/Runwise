@@ -49,6 +49,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
   const [newGoalDeadline, setNewGoalDeadline] = useState('');
   const [creatingGoal, setCreatingGoal] = useState(false);
   const [showGoalModal, setShowGoalModal] = useState(false);
+  const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [goalModalClosing, setGoalModalClosing] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [settingsModalClosing, setSettingsModalClosing] = useState(false);
@@ -60,6 +61,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
   const [paramsModalClosing, setParamsModalClosing] = useState(false);
   const [records, setRecords] = useState<PersonalRecord[]>([]);
   const [showRecordModal, setShowRecordModal] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<PersonalRecord | null>(null);
   const [recordModalClosing, setRecordModalClosing] = useState(false);
   const [newRecordType, setNewRecordType] = useState<string | null>(null);
   const [recordType, setRecordType] = useState('5km');
@@ -271,20 +273,33 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
 
     setCreatingGoal(true);
     try {
-      await workouts.createGoal(newGoalType, targetValue, newGoalDeadline || undefined);
+      let savedGoal: Goal;
+      if (editingGoal) {
+        savedGoal = await workouts.updateGoal(editingGoal.id, targetValue, newGoalDeadline || undefined);
+      } else {
+        savedGoal = await workouts.createGoal(newGoalType, targetValue, newGoalDeadline || undefined);
+      }
       setNewGoalTarget('');
       setTimeHours('');
       setTimeMinutes('');
       setTimeSeconds('');
       setNewGoalDeadline('');
+      setEditingGoal(null);
       setGoalModalClosing(true);
-      setTimeout(async () => {
+      setTimeout(() => {
         setShowGoalModal(false);
         setGoalModalClosing(false);
-        await loadProfileData();
       }, 1000);
+      // Update goals locally without full reload
+      if (editingGoal) {
+        setGoals(prev => prev.map(g => g.id === savedGoal.id ? savedGoal : g));
+      } else {
+        setGoals(prev => [savedGoal, ...prev]);
+      }
+      // Refresh predictions in background (lightweight)
+      workouts.goalPredictions().then(setPredictions).catch(() => {});
     } catch (err) {
-      console.error('Failed to create goal:', err);
+      console.error('Failed to save goal:', err);
     } finally {
       setCreatingGoal(false);
     }
@@ -294,10 +309,46 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
     if (!window.confirm('Удалить эту цель?')) return;
     try {
       await workouts.deleteGoal(goalId);
-      await loadProfileData();
+      setGoals(prev => prev.filter(g => g.id !== goalId));
+      setPredictions(prev => prev.filter((p: any) => p.goalId !== goalId));
     } catch (err) {
       console.error('Failed to delete goal:', err);
     }
+  };
+
+  const openEditGoal = (goal: Goal) => {
+    const config = GOAL_TYPES.find(g => g.value === goal.type);
+    setNewGoalType(goal.type);
+    if (config?.inputType === 'distance') {
+      const km = goal.target_value / 1000;
+      setNewGoalTarget(km.toString());
+      setNewGoalUnit('km');
+    } else if (config?.inputType === 'time') {
+      const h = Math.floor(goal.target_value / 3600);
+      const m = Math.floor((goal.target_value % 3600) / 60);
+      const s = Math.round(goal.target_value % 60);
+      setTimeHours(h > 0 ? h.toString() : '');
+      setTimeMinutes(m > 0 ? m.toString() : '');
+      setTimeSeconds(s > 0 ? s.toString() : '');
+    } else {
+      setNewGoalTarget(goal.target_value.toString());
+    }
+    setNewGoalDeadline(goal.deadline || '');
+    setEditingGoal(goal);
+    setShowGoalModal(true);
+  };
+
+  const openEditRecord = (record: PersonalRecord) => {
+    setRecordType(record.distance_type);
+    const h = Math.floor(record.time_seconds / 3600);
+    const m = Math.floor((record.time_seconds % 3600) / 60);
+    const s = record.time_seconds % 60;
+    setRecordHours(h > 0 ? h.toString() : '');
+    setRecordMinutes(m > 0 ? m.toString() : '');
+    setRecordSeconds(s > 0 ? s.toString() : '');
+    setRecordDate(record.record_date ? record.record_date.split('T')[0] : '');
+    setEditingRecord(record);
+    setShowRecordModal(true);
   };
 
   const handleSaveProfile = async () => {
@@ -321,6 +372,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
     setTimeout(() => {
       setShowRecordModal(false);
       setRecordModalClosing(false);
+      setEditingRecord(null);
     }, 1000);
   };
 
@@ -337,6 +389,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
     setTimeout(() => {
       setShowGoalModal(false);
       setGoalModalClosing(false);
+      setEditingGoal(null);
     }, 1000);
   };
 
@@ -377,6 +430,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
       setRecordMinutes('');
       setRecordSeconds('');
       setRecordDate('');
+      setEditingRecord(null);
       // 2. After modal is gone, update list
       setTimeout(() => {
         setShowRecordModal(false);
@@ -527,13 +581,22 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                 <div key={record.id} className={`record-item${removingRecord === record.distance_type ? ' record-removing' : ''}${newRecordType === record.distance_type ? ' record-new' : ''}`}>
                   <div className="record-header">
                     <span className="record-distance">{typeInfo?.label || record.distance_type}</span>
-                    <button
-                      className="goal-delete-btn"
-                      onClick={() => handleDeleteRecord(record.distance_type)}
-                      title="Удалить рекорд"
-                    >
-                      ✕
-                    </button>
+                    <div className="goal-actions">
+                      <button
+                        className="goal-edit-btn"
+                        onClick={() => openEditRecord(record)}
+                        title="Редактировать рекорд"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        className="goal-delete-btn"
+                        onClick={() => handleDeleteRecord(record.distance_type)}
+                        title="Удалить рекорд"
+                      >
+                        ✕
+                      </button>
+                    </div>
                   </div>
                   <div className="record-time">{formatRecordTime(record.time_seconds)}</div>
                   {record.record_date && (
@@ -567,13 +630,22 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
               <div key={goal.id} className="goal-item">
                 <div className="goal-header">
                   <span className="goal-type">{getGoalLabel(goal.type)}</span>
-                  <button
-                    className="goal-delete-btn"
-                    onClick={() => handleDeleteGoal(goal.id)}
-                    title="Удалить цель"
-                  >
-                    ✕
-                  </button>
+                  <div className="goal-actions">
+                    <button
+                      className="goal-edit-btn"
+                      onClick={() => openEditGoal(goal)}
+                      title="Редактировать цель"
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      className="goal-delete-btn"
+                      onClick={() => handleDeleteGoal(goal.id)}
+                      title="Удалить цель"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
                 <div className="goal-values">
                   <span>{formatGoalValue(goal.type, goal.current_value)}</span>
@@ -751,7 +823,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
       {showGoalModal && ReactDOM.createPortal(
         <div className={`modal-overlay${goalModalClosing ? ' modal-closing' : ''}`} onClick={closeGoalModal}>
           <div className={`modal-content${goalModalClosing ? ' modal-content-closing' : ''}`} onClick={e => e.stopPropagation()}>
-            <h3 className="modal-title">Добавить цель</h3>
+            <h3 className="modal-title">{editingGoal ? 'Редактировать цель' : 'Добавить цель'}</h3>
 
             <div className="modal-field">
               <label className="param-label">Тип цели</label>
@@ -759,6 +831,8 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                 className="input-field"
                 value={newGoalType}
                 onChange={e => setNewGoalType(e.target.value)}
+                disabled={!!editingGoal}
+                style={editingGoal ? { opacity: 0.6 } : undefined}
               >
                 {GOAL_TYPES.map(gt => (
                   <option key={gt.value} value={gt.value}>{gt.label}</option>
@@ -862,7 +936,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                 onClick={handleAddGoal}
                 disabled={creatingGoal}
               >
-                {creatingGoal ? '⏳ Создаю...' : '💾 Сохранить'}
+                {creatingGoal ? '⏳ Сохраняю...' : '💾 Сохранить'}
               </button>
             </div>
           </div>
@@ -873,7 +947,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
       {showRecordModal && ReactDOM.createPortal(
         <div className={`modal-overlay${recordModalClosing ? ' modal-closing' : ''}`} onClick={closeRecordModal}>
           <div className={`modal-content${recordModalClosing ? ' modal-content-closing' : ''}`} onClick={e => e.stopPropagation()}>
-            <h3 className="modal-title">Добавить рекорд</h3>
+            <h3 className="modal-title">{editingRecord ? 'Редактировать рекорд' : 'Добавить рекорд'}</h3>
 
             <div className="modal-field">
               <label className="param-label">Дистанция</label>
@@ -881,6 +955,8 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                 className="input-field"
                 value={recordType}
                 onChange={e => setRecordType(e.target.value)}
+                disabled={!!editingRecord}
+                style={editingRecord ? { opacity: 0.6 } : undefined}
               >
                 {RECORD_TYPES.map(t => (
                   <option key={t.key} value={t.key}>{t.label}</option>
