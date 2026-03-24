@@ -51,6 +51,8 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [goalModalClosing, setGoalModalClosing] = useState(false);
+  const [newGoalId, setNewGoalId] = useState<string | null>(null);
+  const [removingGoalId, setRemovingGoalId] = useState<string | null>(null);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [settingsModalClosing, setSettingsModalClosing] = useState(false);
   const [age, setAge] = useState('');
@@ -296,6 +298,8 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
       } else {
         setGoals(prev => [savedGoal, ...prev]);
       }
+      setNewGoalId(savedGoal.id);
+      setTimeout(() => setNewGoalId(null), 800);
       // Refresh predictions in background (lightweight)
       workouts.goalPredictions().then(setPredictions).catch(() => {});
     } catch (err) {
@@ -309,8 +313,12 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
     if (!window.confirm('Удалить эту цель?')) return;
     try {
       await workouts.deleteGoal(goalId);
-      setGoals(prev => prev.filter(g => g.id !== goalId));
-      setPredictions(prev => prev.filter((p: any) => p.goalId !== goalId));
+      setRemovingGoalId(goalId);
+      setTimeout(() => {
+        setGoals(prev => prev.filter(g => g.id !== goalId));
+        setPredictions(prev => prev.filter((p: any) => p.goalId !== goalId));
+        setRemovingGoalId(null);
+      }, 450);
     } catch (err) {
       console.error('Failed to delete goal:', err);
     }
@@ -627,7 +635,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
         {goals.length > 0 ? (
           <div className="goals-list">
             {goals.map(goal => (
-              <div key={goal.id} className="goal-item">
+              <div key={goal.id} className={`goal-item${removingGoalId === goal.id ? ' goal-removing' : ''}${newGoalId === goal.id ? ' goal-new' : ''}`}>
                 <div className="goal-header">
                   <span className="goal-type">{getGoalLabel(goal.type)}</span>
                   <div className="goal-actions">
