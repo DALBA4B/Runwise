@@ -61,8 +61,7 @@ input[type="number"] {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  max-width: 420px;
-  margin: 0 auto;
+  width: 100%;
   background-color: var(--color-bg);
   position: relative;
 }
@@ -72,9 +71,15 @@ input[type="number"] {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  align-items: center;
   padding-bottom: 68px;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+}
+
+.app-container > * {
+  width: 100%;
+  max-width: 420px;
 }
 
 .app-container::-webkit-scrollbar {

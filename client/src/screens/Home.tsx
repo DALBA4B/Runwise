@@ -272,9 +272,11 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
         {recentWorkouts.length === 0 ? (
           <p className="empty-text">Тренировок пока нет. Синхронизируй Strava!</p>
         ) : (
-          recentWorkouts.map(w => (
-            <WorkoutRow key={w.id} workout={w} onClick={onWorkoutClick} />
-          ))
+          <div className="workouts-list">
+            {recentWorkouts.map(w => (
+              <WorkoutRow key={w.id} workout={w} onClick={onWorkoutClick} />
+            ))}
+          </div>
         )}
       </div>
 
