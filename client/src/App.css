@@ -1456,6 +1456,22 @@ input[type="number"] {
   color: #ef4444;
 }
 
+.deadline-field {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition: grid-template-rows 0.6s ease, opacity 0.6s ease;
+}
+
+.deadline-field > * {
+  overflow: hidden;
+}
+
+.deadline-hidden {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+
 .distance-input-row,
 .time-input-row {
   display: flex;

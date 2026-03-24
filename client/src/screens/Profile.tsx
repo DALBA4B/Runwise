@@ -913,15 +913,17 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
               </div>
             )}
 
-            <div className="modal-field">
-              <label className="param-label">Дедлайн (необязательно)</label>
-              <input
-                type="date"
-                className="input-field"
-                value={newGoalDeadline}
-                onChange={e => setNewGoalDeadline(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
-              />
+            <div className={`deadline-field${['monthly_distance', 'weekly_distance', 'monthly_runs'].includes(newGoalType) ? ' deadline-hidden' : ''}`}>
+              <div className="modal-field">
+                <label className="param-label">Дедлайн (необязательно)</label>
+                <input
+                  type="date"
+                  className="input-field"
+                  value={newGoalDeadline}
+                  onChange={e => setNewGoalDeadline(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                />
+              </div>
             </div>
 
             <div className="modal-actions">
