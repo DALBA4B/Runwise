@@ -372,8 +372,8 @@ router.get('/goals/predictions', authMiddleware, async (req, res) => {
           prediction.onTrack = avgWeeklyKm >= targetKm * 0.9;
           prediction.percent = Math.min(100, Math.round((avgWeeklyKm / targetKm) * 100));
           prediction.message = avgWeeklyKm >= targetKm
-            ? `Ты уже бегаешь ${prediction.currentRate} км/нед — цель достигнута!`
-            : `Сейчас ${prediction.currentRate} км/нед, нужно ${prediction.targetRate} км/нед`;
+            ? `В среднем ${prediction.currentRate} км/нед — цель достигнута!`
+            : `В среднем ${prediction.currentRate} км/нед, нужно ${prediction.targetRate} км/нед`;
         } else {
           const avgMonthlyKm = avgWeeklyKm * 4.33;
           prediction.currentRate = Math.round(avgMonthlyKm * 10) / 10;
@@ -381,14 +381,9 @@ router.get('/goals/predictions', authMiddleware, async (req, res) => {
           prediction.onTrack = avgMonthlyKm >= targetKm * 0.9;
           prediction.percent = Math.min(100, Math.round((avgMonthlyKm / targetKm) * 100));
           prediction.message = avgMonthlyKm >= targetKm
-            ? `Темп ${prediction.currentRate} км/мес — цель достигнута!`
-            : `Сейчас ~${prediction.currentRate} км/мес, нужно ${prediction.targetRate} км/мес`;
+            ? `В среднем ${prediction.currentRate} км/мес — цель достигнута!`
+            : `В среднем ${prediction.currentRate} км/мес, нужно ${prediction.targetRate} км/мес`;
         }
-
-        // Trend: compare last 2 weeks vs previous 2
-        const last2 = weeks.slice(-2).reduce((a, b) => a + b, 0) / 2;
-        const prev2 = weeks.slice(-4, -2).reduce((a, b) => a + b, 0) / 2;
-        prediction.trend = prev2 > 0 ? Math.round(((last2 - prev2) / prev2) * 100) : 0;
 
       } else if (['pb_5k', 'pb_10k', 'pb_21k', 'pb_42k'].includes(goal.type)) {
         // Pace-based goals — estimate from recent pace improvement

@@ -667,11 +667,6 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                     <div className={`goal-prediction ${pred.onTrack ? 'prediction-good' : 'prediction-warn'}`}>
                       <span className="prediction-icon">{pred.onTrack ? '🟢' : '🟡'}</span>
                       <span className="prediction-text">{pred.message}</span>
-                      {pred.trend !== undefined && pred.trend !== 0 && (
-                        <span className={`prediction-trend ${pred.trend > 0 ? 'trend-up' : 'trend-down'}`}>
-                          {pred.trend > 0 ? '↑' : '↓'}{Math.abs(pred.trend)}%
-                        </span>
-                      )}
                     </div>
                   );
                 })()}
