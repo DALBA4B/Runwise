@@ -1026,6 +1026,9 @@ input[type="number"] {
   height: calc(100vh - 68px);
   overflow: hidden;
   padding: var(--spacing-sm) var(--spacing-lg) 0;
+  width: 100%;
+  max-width: 420px;
+  align-self: center;
 }
 
 .chat-header {
