@@ -350,6 +350,8 @@ router.get('/goals/predictions', authMiddleware, async (req, res) => {
     // Fetch workouts: max(8 weeks ago, monthStart)
     const eightWeeksAgo = new Date();
     eightWeeksAgo.setDate(eightWeeksAgo.getDate() - 56);
+    const fourWeeksAgo = new Date();
+    fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
     const fetchFrom = monthStart < eightWeeksAgo ? monthStart : eightWeeksAgo;
 
     const { data: recentWorkouts } = await supabase
@@ -443,87 +445,152 @@ router.get('/goals/predictions', authMiddleware, async (req, res) => {
         const targetDistM = targetDist * 1000; // meters
         const targetTimeSec = goal.target_value;
 
-        // Strava best_efforts name mapping
         const bestEffortNameMap = { pb_5k: '5K', pb_10k: '10K', pb_21k: 'Half-Marathon', pb_42k: 'Marathon' };
         const targetBEName = bestEffortNameMap[goal.type];
 
-        // --- Priority 1: Strava best_efforts ---
-        let bestEffortTime = null;
-        for (const w of workoutsArr) {
+        const fmtDate = (d) => new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+
+        // Breakdown — full details for the info modal
+        const breakdown = {
+          period: '4 недели',
+          targetDist,
+          riegelWorkouts: [],   // all Riegel calculations
+          bestEffort: null,     // Strava clean split
+          discardedBE: null,    // GPS glitch that was rejected
+          chosen: null,         // final decision explanation
+        };
+
+        // --- Step 1: Riegel baseline from last 4 weeks ---
+        const recentWorkouts = workoutsArr.filter(w => new Date(w.date) >= fourWeeksAgo);
+        const relevantForRiegel = recentWorkouts.filter(w => {
+          const km = w.distance / 1000;
+          return km >= targetDist * 0.3 && km <= targetDist * 2.0 && w.moving_time > 0 && w.distance > 0;
+        });
+
+        // Calculate Riegel for each workout, keep source info
+        const riegelResults = relevantForRiegel.map(w => {
+          const rTime = w.moving_time * Math.pow(targetDistM / w.distance, 1.06);
+          return {
+            time: rTime,
+            timeFormatted: fmtTime(Math.round(rTime)),
+            distKm: Math.round(w.distance / 100) / 10,
+            date: w.date,
+            dateFormatted: fmtDate(w.date),
+            movingTime: w.moving_time,
+            movingTimeFormatted: fmtTime(w.moving_time),
+          };
+        }).sort((a, b) => a.time - b.time);
+
+        breakdown.riegelWorkouts = riegelResults.map(r => ({
+          date: r.dateFormatted,
+          dist: r.distKm + ' км',
+          actualTime: r.movingTimeFormatted,
+          riegelTime: r.timeFormatted,
+        }));
+
+        // Median of top-3 Riegel estimates
+        let riegelEstimate = null;
+        let riegelBasis = null;
+        if (riegelResults.length > 0) {
+          const top3 = riegelResults.slice(0, Math.min(3, riegelResults.length));
+          const medianIdx = Math.floor(top3.length / 2);
+          riegelEstimate = Math.round(
+            top3.length % 2 === 1 ? top3[medianIdx].time : (top3[medianIdx - 1].time + top3[medianIdx].time) / 2
+          );
+          riegelBasis = top3[medianIdx];
+        }
+
+        // --- Step 2: Best efforts from Strava (clean split) with sanity check ---
+        let bestEffort = null;
+        for (const w of recentWorkouts) {
           if (!w.best_efforts) continue;
           const efforts = typeof w.best_efforts === 'string' ? JSON.parse(w.best_efforts) : w.best_efforts;
           for (const e of efforts) {
             if (e.name === targetBEName && e.moving_time > 0) {
-              if (bestEffortTime === null || e.moving_time < bestEffortTime) {
-                bestEffortTime = e.moving_time;
+              if (!bestEffort || e.moving_time < bestEffort.time) {
+                bestEffort = { time: e.moving_time, date: w.date };
               }
             }
           }
         }
 
-        if (bestEffortTime !== null) {
-          prediction.computedCurrentValue = bestEffortTime;
-          prediction.estimatedTime = bestEffortTime;
-          prediction.targetTime = targetTimeSec;
-          prediction.gap = bestEffortTime - targetTimeSec;
-          prediction.percent = Math.min(100, Math.round((targetTimeSec / bestEffortTime) * 100));
-          prediction.onTrack = bestEffortTime <= targetTimeSec * 1.05;
-          prediction.source = 'best_effort';
+        if (bestEffort) {
+          breakdown.bestEffort = {
+            time: fmtTime(Math.round(bestEffort.time)),
+            date: fmtDate(bestEffort.date),
+          };
+        }
 
-          prediction.message = bestEffortTime <= targetTimeSec
-            ? `Цель достигнута! Лучший результат ${fmtTime(bestEffortTime)}`
-            : `Лучший результат ${fmtTime(bestEffortTime)}, цель ${fmtTime(targetTimeSec)}`;
-        } else {
-          // --- Priority 2: Riegel formula from relevant workouts (±30% distance) ---
-          const relevantWorkouts = workoutsArr.filter(w => {
-            const km = w.distance / 1000;
-            return km >= targetDist * 0.5 && km <= targetDist * 1.5 && w.moving_time > 0 && w.distance > 0;
-          });
-
-          if (relevantWorkouts.length > 0) {
-            // Riegel: T2 = T1 * (D2 / D1) ^ 1.06
-            let bestRiegelTime = Infinity;
-            for (const w of relevantWorkouts) {
-              const riegelTime = w.moving_time * Math.pow(targetDistM / w.distance, 1.06);
-              if (riegelTime < bestRiegelTime) {
-                bestRiegelTime = riegelTime;
-              }
-            }
-            bestRiegelTime = Math.round(bestRiegelTime);
-
-            // computedCurrentValue = best moving_time from workouts close to target distance (±20%)
-            const closeWorkouts = relevantWorkouts.filter(w => {
-              const km = w.distance / 1000;
-              return km >= targetDist * 0.8 && km <= targetDist * 1.2;
-            });
-            const closeTimes = closeWorkouts.filter(w => w.moving_time > 0).map(w => w.moving_time);
-            prediction.computedCurrentValue = closeTimes.length > 0 ? Math.min(...closeTimes) : 0;
-
-            prediction.estimatedTime = bestRiegelTime;
-            prediction.targetTime = targetTimeSec;
-            prediction.gap = bestRiegelTime - targetTimeSec;
-            prediction.percent = Math.min(100, Math.round((targetTimeSec / bestRiegelTime) * 100));
-            prediction.onTrack = bestRiegelTime <= targetTimeSec * 1.05;
-            prediction.source = 'riegel';
-
-            prediction.message = bestRiegelTime <= targetTimeSec
-              ? `Цель достигнута! Прогноз ~${fmtTime(bestRiegelTime)}`
-              : `Прогноз ~${fmtTime(bestRiegelTime)}, цель ${fmtTime(targetTimeSec)}`;
-
-            // Trend from pace improvement
-            const recentPaces = relevantWorkouts.slice(-5).filter(w => w.average_pace > 0).map(w => w.average_pace);
-            const olderPaces = relevantWorkouts.slice(0, 5).filter(w => w.average_pace > 0).map(w => w.average_pace);
-            if (recentPaces.length > 0 && olderPaces.length > 0) {
-              const avgRecent = recentPaces.reduce((a, b) => a + b, 0) / recentPaces.length;
-              const avgOlder = olderPaces.reduce((a, b) => a + b, 0) / olderPaces.length;
-              prediction.trend = Math.round(((avgOlder - avgRecent) / avgOlder) * 100);
-            }
-          } else {
-            // --- No data at all ---
-            prediction.message = `Нет тренировок на подходящей дистанции (~${targetDist} км)`;
-            prediction.percent = 0;
-            prediction.computedCurrentValue = 0;
+        // Sanity check: if best_effort is >15% faster than Riegel median — GPS glitch, discard
+        let bestEffortDiscarded = false;
+        if (bestEffort && riegelEstimate) {
+          if (bestEffort.time < riegelEstimate * 0.85) {
+            breakdown.discardedBE = {
+              time: fmtTime(Math.round(bestEffort.time)),
+              date: fmtDate(bestEffort.date),
+              reason: `На ${Math.round((1 - bestEffort.time / riegelEstimate) * 100)}% быстрее расчёта — вероятно GPS-глюк`,
+            };
+            bestEffort = null;
+            bestEffortDiscarded = true;
           }
+        }
+
+        // --- Step 3: Pick best source ---
+        let finalTime = null;
+        let source = null;
+
+        if (bestEffort && riegelEstimate) {
+          if (bestEffort.time <= riegelEstimate) {
+            finalTime = Math.round(bestEffort.time);
+            source = 'best_effort';
+            breakdown.chosen = {
+              source: 'Strava-сплит',
+              reason: `${targetBEName}-сплит (${fmtTime(finalTime)}) быстрее расчёта Ригеля (${fmtTime(riegelEstimate)})`,
+            };
+          } else {
+            finalTime = riegelEstimate;
+            source = 'riegel';
+            breakdown.chosen = {
+              source: 'Формула Ригеля',
+              reason: `Расчёт по тренировке ${riegelBasis.distKm} км от ${riegelBasis.dateFormatted} (${fmtTime(riegelEstimate)}) быстрее сплита (${fmtTime(Math.round(bestEffort.time))})`,
+            };
+          }
+        } else if (bestEffort) {
+          finalTime = Math.round(bestEffort.time);
+          source = 'best_effort';
+          breakdown.chosen = {
+            source: 'Strava-сплит',
+            reason: `Нет подходящих тренировок для Ригеля, используется ${targetBEName}-сплит`,
+          };
+        } else if (riegelEstimate) {
+          finalTime = riegelEstimate;
+          source = 'riegel';
+          const beNote = bestEffortDiscarded ? ', Strava-сплит отсечён как GPS-глюк' : ', Strava-сплит не найден';
+          breakdown.chosen = {
+            source: 'Формула Ригеля',
+            reason: `Медиана топ-3 по тренировке ${riegelBasis.distKm} км от ${riegelBasis.dateFormatted}${beNote}`,
+          };
+        }
+
+        if (finalTime) {
+          prediction.computedCurrentValue = finalTime;
+          prediction.estimatedTime = finalTime;
+          prediction.targetTime = targetTimeSec;
+          prediction.gap = finalTime - targetTimeSec;
+          prediction.percent = Math.min(100, Math.round((targetTimeSec / finalTime) * 100));
+          prediction.onTrack = finalTime <= targetTimeSec * 1.05;
+          prediction.source = source;
+          prediction.breakdown = breakdown;
+
+          if (finalTime <= targetTimeSec) {
+            prediction.message = `Цель достижима! ~${fmtTime(finalTime)}`;
+          } else {
+            prediction.message = `~${fmtTime(finalTime)} → цель ${fmtTime(targetTimeSec)}`;
+          }
+        } else {
+          prediction.message = `Нет тренировок за 4 недели (~${targetDist} км)`;
+          prediction.percent = 0;
+          prediction.computedCurrentValue = 0;
         }
 
       } else if (goal.type === 'monthly_runs') {

@@ -5,6 +5,7 @@ interface Goal {
   type: string;
   target_value: number;
   current_value: number;
+  _predPercent?: number;
 }
 
 interface GoalProgressMiniProps {
@@ -31,9 +32,11 @@ const GoalProgressMini: React.FC<GoalProgressMiniProps> = ({ goals, onNavigate }
     <div className="goal-mini">
       <div className="goal-mini-title">Цели</div>
       {displayed.map(goal => {
-        const pct = goal.target_value > 0
-          ? Math.min(100, Math.round((goal.current_value / goal.target_value) * 100))
-          : 0;
+        const pct = goal._predPercent != null
+          ? Math.min(100, goal._predPercent)
+          : goal.target_value > 0
+            ? Math.min(100, Math.round((goal.current_value / goal.target_value) * 100))
+            : 0;
         return (
           <div className="goal-mini-item" key={goal.id}>
             <div className="goal-mini-info">

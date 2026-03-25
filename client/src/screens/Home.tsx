@@ -235,7 +235,7 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
 
       <GoalProgressMini goals={goals.map(g => {
         const pred = goalPreds.find((p: any) => p.goalId === g.id);
-        return { ...g, current_value: pred?.computedCurrentValue ?? g.current_value };
+        return { ...g, current_value: pred?.computedCurrentValue ?? g.current_value, _predPercent: pred?.percent };
       })} onNavigate={onNavigate} />
 
       <WeekChart data={weeklyData} />

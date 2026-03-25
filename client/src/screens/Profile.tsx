@@ -73,6 +73,8 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
   const [recordDate, setRecordDate] = useState('');
   const [savingRecord, setSavingRecord] = useState(false);
   const [removingRecord, setRemovingRecord] = useState<string | null>(null);
+  const [breakdownData, setBreakdownData] = useState<any>(null);
+  const [breakdownClosing, setBreakdownClosing] = useState(false);
 
   // Widget edit state
   const [selectedWidgets, setSelectedWidgets] = useState<string[]>(getProfileWidgets);
@@ -658,40 +660,72 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                     </button>
                   </div>
                 </div>
-                <div className="goal-values">
-                  <span>{formatGoalValue(goal.type, currentValue)}</span>
-                  <span> / </span>
-                  <span>{formatGoalValue(goal.type, goal.target_value)}</span>
-                </div>
-                {(() => {
-                  if (!pred || !pred.message) return null;
-                  return (
-                    <div className={`goal-prediction ${pred.onTrack ? 'prediction-good' : 'prediction-warn'}`}>
-                      <span className="prediction-icon">{pred.onTrack ? '🟢' : '🟡'}</span>
-                      <span className="prediction-text">{pred.message}</span>
+
+                {pred?.breakdown ? (
+                  /* PB goal — special card layout */
+                  <>
+                    <div className="pb-card">
+                      <div className="pb-times">
+                        <div className="pb-current">
+                          <span className="pb-current-time">{formatGoalValue(goal.type, currentValue)}</span>
+                          <span className="pb-label">прогноз</span>
+                        </div>
+                        <span className="pb-arrow">→</span>
+                        <div className="pb-target">
+                          <span className="pb-target-time">{formatGoalValue(goal.type, goal.target_value)}</span>
+                          <span className="pb-label">цель</span>
+                        </div>
+                      </div>
+                      <div className="pb-status-row">
+                        <button
+                          className="pb-info-btn"
+                          onClick={() => setBreakdownData(pred.breakdown)}
+                          title="Подробнее о прогнозе"
+                        >Подробнее</button>
+                      </div>
                     </div>
-                  );
-                })()}
-                {goal.deadline && (
-                  <div className="goal-deadline">
+                  </>
+                ) : (
+                  /* Non-PB goals — standard layout */
+                  <>
+                    <div className="goal-values">
+                      <span>{formatGoalValue(goal.type, currentValue)}</span>
+                      <span> / </span>
+                      <span>{formatGoalValue(goal.type, goal.target_value)}</span>
+                    </div>
                     {(() => {
-                      const daysLeft = Math.ceil((new Date(goal.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-                      if (daysLeft < 0) return <span className="deadline-passed">Дедлайн прошёл</span>;
-                      if (daysLeft <= 7) return <span className="deadline-soon">Осталось {daysLeft} дн.</span>;
-                      return <span className="deadline-ok">До {new Date(goal.deadline).toLocaleDateString('ru-RU')} ({daysLeft} дн.)</span>;
+                      if (!pred || !pred.message) return null;
+                      return (
+                        <div className={`goal-prediction ${pred.onTrack ? 'prediction-good' : 'prediction-warn'}`}>
+                          <span className="prediction-icon">{pred.onTrack ? '🟢' : '🟡'}</span>
+                          <span className="prediction-text">{pred.message}</span>
+                        </div>
+                      );
                     })()}
-                  </div>
+                    {goal.deadline && (
+                      <div className="goal-deadline">
+                        {(() => {
+                          const daysLeft = Math.ceil((new Date(goal.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                          if (daysLeft < 0) return <span className="deadline-passed">Дедлайн прошёл</span>;
+                          if (daysLeft <= 7) return <span className="deadline-soon">Осталось {daysLeft} дн.</span>;
+                          return <span className="deadline-ok">До {new Date(goal.deadline).toLocaleDateString('ru-RU')} ({daysLeft} дн.)</span>;
+                        })()}
+                      </div>
+                    )}
+                    <div className="goal-progress">
+                      <div className="progress-bar">
+                        <div
+                          className="progress-fill"
+                          style={{
+                            width: `${pred?.percent != null
+                              ? Math.min(pred.percent, 100)
+                              : Math.min((currentValue / goal.target_value) * 100, 100)}%`
+                          }}
+                        ></div>
+                      </div>
+                    </div>
+                  </>
                 )}
-                <div className="goal-progress">
-                  <div className="progress-bar">
-                    <div
-                      className="progress-fill"
-                      style={{
-                        width: `${Math.min((currentValue / goal.target_value) * 100, 100)}%`
-                      }}
-                    ></div>
-                  </div>
-                </div>
               </div>
               );
             })}
@@ -1076,6 +1110,91 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
             </button>
           </div>
         </div>
+      )}
+
+      {breakdownData && ReactDOM.createPortal(
+        <div
+          className={`modal-overlay${breakdownClosing ? ' modal-closing' : ''}`}
+          onClick={() => {
+            setBreakdownClosing(true);
+            setTimeout(() => { setBreakdownData(null); setBreakdownClosing(false); }, 300);
+          }}
+        >
+          <div
+            className={`modal-content breakdown-modal${breakdownClosing ? ' modal-content-closing' : ''}`}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h3>Разбор прогноза</h3>
+              <button className="btn-icon" onClick={() => {
+                setBreakdownClosing(true);
+                setTimeout(() => { setBreakdownData(null); setBreakdownClosing(false); }, 300);
+              }}>✕</button>
+            </div>
+
+            {breakdownData.chosen && (
+              <div className="breakdown-result">
+                <div className="breakdown-result-label">Итог</div>
+                <div className="breakdown-result-source">{breakdownData.chosen.source}</div>
+                <div className="breakdown-result-reason">{breakdownData.chosen.reason}</div>
+              </div>
+            )}
+
+            {breakdownData.bestEffort && (
+              <div className="breakdown-section">
+                <div className="breakdown-section-title">Strava-сплит ({breakdownData.targetDist} км)</div>
+                <div className="breakdown-row">
+                  <span>{breakdownData.bestEffort.date}</span>
+                  <span className="breakdown-time">{breakdownData.bestEffort.time}</span>
+                </div>
+              </div>
+            )}
+
+            {breakdownData.discardedBE && (
+              <div className="breakdown-section breakdown-discarded">
+                <div className="breakdown-section-title">Отсечённый сплит</div>
+                <div className="breakdown-row">
+                  <span>{breakdownData.discardedBE.date} — {breakdownData.discardedBE.time}</span>
+                </div>
+                <div className="breakdown-reason">{breakdownData.discardedBE.reason}</div>
+              </div>
+            )}
+
+            {breakdownData.riegelWorkouts && breakdownData.riegelWorkouts.length > 0 && (
+              <div className="breakdown-section">
+                <div className="breakdown-section-title">
+                  Расчёты Ригеля (последние {breakdownData.period})
+                </div>
+                <div className="breakdown-table">
+                  <div className="breakdown-table-header">
+                    <span>Дата</span>
+                    <span>Дист.</span>
+                    <span>Время</span>
+                    <span>→ {breakdownData.targetDist} км</span>
+                  </div>
+                  {breakdownData.riegelWorkouts.map((r: any, i: number) => (
+                    <div key={i} className={`breakdown-table-row${i < 3 ? ' breakdown-top3' : ''}`}>
+                      <span>{r.date}</span>
+                      <span>{r.dist}</span>
+                      <span>{r.actualTime}</span>
+                      <span className="breakdown-time">{r.riegelTime}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="breakdown-note">
+                  Топ-3 выделены — из них берётся медиана
+                </div>
+              </div>
+            )}
+
+            {!breakdownData.riegelWorkouts?.length && !breakdownData.bestEffort && (
+              <div className="breakdown-section">
+                <p>Нет данных для расчёта</p>
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
