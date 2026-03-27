@@ -1,3 +1,15 @@
+import i18n from './i18n';
+
+const LOCALE_MAP: Record<string, string> = {
+  ru: 'ru-RU',
+  uk: 'uk-UA',
+  en: 'en-US',
+};
+
+function getLocale(): string {
+  return LOCALE_MAP[i18n.language] || 'ru-RU';
+}
+
 export function formatPace(secPerKm: number): string {
   if (!secPerKm || secPerKm <= 0) return '—';
   const min = Math.floor(secPerKm / 60);
@@ -6,23 +18,25 @@ export function formatPace(secPerKm: number): string {
 }
 
 export function formatDistance(meters: number): string {
-  if (!meters) return '0 км';
+  if (!meters) return `0 ${i18n.t('units.km')}`;
   const km = meters / 1000;
-  return km >= 10 ? `${km.toFixed(1)} км` : `${km.toFixed(2)} км`;
+  return km >= 10
+    ? `${km.toFixed(1)} ${i18n.t('units.km')}`
+    : `${km.toFixed(2)} ${i18n.t('units.km')}`;
 }
 
 export function formatTime(seconds: number): string {
-  if (!seconds) return '0 мин';
+  if (!seconds) return `0 ${i18n.t('units.min')}`;
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
-  if (h > 0) return `${h}ч ${m}м`;
-  return `${m} мин`;
+  if (h > 0) return `${h}${i18n.t('units.h')} ${m}${i18n.t('units.m')}`;
+  return `${m} ${i18n.t('units.min')}`;
 }
 
 export function formatDate(dateStr: string): string {
   if (!dateStr) return '';
   const date = new Date(dateStr);
-  return date.toLocaleDateString('ru-RU', {
+  return date.toLocaleDateString(getLocale(), {
     day: 'numeric',
     month: 'short',
     year: undefined
@@ -32,7 +46,7 @@ export function formatDate(dateStr: string): string {
 export function formatDateFull(dateStr: string): string {
   if (!dateStr) return '';
   const date = new Date(dateStr);
-  return date.toLocaleDateString('ru-RU', {
+  return date.toLocaleDateString(getLocale(), {
     day: 'numeric',
     month: 'long',
     year: 'numeric'
@@ -51,20 +65,9 @@ export function getTypeBadge(type: string): string {
 }
 
 export function getTypeLabel(type: string): string {
-  switch (type) {
-    case 'easy': return 'Лёгкая';
-    case 'tempo': return 'Темповая';
-    case 'long': return 'Длинная';
-    case 'interval': return 'Интервалы';
-    case 'rest': return 'Отдых';
-    default: return 'Другое';
-  }
+  return i18n.t(`workoutTypes.${type}`, { defaultValue: i18n.t('workoutTypes.other') });
 }
 
 export function getMonthName(month: number): string {
-  const months = [
-    'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
-    'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'
-  ];
-  return months[month - 1] || '';
+  return i18n.t(`months.${month}`, { defaultValue: '' });
 }

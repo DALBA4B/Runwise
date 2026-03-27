@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { WeekDay } from '../hooks/useWorkouts';
 
@@ -6,14 +7,22 @@ interface WeekChartProps {
   data: WeekDay[];
 }
 
+const DAY_KEYS = ['monShort', 'tueShort', 'wedShort', 'thuShort', 'friShort', 'satShort', 'sunShort'];
+
 const WeekChart: React.FC<WeekChartProps> = ({ data }) => {
+  const { t } = useTranslation();
   const maxKm = Math.max(...data.map(d => d.km), 1);
+
+  const localizedData = data.map((d, i) => ({
+    ...d,
+    day: t(`days.${DAY_KEYS[i]}`)
+  }));
 
   return (
     <div className="week-chart">
-      <h3 className="section-title">Километраж за неделю</h3>
+      <h3 className="section-title">{t('weekChart.title')}</h3>
       <ResponsiveContainer width="100%" height={180}>
-        <BarChart data={data} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+        <BarChart data={localizedData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
           <XAxis
             dataKey="day"
             tick={{ fill: '#8892a4', fontSize: 12 }}
@@ -34,7 +43,7 @@ const WeekChart: React.FC<WeekChartProps> = ({ data }) => {
               color: '#fff',
               fontSize: '13px'
             }}
-            formatter={(value: number) => [`${value} км`, 'Дистанция']}
+            formatter={(value: number) => [`${value} ${t('units.km')}`, t('weekChart.tooltipDistance')]}
             cursor={{ fill: 'rgba(255,255,255,0.05)' }}
           />
           <Bar dataKey="km" radius={[6, 6, 0, 0]} maxBarSize={32}>

@@ -5,6 +5,10 @@ function getToken(): string | null {
   return localStorage.getItem('runwise_token');
 }
 
+function getLang(): string {
+  return localStorage.getItem('runwise_language') || 'ru';
+}
+
 async function request(endpoint: string, options: RequestInit = {}): Promise<any> {
   const token = getToken();
   const headers: Record<string, string> = {
@@ -104,7 +108,7 @@ export const profile = {
 export const ai = {
   chat: (message: string) => request('/api/ai/chat', {
     method: 'POST',
-    body: JSON.stringify({ message })
+    body: JSON.stringify({ message, lang: getLang() })
   }),
   chatStream: async (
     message: string,
@@ -118,7 +122,7 @@ export const ai = {
         'Content-Type': 'application/json',
         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       },
-      body: JSON.stringify({ message })
+      body: JSON.stringify({ message, lang: getLang() })
     });
 
     if (response.status === 401) {
@@ -175,9 +179,15 @@ export const ai = {
   clearChatHistory: () => request('/api/ai/chat/history', { method: 'DELETE' }),
   analyzeWorkout: (workoutId: string) => request('/api/ai/analyze-workout', {
     method: 'POST',
-    body: JSON.stringify({ workoutId })
+    body: JSON.stringify({ workoutId, lang: getLang() })
   }),
-  generatePlan: () => request('/api/ai/generate-plan', { method: 'POST' }),
+  generatePlan: () => request('/api/ai/generate-plan', {
+    method: 'POST',
+    body: JSON.stringify({ lang: getLang() })
+  }),
   getPlan: () => request('/api/ai/plan'),
-  weeklyAnalysis: () => request('/api/ai/weekly-analysis', { method: 'POST' })
+  weeklyAnalysis: () => request('/api/ai/weekly-analysis', {
+    method: 'POST',
+    body: JSON.stringify({ lang: getLang() })
+  })
 };

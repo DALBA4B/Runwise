@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import PlanRow from '../components/PlanRow';
 import { ai } from '../api/api';
+import i18n from '../i18n';
+
+const LOCALE_MAP: Record<string, string> = { ru: 'ru-RU', uk: 'uk-UA', en: 'en-US' };
 
 interface PlanDay {
   day: string;
@@ -10,9 +14,10 @@ interface PlanDay {
   badge: string;
 }
 
-const DAYS_RU = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
+const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
 const Plan: React.FC = () => {
+  const { t } = useTranslation();
   const [plan, setPlan] = useState<PlanDay[] | null>(null);
   const [weekStart, setWeekStart] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -74,35 +79,37 @@ const Plan: React.FC = () => {
     return (
       <div className="screen-loading">
         <div className="loader"></div>
-        <p>Загрузка плана...</p>
+        <p>{t('plan.loading')}</p>
       </div>
     );
   }
 
   return (
     <div className="screen plan-screen">
-      <h2 className="screen-title">📋 План тренировок</h2>
+      <h2 className="screen-title">📋 {t('plan.title')}</h2>
 
       {plan ? (
         <>
           <div className="plan-summary">
             <div className="plan-summary-item">
               <span className="plan-summary-value">{totalPlannedKm.toFixed(1)}</span>
-              <span className="plan-summary-label">км за неделю</span>
+              <span className="plan-summary-label">{t('plan.kmPerWeek')}</span>
             </div>
             <div className="plan-summary-item">
               <span className="plan-summary-value">{trainingDays}</span>
-              <span className="plan-summary-label">тренировок</span>
+              <span className="plan-summary-label">{t('plan.workouts')}</span>
             </div>
             <div className="plan-summary-item">
               <span className="plan-summary-value">{7 - trainingDays}</span>
-              <span className="plan-summary-label">дней отдыха</span>
+              <span className="plan-summary-label">{t('plan.restDays')}</span>
             </div>
           </div>
 
           {weekStart && (
             <p className="plan-week-label">
-              Неделя с {new Date(weekStart).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
+              {t('plan.weekFrom', {
+                date: new Date(weekStart).toLocaleDateString(LOCALE_MAP[i18n.language] || 'ru-RU', { day: 'numeric', month: 'long' })
+              })}
             </p>
           )}
 
@@ -112,6 +119,7 @@ const Plan: React.FC = () => {
                 key={index}
                 plan={day}
                 isToday={index === todayPlanIndex}
+                dayLabel={t(`days.${DAY_KEYS[index]}`)}
               />
             ))}
           </div>
@@ -122,19 +130,19 @@ const Plan: React.FC = () => {
             disabled={generating}
             style={{ marginTop: '16px' }}
           >
-            {generating ? '🔄 Генерирую...' : '🔄 Пересоздать план'}
+            {generating ? `🔄 ${t('plan.regenerating')}` : `🔄 ${t('plan.regenerate')}`}
           </button>
         </>
       ) : (
         <div className="plan-empty">
-          <p className="empty-text">У тебя пока нет плана тренировок</p>
-          <p className="empty-sub">AI создаст персональный план на основе твоих последних тренировок</p>
+          <p className="empty-text">{t('plan.empty')}</p>
+          <p className="empty-sub">{t('plan.emptySub')}</p>
           <button
             className="btn btn-accent btn-full"
             onClick={handleGenerate}
             disabled={generating}
           >
-            {generating ? '🔄 Генерирую план...' : '✨ Создать план на неделю'}
+            {generating ? `🔄 ${t('plan.generating')}` : `✨ ${t('plan.generate')}`}
           </button>
         </div>
       )}

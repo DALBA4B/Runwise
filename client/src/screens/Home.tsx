@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import MetricCard from '../components/MetricCard';
 import WeekChart from '../components/WeekChart';
 import WorkoutRow from '../components/WorkoutRow';
@@ -14,6 +15,7 @@ interface HomeProps {
 }
 
 const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
+  const { t } = useTranslation();
   const { recentWorkouts, weeklyData, weekStats, loading } = useWorkouts();
   const [weekAnalysis, setWeekAnalysis] = useState<string | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
@@ -51,7 +53,7 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
       const data = await ai.weeklyAnalysis();
       setWeekAnalysis(data.analysis);
     } catch (err) {
-      setWeekAnalysis('Не удалось получить анализ. Попробуйте позже.');
+      setWeekAnalysis(t('home.analysisError'));
     } finally {
       setAnalysisLoading(false);
     }
@@ -174,7 +176,7 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
     return (
       <div className="screen-loading">
         <div className="loader"></div>
-        <p>Загрузка данных...</p>
+        <p>{t('common.loadingData')}</p>
       </div>
     );
   }
@@ -182,17 +184,17 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
   return (
     <div className="screen home-screen">
       <div className="home-header">
-        <h2 className="screen-title">🏠 Главная</h2>
+        <h2 className="screen-title">🏠 {t('home.title')}</h2>
         <div className="home-header-actions">
           {editMode && (
-            <button className="btn-icon" onClick={openSettings} title="Добавить/убрать виджеты">
+            <button className="btn-icon" onClick={openSettings} title={t('home.addRemoveWidgets')}>
               ➕
             </button>
           )}
           <button
             className={`btn-icon ${editMode ? 'btn-icon-active' : ''}`}
             onClick={toggleEditMode}
-            title={editMode ? 'Готово' : 'Настроить виджеты'}
+            title={editMode ? t('common.done') : t('home.configureWidgets')}
           >
             {editMode ? '✓' : '⚙️'}
           </button>
@@ -215,9 +217,9 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
           >
             <MetricCard
               icon={metric.icon}
-              label={metric.label}
+              label={t(metric.labelKey)}
               value={weekStats ? metric.getValue(weekStats) : '—'}
-              sub={metric.id === 'workouts' ? 'пн — вс' : metric.sub}
+              sub={metric.id === 'workouts' ? t('home.weekSub') : metric.subKey ? t(metric.subKey) : undefined}
             />
             {editMode && (
               <button
@@ -244,7 +246,7 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
 
       <div className="ai-block">
         <div className="ai-block-header">
-          <span>🤖 AI Анализ недели</span>
+          <span>🤖 {t('home.aiAnalysis')}</span>
         </div>
         {weekAnalysis ? (
           <div className="ai-block-content">
@@ -257,13 +259,13 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
               onClick={handleWeeklyAnalysis}
               disabled={analysisLoading}
             >
-              {analysisLoading ? 'Анализирую...' : '🔍 Спросить AI'}
+              {analysisLoading ? t('home.analyzing') : `🔍 ${t('home.askAI')}`}
             </button>
             <button
               className="btn btn-secondary"
               onClick={() => onNavigate('plan')}
             >
-              📋 Мой план
+              📋 {t('home.myPlan')}
             </button>
           </div>
         )}
@@ -271,13 +273,13 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
 
       <div className="section">
         <div className="section-header">
-          <h3 className="section-title">Последние тренировки</h3>
+          <h3 className="section-title">{t('home.recentWorkouts')}</h3>
           <button className="btn-link" onClick={() => onNavigate('history')}>
-            Все →
+            {t('common.all')}
           </button>
         </div>
         {recentWorkouts.length === 0 ? (
-          <p className="empty-text">Тренировок пока нет. Синхронизируй Strava!</p>
+          <p className="empty-text">{t('home.noWorkouts')}</p>
         ) : (
           <div className="workouts-list">
             {recentWorkouts.map(w => (
@@ -291,7 +293,7 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
         <div className="widget-settings-overlay" onClick={() => setShowSettings(false)}>
           <div className="widget-settings-modal" onClick={e => e.stopPropagation()}>
             <div className="widget-settings-header">
-              <h3>Настройка виджетов</h3>
+              <h3>{t('home.widgetSettings')}</h3>
               <button className="btn-icon" onClick={() => setShowSettings(false)}>✕</button>
             </div>
 
@@ -310,7 +312,7 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
                         onChange={() => toggleMetric(metric.id)}
                       />
                       <span className="widget-settings-icon">{metric.icon}</span>
-                      <span className="widget-settings-label">{metric.label}</span>
+                      <span className="widget-settings-label">{t(metric.labelKey)}</span>
                     </label>
                   </div>
                 );
@@ -322,7 +324,7 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
               onClick={saveSettings}
               disabled={tempWidgets.length === 0}
             >
-              Сохранить ({tempWidgets.length})
+              {t('home.saveCount', { count: tempWidgets.length })}
             </button>
           </div>
         </div>

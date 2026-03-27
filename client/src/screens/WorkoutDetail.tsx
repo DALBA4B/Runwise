@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { workouts, ai, strava } from '../api/api';
 import { formatPace, formatDistance, formatTime, formatDateFull, getTypeLabel, getTypeBadge } from '../utils';
 
@@ -23,6 +24,7 @@ interface Split {
 }
 
 const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
+  const { t } = useTranslation();
   const [workout, setWorkout] = useState<any>(null);
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
@@ -52,7 +54,7 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
       const data = await ai.analyzeWorkout(workoutId);
       setAnalysis(data.analysis);
     } catch (err) {
-      setAnalysis('Не удалось получить анализ.');
+      setAnalysis(t('workout.analysisError'));
     } finally {
       setAnalysisLoading(false);
     }
@@ -62,7 +64,7 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
     return (
       <div className="screen-loading">
         <div className="loader"></div>
-        <p>Загрузка тренировки...</p>
+        <p>{t('profile.loadingWorkout')}</p>
       </div>
     );
   }
@@ -70,8 +72,8 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
   if (!workout) {
     return (
       <div className="screen">
-        <button className="btn-back" onClick={onBack}>← Назад</button>
-        <p className="empty-text">Тренировка не найдена</p>
+        <button className="btn-back" onClick={onBack}>← {t('common.back')}</button>
+        <p className="empty-text">{t('workout.notFound')}</p>
       </div>
     );
   }
@@ -135,11 +137,11 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
     } catch (err: any) {
       const msg = err.message || '';
       if (msg.includes('GPS') || msg.includes('not available')) {
-        setSplits500mError('GPS-данные недоступны для этой тренировки');
+        setSplits500mError(t('workout.noGps'));
       } else if (msg.includes('rate limit')) {
-        setSplits500mError('Лимит запросов Strava, попробуйте позже');
+        setSplits500mError(t('workout.rateLimit'));
       } else {
-        setSplits500mError('Не удалось загрузить 500м сплиты');
+        setSplits500mError(t('workout.splits500mError'));
       }
     } finally {
       setSplits500mLoading(false);
@@ -150,7 +152,7 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
 
   return (
     <div className="screen workout-detail-screen">
-      <button className="btn-back" onClick={onBack}>← Назад</button>
+      <button className="btn-back" onClick={onBack}>← {t('common.back')}</button>
 
       <div className="workout-detail-header">
         <span className="workout-detail-badge">{getTypeBadge(workout.type)}</span>
@@ -164,29 +166,29 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
           <div className="metric-icon">📏</div>
           <div className="metric-info">
             <span className="metric-value">{formatDistance(workout.distance)}</span>
-            <span className="metric-label">Дистанция</span>
+            <span className="metric-label">{t('workout.distance')}</span>
           </div>
         </div>
         <div className="metric-card">
           <div className="metric-icon">⏱️</div>
           <div className="metric-info">
             <span className="metric-value">{formatPace(workout.average_pace)}</span>
-            <span className="metric-label">Темп</span>
+            <span className="metric-label">{t('workout.pace')}</span>
           </div>
         </div>
         <div className="metric-card">
           <div className="metric-icon">⏳</div>
           <div className="metric-info">
             <span className="metric-value">{formatTime(workout.moving_time)}</span>
-            <span className="metric-label">Время</span>
+            <span className="metric-label">{t('workout.time')}</span>
           </div>
         </div>
         <div className="metric-card">
           <div className="metric-icon">❤️</div>
           <div className="metric-info">
             <span className="metric-value">{workout.average_heartrate ? Math.round(workout.average_heartrate) : '—'}</span>
-            <span className="metric-label">Пульс</span>
-            {workout.max_heartrate && <span className="metric-sub">макс {Math.round(workout.max_heartrate)}</span>}
+            <span className="metric-label">{t('workout.heartrate')}</span>
+            {workout.max_heartrate && <span className="metric-sub">{t('workout.maxHr', { value: Math.round(workout.max_heartrate) })}</span>}
           </div>
         </div>
       </div>
@@ -229,9 +231,9 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
               })}
             </div>
             <div className="splits-summary">
-              <span>Медленный: {formatPace(maxPace)}</span>
-              <span>Средний: {formatPace(workout.average_pace)}</span>
-              <span>Быстрый: {formatPace(minPace)}</span>
+              <span>{t('workout.slowest')}: {formatPace(maxPace)}</span>
+              <span>{t('workout.average')}: {formatPace(workout.average_pace)}</span>
+              <span>{t('workout.fastest')}: {formatPace(minPace)}</span>
             </div>
           </>
         );
@@ -239,19 +241,19 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
         return (
           <div className="splits-section">
             <div className="splits-header">
-              <h3 className="section-title">Темп по километрам</h3>
+              <h3 className="section-title">{t('workout.paceByKm')}</h3>
               <div className="splits-tabs">
                 <button
                   className={`splits-tab ${splitMode === '1km' ? 'splits-tab-active' : ''}`}
                   onClick={() => setSplitMode('1km')}
                 >
-                  1 км
+                  1 {t('units.km')}
                 </button>
                 <button
                   className={`splits-tab ${splitMode === '500m' ? 'splits-tab-active' : ''}`}
                   onClick={handleLoad500m}
                 >
-                  500 м
+                  500 {t('units.m')}
                 </button>
               </div>
             </div>
@@ -261,7 +263,7 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
             {splitMode === '500m' && splits500mLoading && (
               <div className="splits-loading">
                 <div className="loader"></div>
-                <span>Загрузка 500м сплитов...</span>
+                <span>{t('workout.loading500m')}</span>
               </div>
             )}
 
@@ -276,7 +278,7 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
 
       <div className="ai-block">
         <div className="ai-block-header">
-          <span>🤖 AI Анализ тренировки</span>
+          <span>🤖 {t('workout.aiAnalysis')}</span>
         </div>
         {analysis ? (
           <div className="ai-block-content">
@@ -288,7 +290,7 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
             onClick={handleAnalyze}
             disabled={analysisLoading}
           >
-            {analysisLoading ? 'Анализирую...' : '🔍 Получить AI анализ'}
+            {analysisLoading ? t('home.analyzing') : `🔍 ${t('workout.getAnalysis')}`}
           </button>
         )}
       </div>

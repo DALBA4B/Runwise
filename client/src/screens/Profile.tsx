@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import MetricCard from '../components/MetricCard';
 import { workouts, strava, profile as profileApi } from '../api/api';
 import { formatPace, formatDistance } from '../utils';
 import { ALL_METRICS, getProfileWidgets, saveProfileWidgets } from '../config/metrics';
+import i18n from '../i18n';
 
 interface PersonalRecord {
   id: string;
@@ -12,15 +14,6 @@ interface PersonalRecord {
   record_date: string | null;
   source: string;
 }
-
-const RECORD_TYPES = [
-  { key: '1km', label: '1 км' },
-  { key: '3km', label: '3 км' },
-  { key: '5km', label: '5 км' },
-  { key: '10km', label: '10 км' },
-  { key: '21km', label: 'Полумарафон' },
-  { key: '42km', label: 'Марафон' },
-];
 
 interface Goal {
   id: string;
@@ -34,7 +27,16 @@ interface ProfileProps {
   onLogout: () => void;
 }
 
+const LOCALE_MAP: Record<string, string> = { ru: 'ru-RU', uk: 'uk-UA', en: 'en-US' };
+
+const LANGUAGES = [
+  { code: 'ru', label: '🇷🇺 Русский' },
+  { code: 'uk', label: '🇺🇦 Українська' },
+  { code: 'en', label: '🇬🇧 English' },
+];
+
 const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
+  const { t } = useTranslation();
   const [allTimeStats, setAllTimeStats] = useState<any>(null);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,14 +89,23 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
   const gridRef = useRef<HTMLDivElement>(null);
   const touchClone = useRef<HTMLElement | null>(null);
 
+  const RECORD_TYPES = [
+    { key: '1km', label: t('recordTypes.1km') },
+    { key: '3km', label: t('recordTypes.3km') },
+    { key: '5km', label: t('recordTypes.5km') },
+    { key: '10km', label: t('recordTypes.10km') },
+    { key: '21km', label: t('recordTypes.21km') },
+    { key: '42km', label: t('recordTypes.42km') },
+  ];
+
   const GOAL_TYPES = [
-    { value: 'monthly_distance', label: 'Месячный объём', inputType: 'distance' as const },
-    { value: 'weekly_distance', label: 'Недельный объём', inputType: 'distance' as const },
-    { value: 'pb_5k', label: 'Личный рекорд 5 км', inputType: 'time' as const },
-    { value: 'pb_10k', label: 'Личный рекорд 10 км', inputType: 'time' as const },
-    { value: 'pb_21k', label: 'Личный рекорд полумарафон', inputType: 'time' as const },
-    { value: 'pb_42k', label: 'Личный рекорд марафон', inputType: 'time' as const },
-    { value: 'monthly_runs', label: 'Кол-во пробежек за месяц', inputType: 'number' as const },
+    { value: 'monthly_distance', label: t('goalTypes.monthly_distance'), inputType: 'distance' as const },
+    { value: 'weekly_distance', label: t('goalTypes.weekly_distance'), inputType: 'distance' as const },
+    { value: 'pb_5k', label: t('goalTypes.pb_5k'), inputType: 'time' as const },
+    { value: 'pb_10k', label: t('goalTypes.pb_10k'), inputType: 'time' as const },
+    { value: 'pb_21k', label: t('goalTypes.pb_21k'), inputType: 'time' as const },
+    { value: 'pb_42k', label: t('goalTypes.pb_42k'), inputType: 'time' as const },
+    { value: 'monthly_runs', label: t('goalTypes.monthly_runs'), inputType: 'number' as const },
   ];
 
   const currentGoalConfig = GOAL_TYPES.find(g => g.value === newGoalType);
@@ -112,7 +123,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
       return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}` : `${m}:${s.toString().padStart(2, '0')}`;
     }
     if (config?.inputType === 'distance') {
-      return value >= 1000 ? `${(value / 1000).toFixed(1)} км` : `${value} м`;
+      return value >= 1000 ? `${(value / 1000).toFixed(1)} ${t('units.km')}` : `${value} ${t('units.m')}`;
     }
     return value.toString();
   };
@@ -312,7 +323,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
   };
 
   const handleDeleteGoal = async (goalId: string) => {
-    if (!window.confirm('Удалить эту цель?')) return;
+    if (!window.confirm(t('profile.deleteGoalConfirm'))) return;
     try {
       await workouts.deleteGoal(goalId);
       setRemovingGoalId(goalId);
@@ -466,7 +477,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
   };
 
   const handleDeleteRecord = async (type: string) => {
-    if (!window.confirm('Удалить этот рекорд?')) return;
+    if (!window.confirm(t('profile.deleteRecordConfirm'))) return;
     try {
       await profileApi.deleteRecord(type);
       setRemovingRecord(type);
@@ -480,16 +491,21 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
   };
 
   const handleLogout = () => {
-    if (window.confirm('Ты уверен? Это разлогинит тебя.')) {
+    if (window.confirm(t('profile.logoutConfirm'))) {
       onLogout();
     }
+  };
+
+  const handleLanguageChange = (code: string) => {
+    i18n.changeLanguage(code);
+    localStorage.setItem('runwise_language', code);
   };
 
   if (loading) {
     return (
       <div className="screen-loading">
         <div className="loader"></div>
-        <p>Загрузка профиля...</p>
+        <p>{t('profile.loading')}</p>
       </div>
     );
   }
@@ -497,8 +513,8 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
   return (
     <div className="screen profile-screen">
       <div className="profile-header">
-        <h2 className="screen-title">👤 Профиль</h2>
-        <button className="settings-btn" onClick={() => setShowSettingsModal(true)} title="Настройки">
+        <h2 className="screen-title">👤 {t('profile.title')}</h2>
+        <button className="settings-btn" onClick={() => setShowSettingsModal(true)} title={t('profile.settings')}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -509,17 +525,17 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
       {allTimeStats && (
         <div className="profile-section">
           <div className="home-header" style={{ marginBottom: 'var(--spacing-sm)' }}>
-            <h3 className="section-title" style={{ margin: 0 }}>📊 Статистика за всё время</h3>
+            <h3 className="section-title" style={{ margin: 0 }}>📊 {t('profile.allTimeStats')}</h3>
             <div className="home-header-actions">
               {widgetEditMode && (
-                <button className="btn-icon" onClick={openWidgetSettings} title="Добавить/убрать виджеты">
+                <button className="btn-icon" onClick={openWidgetSettings} title={t('home.addRemoveWidgets')}>
                   ➕
                 </button>
               )}
               <button
                 className={`btn-icon ${widgetEditMode ? 'btn-icon-active' : ''}`}
                 onClick={() => setWidgetEditMode(!widgetEditMode)}
-                title={widgetEditMode ? 'Готово' : 'Настроить виджеты'}
+                title={widgetEditMode ? t('common.done') : t('home.configureWidgets')}
               >
                 {widgetEditMode ? '✓' : '⚙️'}
               </button>
@@ -541,9 +557,9 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
               >
                 <MetricCard
                   icon={metric.icon}
-                  label={metric.label}
+                  label={t(metric.labelKey)}
                   value={metric.getValue(allTimeStats)}
-                  sub={metric.sub}
+                  sub={metric.subKey ? t(metric.subKey) : undefined}
                 />
                 {widgetEditMode && (
                   <button
@@ -562,31 +578,31 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
       )}
 
       <div className="profile-section">
-        <h3 className="section-title">📏 Физические параметры</h3>
+        <h3 className="section-title">📏 {t('profile.physicalParams')}</h3>
         {(age || height || weight) ? (
           <div className="params-summary">
-            {age && <div className="params-summary-item"><span className="params-summary-label">Возраст</span><span className="params-summary-value">{age} лет</span></div>}
-            {height && <div className="params-summary-item"><span className="params-summary-label">Рост</span><span className="params-summary-value">{height} см</span></div>}
-            {weight && <div className="params-summary-item"><span className="params-summary-label">Вес</span><span className="params-summary-value">{weight} кг</span></div>}
+            {age && <div className="params-summary-item"><span className="params-summary-label">{t('profile.age')}</span><span className="params-summary-value">{age} {t('units.years')}</span></div>}
+            {height && <div className="params-summary-item"><span className="params-summary-label">{t('profile.height')}</span><span className="params-summary-value">{height} {t('units.cm')}</span></div>}
+            {weight && <div className="params-summary-item"><span className="params-summary-label">{t('profile.weight')}</span><span className="params-summary-value">{weight} {t('units.kg')}</span></div>}
           </div>
         ) : (
-          <p className="empty-text">Параметры не указаны</p>
+          <p className="empty-text">{t('profile.noParams')}</p>
         )}
         <button
           className="btn btn-accent btn-full"
           onClick={() => setShowParamsModal(true)}
         >
-          ✏️ {(age || height || weight) ? 'Изменить' : 'Указать параметры'}
+          ✏️ {(age || height || weight) ? t('common.edit') : t('profile.setParams')}
         </button>
       </div>
 
       <div className="profile-section">
-        <h3 className="section-title">🏆 Мои рекорды</h3>
+        <h3 className="section-title">🏆 {t('profile.records')}</h3>
 
         {records.length > 0 ? (
           <div className="records-list">
             {records.map(record => {
-              const typeInfo = RECORD_TYPES.find(t => t.key === record.distance_type);
+              const typeInfo = RECORD_TYPES.find(rt => rt.key === record.distance_type);
               return (
                 <div key={record.id} className={`record-item${removingRecord === record.distance_type ? ' record-removing' : ''}${newRecordType === record.distance_type ? ' record-new' : ''}`}>
                   <div className="record-header">
@@ -595,14 +611,14 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                       <button
                         className="goal-edit-btn"
                         onClick={() => openEditRecord(record)}
-                        title="Редактировать рекорд"
+                        title={t('profile.editRecord')}
                       >
                         ✏️
                       </button>
                       <button
                         className="goal-delete-btn"
                         onClick={() => handleDeleteRecord(record.distance_type)}
-                        title="Удалить рекорд"
+                        title={t('common.delete')}
                       >
                         ✕
                       </button>
@@ -611,7 +627,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                   <div className="record-time">{formatRecordTime(record.time_seconds)}</div>
                   {record.record_date && (
                     <div className="record-date">
-                      {new Date(record.record_date).toLocaleDateString('ru-RU')}
+                      {new Date(record.record_date).toLocaleDateString(LOCALE_MAP[i18n.language] || 'ru-RU')}
                     </div>
                   )}
                 </div>
@@ -619,20 +635,20 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
             })}
           </div>
         ) : (
-          <p className="empty-text records-empty">Рекордов пока нет. Добавь свой первый!</p>
+          <p className="empty-text records-empty">{t('profile.noRecords')}</p>
         )}
 
         <button
           className="btn btn-outline btn-full"
           onClick={() => setShowRecordModal(true)}
         >
-          ➕ Добавить рекорд
+          ➕ {t('profile.addRecord')}
         </button>
       </div>
 
 
       <div className="profile-section">
-        <h3 className="section-title">🎯 Твои цели</h3>
+        <h3 className="section-title">🎯 {t('profile.goals')}</h3>
 
         {goals.length > 0 ? (
           <div className="goals-list">
@@ -647,14 +663,14 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                     <button
                       className="goal-edit-btn"
                       onClick={() => openEditGoal(goal)}
-                      title="Редактировать цель"
+                      title={t('profile.editGoal')}
                     >
                       ✏️
                     </button>
                     <button
                       className="goal-delete-btn"
                       onClick={() => handleDeleteGoal(goal.id)}
-                      title="Удалить цель"
+                      title={t('common.delete')}
                     >
                       ✕
                     </button>
@@ -668,20 +684,20 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                       <div className="pb-times">
                         <div className="pb-current">
                           <span className="pb-current-time">{formatGoalValue(goal.type, currentValue)}</span>
-                          <span className="pb-label">прогноз</span>
+                          <span className="pb-label">{t('profile.forecast')}</span>
                         </div>
                         <span className="pb-arrow">→</span>
                         <div className="pb-target">
                           <span className="pb-target-time">{formatGoalValue(goal.type, goal.target_value)}</span>
-                          <span className="pb-label">цель</span>
+                          <span className="pb-label">{t('profile.target')}</span>
                         </div>
                       </div>
                       <div className="pb-status-row">
                         <button
                           className="pb-info-btn"
                           onClick={() => setBreakdownData(pred.breakdown)}
-                          title="Подробнее о прогнозе"
-                        >Подробнее</button>
+                          title={t('profile.details')}
+                        >{t('profile.details')}</button>
                       </div>
                     </div>
                   </>
@@ -706,9 +722,9 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                       <div className="goal-deadline">
                         {(() => {
                           const daysLeft = Math.ceil((new Date(goal.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-                          if (daysLeft < 0) return <span className="deadline-passed">Дедлайн прошёл</span>;
-                          if (daysLeft <= 7) return <span className="deadline-soon">Осталось {daysLeft} дн.</span>;
-                          return <span className="deadline-ok">До {new Date(goal.deadline).toLocaleDateString('ru-RU')} ({daysLeft} дн.)</span>;
+                          if (daysLeft < 0) return <span className="deadline-passed">{t('profile.deadlinePassed')}</span>;
+                          if (daysLeft <= 7) return <span className="deadline-soon">{t('profile.deadlineSoon', { days: daysLeft })}</span>;
+                          return <span className="deadline-ok">{t('profile.deadlineOk', { date: new Date(goal.deadline).toLocaleDateString(LOCALE_MAP[i18n.language] || 'ru-RU'), days: daysLeft })}</span>;
                         })()}
                       </div>
                     )}
@@ -731,32 +747,48 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
             })}
           </div>
         ) : (
-          <p className="empty-text">Целей пока нет. Создай первую!</p>
+          <p className="empty-text">{t('profile.noGoals')}</p>
         )}
 
         <button
           className="btn btn-outline btn-full"
           onClick={() => setShowGoalModal(true)}
         >
-          ➕ Добавить цель
+          ➕ {t('profile.addGoal')}
         </button>
       </div>
 
       <div className="profile-footer">
-        <p>Runwise v1.0</p>
+        <p>{t('profile.version')}</p>
       </div>
 
       {showSettingsModal && ReactDOM.createPortal(
         <div className={`modal-overlay${settingsModalClosing ? ' modal-closing' : ''}`} onClick={closeSettingsModal}>
           <div className={`modal-content${settingsModalClosing ? ' modal-content-closing' : ''}`} onClick={e => e.stopPropagation()}>
-            <h3 className="modal-title">Настройки</h3>
+            <h3 className="modal-title">{t('profile.settings')}</h3>
+
+            <div className="settings-section">
+              <div className="settings-section-title">🌐 {t('profile.language')}</div>
+              <div className="language-list">
+                {LANGUAGES.map(lang => (
+                  <button
+                    key={lang.code}
+                    className={`language-item${i18n.language === lang.code ? ' active' : ''}`}
+                    onClick={() => handleLanguageChange(lang.code)}
+                  >
+                    <span>{lang.label}</span>
+                    {i18n.language === lang.code && <span className="language-check">✓</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             <div className="settings-section">
               <div className="settings-item">
                 <div className="settings-item-icon">🟠</div>
                 <div className="settings-item-info">
-                  <span className="settings-item-label">Strava</span>
-                  <span className="settings-item-status">Подключена</span>
+                  <span className="settings-item-label">{t('profile.strava')}</span>
+                  <span className="settings-item-status">{t('profile.stravaConnected')}</span>
                 </div>
               </div>
 
@@ -764,7 +796,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                 <div className="settings-item">
                   <div className="settings-item-icon">📊</div>
                   <div className="settings-item-info">
-                    <span className="settings-item-label">Тренировок загружено</span>
+                    <span className="settings-item-label">{t('profile.workoutsImported')}</span>
                     <span className="settings-item-status">{syncStatus.total_imported}</span>
                   </div>
                 </div>
@@ -779,7 +811,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                 setTimeout(() => handleLogout(), 1000);
               }}
             >
-              🚪 Выйти из аккаунта
+              🚪 {t('profile.logout')}
             </button>
           </div>
         </div>,
@@ -789,10 +821,10 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
       {showParamsModal && ReactDOM.createPortal(
         <div className={`modal-overlay${paramsModalClosing ? ' modal-closing' : ''}`} onClick={closeParamsModal}>
           <div className={`modal-content${paramsModalClosing ? ' modal-content-closing' : ''}`} onClick={e => e.stopPropagation()}>
-            <h3 className="modal-title">Физические параметры</h3>
+            <h3 className="modal-title">{t('profile.physicalParams')}</h3>
 
             <div className="modal-field">
-              <label className="param-label">Возраст</label>
+              <label className="param-label">{t('profile.age')}</label>
               <div className="param-input-wrap">
                 <input
                   type="number"
@@ -803,12 +835,12 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                   min="10"
                   max="99"
                 />
-                <span className="param-unit">лет</span>
+                <span className="param-unit">{t('units.years')}</span>
               </div>
             </div>
 
             <div className="modal-field">
-              <label className="param-label">Рост</label>
+              <label className="param-label">{t('profile.height')}</label>
               <div className="param-input-wrap">
                 <input
                   type="number"
@@ -819,12 +851,12 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                   min="100"
                   max="250"
                 />
-                <span className="param-unit">см</span>
+                <span className="param-unit">{t('units.cm')}</span>
               </div>
             </div>
 
             <div className="modal-field">
-              <label className="param-label">Вес</label>
+              <label className="param-label">{t('profile.weight')}</label>
               <div className="param-input-wrap">
                 <input
                   type="number"
@@ -836,7 +868,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                   max="250"
                   step="0.1"
                 />
-                <span className="param-unit">кг</span>
+                <span className="param-unit">{t('units.kg')}</span>
               </div>
             </div>
 
@@ -845,14 +877,14 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                 className="btn btn-secondary"
                 onClick={closeParamsModal}
               >
-                Отмена
+                {t('common.cancel')}
               </button>
               <button
                 className="btn btn-accent"
                 onClick={handleSaveProfile}
                 disabled={savingProfile}
               >
-                {savingProfile ? '⏳ Сохраняю...' : '💾 Сохранить'}
+                {savingProfile ? `⏳ ${t('common.saving')}` : `💾 ${t('common.save')}`}
               </button>
             </div>
           </div>
@@ -863,10 +895,10 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
       {showGoalModal && ReactDOM.createPortal(
         <div className={`modal-overlay${goalModalClosing ? ' modal-closing' : ''}`} onClick={closeGoalModal}>
           <div className={`modal-content${goalModalClosing ? ' modal-content-closing' : ''}`} onClick={e => e.stopPropagation()}>
-            <h3 className="modal-title">{editingGoal ? 'Редактировать цель' : 'Добавить цель'}</h3>
+            <h3 className="modal-title">{editingGoal ? t('profile.editGoal') : t('profile.addGoal')}</h3>
 
             <div className="modal-field">
-              <label className="param-label">Тип цели</label>
+              <label className="param-label">{t('modals.goalType')}</label>
               <select
                 className="input-field"
                 value={newGoalType}
@@ -882,12 +914,12 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
 
             {currentGoalConfig?.inputType === 'distance' && (
               <div className="modal-field">
-                <label className="param-label">Значение</label>
+                <label className="param-label">{t('modals.value')}</label>
                 <div className="distance-input-row">
                   <input
                     type="number"
                     className="input-field"
-                    placeholder="Значение"
+                    placeholder={t('modals.value')}
                     value={newGoalTarget}
                     onChange={e => setNewGoalTarget(e.target.value)}
                   />
@@ -896,8 +928,8 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                     value={newGoalUnit}
                     onChange={e => setNewGoalUnit(e.target.value as 'km' | 'm')}
                   >
-                    <option value="km">км</option>
-                    <option value="m">м</option>
+                    <option value="km">{t('units.km')}</option>
+                    <option value="m">{t('units.m')}</option>
                   </select>
                 </div>
               </div>
@@ -905,12 +937,12 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
 
             {currentGoalConfig?.inputType === 'time' && (
               <div className="modal-field">
-                <label className="param-label">Время</label>
+                <label className="param-label">{t('modals.timePlaceholder')}</label>
                 <div className="time-input-row">
                   <input
                     type="number"
                     className="input-field time-input"
-                    placeholder="ч"
+                    placeholder={t('units.h')}
                     min="0"
                     max="23"
                     value={timeHours}
@@ -920,7 +952,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                   <input
                     type="number"
                     className="input-field time-input"
-                    placeholder="мин"
+                    placeholder={t('units.min')}
                     min="0"
                     max="59"
                     value={timeMinutes}
@@ -930,7 +962,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                   <input
                     type="number"
                     className="input-field time-input"
-                    placeholder="сек"
+                    placeholder={t('units.sec')}
                     min="0"
                     max="59"
                     value={timeSeconds}
@@ -942,11 +974,11 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
 
             {currentGoalConfig?.inputType === 'number' && (
               <div className="modal-field">
-                <label className="param-label">Количество</label>
+                <label className="param-label">{t('modals.quantity')}</label>
                 <input
                   type="number"
                   className="input-field"
-                  placeholder="Количество"
+                  placeholder={t('modals.quantity')}
                   value={newGoalTarget}
                   onChange={e => setNewGoalTarget(e.target.value)}
                 />
@@ -955,7 +987,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
 
             <div className={`deadline-field${['monthly_distance', 'weekly_distance', 'monthly_runs'].includes(newGoalType) ? ' deadline-hidden' : ''}`}>
               <div className="modal-field">
-                <label className="param-label">Дедлайн (необязательно)</label>
+                <label className="param-label">{t('modals.deadlineOptional')}</label>
                 <input
                   type="date"
                   className="input-field"
@@ -971,14 +1003,14 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                 className="btn btn-secondary"
                 onClick={closeGoalModal}
               >
-                Отмена
+                {t('common.cancel')}
               </button>
               <button
                 className="btn btn-accent"
                 onClick={handleAddGoal}
                 disabled={creatingGoal}
               >
-                {creatingGoal ? '⏳ Сохраняю...' : '💾 Сохранить'}
+                {creatingGoal ? `⏳ ${t('common.saving')}` : `💾 ${t('common.save')}`}
               </button>
             </div>
           </div>
@@ -989,10 +1021,10 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
       {showRecordModal && ReactDOM.createPortal(
         <div className={`modal-overlay${recordModalClosing ? ' modal-closing' : ''}`} onClick={closeRecordModal}>
           <div className={`modal-content${recordModalClosing ? ' modal-content-closing' : ''}`} onClick={e => e.stopPropagation()}>
-            <h3 className="modal-title">{editingRecord ? 'Редактировать рекорд' : 'Добавить рекорд'}</h3>
+            <h3 className="modal-title">{editingRecord ? t('profile.editRecord') : t('profile.addRecord')}</h3>
 
             <div className="modal-field">
-              <label className="param-label">Дистанция</label>
+              <label className="param-label">{t('modals.distanceLabel')}</label>
               <select
                 className="input-field"
                 value={recordType}
@@ -1000,19 +1032,19 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                 disabled={!!editingRecord}
                 style={editingRecord ? { opacity: 0.6 } : undefined}
               >
-                {RECORD_TYPES.map(t => (
-                  <option key={t.key} value={t.key}>{t.label}</option>
+                {RECORD_TYPES.map(rt => (
+                  <option key={rt.key} value={rt.key}>{rt.label}</option>
                 ))}
               </select>
             </div>
 
             <div className="modal-field">
-              <label className="param-label">Время</label>
+              <label className="param-label">{t('modals.timePlaceholder')}</label>
               <div className="time-input-row">
                 <input
                   type="number"
                   className="input-field time-input"
-                  placeholder="ч"
+                  placeholder={t('units.h')}
                   min="0"
                   max="23"
                   value={recordHours}
@@ -1022,7 +1054,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                 <input
                   type="number"
                   className="input-field time-input"
-                  placeholder="мин"
+                  placeholder={t('units.min')}
                   min="0"
                   max="59"
                   value={recordMinutes}
@@ -1032,7 +1064,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                 <input
                   type="number"
                   className="input-field time-input"
-                  placeholder="сек"
+                  placeholder={t('units.sec')}
                   min="0"
                   max="59"
                   value={recordSeconds}
@@ -1042,7 +1074,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
             </div>
 
             <div className="modal-field">
-              <label className="param-label">Дата (необязательно)</label>
+              <label className="param-label">{t('modals.dateOptional')}</label>
               <input
                 type="date"
                 className="input-field"
@@ -1057,14 +1089,14 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                 className="btn btn-secondary"
                 onClick={closeRecordModal}
               >
-                Отмена
+                {t('common.cancel')}
               </button>
               <button
                 className="btn btn-accent"
                 onClick={handleAddRecord}
                 disabled={savingRecord}
               >
-                {savingRecord ? '⏳ Сохраняю...' : '💾 Сохранить'}
+                {savingRecord ? `⏳ ${t('common.saving')}` : `💾 ${t('common.save')}`}
               </button>
             </div>
           </div>
@@ -1075,7 +1107,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
         <div className="widget-settings-overlay" onClick={() => setShowWidgetSettings(false)}>
           <div className="widget-settings-modal" onClick={e => e.stopPropagation()}>
             <div className="widget-settings-header">
-              <h3>Настройка виджетов</h3>
+              <h3>{t('home.widgetSettings')}</h3>
               <button className="btn-icon" onClick={() => setShowWidgetSettings(false)}>✕</button>
             </div>
 
@@ -1094,7 +1126,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                         onChange={() => toggleWidgetMetric(metric.id)}
                       />
                       <span className="widget-settings-icon">{metric.icon}</span>
-                      <span className="widget-settings-label">{metric.label}</span>
+                      <span className="widget-settings-label">{t(metric.labelKey)}</span>
                     </label>
                   </div>
                 );
@@ -1106,7 +1138,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
               onClick={saveWidgetSettings}
               disabled={tempWidgets.length === 0}
             >
-              Сохранить ({tempWidgets.length})
+              {t('home.saveCount', { count: tempWidgets.length })}
             </button>
           </div>
         </div>
@@ -1125,7 +1157,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
             onClick={e => e.stopPropagation()}
           >
             <div className="modal-header">
-              <h3>Разбор прогноза</h3>
+              <h3>{t('profile.breakdownTitle')}</h3>
               <button className="btn-icon" onClick={() => {
                 setBreakdownClosing(true);
                 setTimeout(() => { setBreakdownData(null); setBreakdownClosing(false); }, 300);
@@ -1134,7 +1166,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
 
             {breakdownData.chosen && (
               <div className="breakdown-result">
-                <div className="breakdown-result-label">Итог</div>
+                <div className="breakdown-result-label">{t('profile.breakdownResult')}</div>
                 <div className="breakdown-result-source">{breakdownData.chosen.source}</div>
                 <div className="breakdown-result-reason">{breakdownData.chosen.reason}</div>
               </div>
@@ -1142,7 +1174,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
 
             {breakdownData.bestEffort && (
               <div className="breakdown-section">
-                <div className="breakdown-section-title">Strava-сплит ({breakdownData.targetDist} км)</div>
+                <div className="breakdown-section-title">{t('profile.breakdownStravaSplit', { dist: breakdownData.targetDist })}</div>
                 <div className="breakdown-row">
                   <span>{breakdownData.bestEffort.date}</span>
                   <span className="breakdown-time">{breakdownData.bestEffort.time}</span>
@@ -1152,7 +1184,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
 
             {breakdownData.discardedBE && (
               <div className="breakdown-section breakdown-discarded">
-                <div className="breakdown-section-title">Отсечённый сплит</div>
+                <div className="breakdown-section-title">{t('profile.breakdownDiscarded')}</div>
                 <div className="breakdown-row">
                   <span>{breakdownData.discardedBE.date} — {breakdownData.discardedBE.time}</span>
                 </div>
@@ -1163,14 +1195,14 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
             {breakdownData.riegelWorkouts && breakdownData.riegelWorkouts.length > 0 && (
               <div className="breakdown-section">
                 <div className="breakdown-section-title">
-                  Расчёты Ригеля (последние {breakdownData.period})
+                  {t('profile.breakdownRiegel', { period: breakdownData.period })}
                 </div>
                 <div className="breakdown-table">
                   <div className="breakdown-table-header">
-                    <span>Дата</span>
-                    <span>Дист.</span>
-                    <span>Время</span>
-                    <span>→ {breakdownData.targetDist} км</span>
+                    <span>{t('modals.dateOptional').split(' ')[0]}</span>
+                    <span>{t('modals.distanceLabel')}</span>
+                    <span>{t('modals.timePlaceholder')}</span>
+                    <span>→ {breakdownData.targetDist} {t('units.km')}</span>
                   </div>
                   {breakdownData.riegelWorkouts.map((r: any, i: number) => (
                     <div key={i} className={`breakdown-table-row${i < 3 ? ' breakdown-top3' : ''}`}>
@@ -1182,14 +1214,14 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
                   ))}
                 </div>
                 <div className="breakdown-note">
-                  Топ-3 выделены — из них берётся медиана
+                  {t('profile.breakdownTop3')}
                 </div>
               </div>
             )}
 
             {!breakdownData.riegelWorkouts?.length && !breakdownData.bestEffort && (
               <div className="breakdown-section">
-                <p>Нет данных для расчёта</p>
+                <p>{t('profile.breakdownNoData')}</p>
               </div>
             )}
           </div>

@@ -1,59 +1,60 @@
 import { Stats } from '../hooks/useWorkouts';
 import { formatDistance, formatPace, formatTime } from '../utils';
+import i18n from '../i18n';
 
 export interface MetricConfig {
   id: string;
-  label: string;
+  labelKey: string;
   icon: string;
   getValue: (stats: Stats) => string;
-  sub?: string;
+  subKey?: string;
 }
 
 export const ALL_METRICS: MetricConfig[] = [
   {
     id: 'distance',
-    label: 'Километры',
+    labelKey: 'metrics.distance',
     icon: '📏',
     getValue: (s) => formatDistance(s.totalDistance),
   },
   {
     id: 'avg_pace',
-    label: 'Ср. темп',
+    labelKey: 'metrics.avgPace',
     icon: '⏱️',
     getValue: (s) => formatPace(s.avgPace),
-    sub: 'мин/км',
+    subKey: 'units.minKm',
   },
   {
     id: 'avg_hr',
-    label: 'Ср. пульс',
+    labelKey: 'metrics.avgHr',
     icon: '❤️',
     getValue: (s) => s.avgHeartrate ? `${s.avgHeartrate}` : '—',
-    sub: 'уд/мин',
+    subKey: 'units.bpm',
   },
   {
     id: 'workouts',
-    label: 'Тренировки',
+    labelKey: 'metrics.workouts',
     icon: '🏋️',
     getValue: (s) => `${s.workoutCount}`,
   },
   {
     id: 'total_time',
-    label: 'Общее время',
+    labelKey: 'metrics.totalTime',
     icon: '🕐',
     getValue: (s) => formatTime(s.totalTime),
   },
   {
     id: 'best_pace',
-    label: 'Лучший темп',
+    labelKey: 'metrics.bestPace',
     icon: '🚀',
     getValue: (s) => formatPace(s.bestPace),
-    sub: 'мин/км',
+    subKey: 'units.minKm',
   },
   {
     id: 'elevation',
-    label: 'Набор высоты',
+    labelKey: 'metrics.elevation',
     icon: '⛰️',
-    getValue: (s) => s.totalElevation ? `${s.totalElevation} м` : '0 м',
+    getValue: (s) => s.totalElevation ? `${s.totalElevation} ${i18n.t('units.m')}` : `0 ${i18n.t('units.m')}`,
   },
 ];
 

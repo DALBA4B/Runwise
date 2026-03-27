@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import ChatMessage from '../components/ChatMessage';
 import { ai } from '../api/api';
 
@@ -9,23 +10,25 @@ interface Message {
   timestamp: Date;
 }
 
-const QUICK_QUESTIONS = [
-  '📋 Расскажи про мой текущий план',
-  '😓 Мне тяжело, уменьши нагрузку в плане',
-  '💪 Как мне улучшить свой темп?',
-  '📊 Как я прогрессирую?',
-  '❤️ Почему высокий пульс на лёгких пробежках?',
-  '🔄 Когда делать интервальные тренировки?'
-];
-
-const WELCOME_MESSAGE: Message = {
-  id: '1',
-  role: 'ai',
-  content: 'Привет! 👋 Я твой персональный AI тренер Runwise. Спроси меня что-то о твоих тренировках, попроси рекомендации или измени план прямо в чате.',
-  timestamp: new Date()
-};
-
 const AIChat: React.FC = () => {
+  const { t } = useTranslation();
+
+  const QUICK_QUESTIONS = [
+    t('chat.q1'),
+    t('chat.q2'),
+    t('chat.q3'),
+    t('chat.q4'),
+    t('chat.q5'),
+    t('chat.q6'),
+  ];
+
+  const WELCOME_MESSAGE: Message = {
+    id: '1',
+    role: 'ai',
+    content: t('chat.welcome'),
+    timestamp: new Date()
+  };
+
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
@@ -79,7 +82,7 @@ const AIChat: React.FC = () => {
   }, []);
 
   const handleClearHistory = async () => {
-    if (!window.confirm('Очистить историю чата?')) return;
+    if (!window.confirm(t('chat.clearConfirm'))) return;
     try {
       await ai.clearChatHistory();
       setMessages([WELCOME_MESSAGE]);
@@ -157,7 +160,7 @@ const AIChat: React.FC = () => {
             const systemMsg: Message = {
               id: (Date.now() + 2).toString(),
               role: 'system',
-              content: '✅ План тренировок обновлён! Перейди во вкладку «План» чтобы увидеть изменения.',
+              content: t('chat.planUpdated'),
               timestamp: new Date()
             };
             setMessages(prev => [...prev, systemMsg]);
@@ -169,7 +172,7 @@ const AIChat: React.FC = () => {
       setMessages(prev =>
         prev.map(m =>
           m.id === aiMessageId
-            ? { ...m, content: 'Извини, что-то пошло не так. Попробуй позже.' }
+            ? { ...m, content: t('chat.error') }
             : m
         )
       );
@@ -182,9 +185,9 @@ const AIChat: React.FC = () => {
   return (
     <div className="screen ai-chat-screen">
       <div className="chat-header">
-        <h2 className="screen-title">🤖 AI Тренер</h2>
+        <h2 className="screen-title">🤖 {t('chat.title')}</h2>
         {messages.length > 1 && (
-          <button className="clear-chat-btn" onClick={handleClearHistory}>Очистить</button>
+          <button className="clear-chat-btn" onClick={handleClearHistory}>{t('common.clear')}</button>
         )}
       </div>
 
@@ -208,7 +211,7 @@ const AIChat: React.FC = () => {
             <div className="message system-message">
               <div className="message-content plan-updating">
                 <span className="plan-updating-spinner"></span>
-                📝 Обновляю план тренировок...
+                📝 {t('chat.updatingPlan')}
               </div>
             </div>
           )}
@@ -216,7 +219,7 @@ const AIChat: React.FC = () => {
         </div>
 
         <div className="quick-questions">
-          <p className="quick-questions-label">Быстрые вопросы:</p>
+          <p className="quick-questions-label">{t('chat.quickQuestions')}</p>
           <div className="quick-questions-grid">
             {QUICK_QUESTIONS.map((question, index) => (
               <button
@@ -236,7 +239,7 @@ const AIChat: React.FC = () => {
             <input
               type="text"
               className="chat-input"
-              placeholder="Спроси меня о твоих тренировках..."
+              placeholder={t('chat.placeholder')}
               value={inputValue}
               onChange={e => setInputValue(e.target.value)}
               onKeyDown={e => {

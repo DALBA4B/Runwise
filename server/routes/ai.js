@@ -37,18 +37,54 @@ async function getWorkoutsContext(userId, months = 3) {
   }));
 }
 
-// Goal type labels
-const GOAL_LABELS = {
-  monthly_distance: 'Месячный объём бега',
-  weekly_distance: 'Недельный объём бега',
-  pb_5k: 'Личный рекорд на 5 км',
-  pb_10k: 'Личный рекорд на 10 км',
-  pb_21k: 'Личный рекорд на полумарафоне',
-  pb_42k: 'Личный рекорд на марафоне',
-  monthly_runs: 'Количество пробежек за месяц'
+// Language instruction helper
+const LANG_INSTRUCTIONS = {
+  ru: 'Отвечай на русском.',
+  uk: 'Відповідай українською мовою.',
+  en: 'Reply in English.'
 };
 
-function formatGoalValue(type, value) {
+function getLangInstruction(lang) {
+  return LANG_INSTRUCTIONS[lang] || LANG_INSTRUCTIONS.ru;
+}
+
+// Goal type labels by language
+const GOAL_LABELS_I18N = {
+  ru: {
+    monthly_distance: 'Месячный объём бега',
+    weekly_distance: 'Недельный объём бега',
+    pb_5k: 'Личный рекорд на 5 км',
+    pb_10k: 'Личный рекорд на 10 км',
+    pb_21k: 'Личный рекорд на полумарафоне',
+    pb_42k: 'Личный рекорд на марафоне',
+    monthly_runs: 'Количество пробежек за месяц'
+  },
+  uk: {
+    monthly_distance: "Місячний об'єм бігу",
+    weekly_distance: "Тижневий об'єм бігу",
+    pb_5k: 'Особистий рекорд на 5 км',
+    pb_10k: 'Особистий рекорд на 10 км',
+    pb_21k: 'Особистий рекорд на півмарафоні',
+    pb_42k: 'Особистий рекорд на марафоні',
+    monthly_runs: 'Кількість пробіжок за місяць'
+  },
+  en: {
+    monthly_distance: 'Monthly running volume',
+    weekly_distance: 'Weekly running volume',
+    pb_5k: 'Personal best 5 km',
+    pb_10k: 'Personal best 10 km',
+    pb_21k: 'Personal best half marathon',
+    pb_42k: 'Personal best marathon',
+    monthly_runs: 'Monthly run count'
+  }
+};
+
+function getGoalLabels(lang) {
+  return GOAL_LABELS_I18N[lang] || GOAL_LABELS_I18N.ru;
+}
+
+
+function formatGoalValue(type, value, lang = 'ru') {
   if (['pb_5k', 'pb_10k', 'pb_21k', 'pb_42k'].includes(type)) {
     const h = Math.floor(value / 3600);
     const m = Math.floor((value % 3600) / 60);
@@ -56,7 +92,9 @@ function formatGoalValue(type, value) {
     return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}` : `${m}:${s.toString().padStart(2, '0')}`;
   }
   if (['monthly_distance', 'weekly_distance'].includes(type)) {
-    return value >= 1000 ? `${(value / 1000).toFixed(1)} км` : `${value} м`;
+    const km = { ru: 'км', uk: 'км', en: 'km' };
+    const m = { ru: 'м', uk: 'м', en: 'm' };
+    return value >= 1000 ? `${(value / 1000).toFixed(1)} ${km[lang] || km.ru}` : `${value} ${m[lang] || m.ru}`;
   }
   return value.toString();
 }
@@ -72,20 +110,32 @@ async function getUserGoals(userId) {
 }
 
 // Helper: format goals for AI context
-function formatGoalsForAI(goals) {
-  if (!goals.length) return 'Цели не установлены. Составь план для общего улучшения формы.';
+function formatGoalsForAI(goals, lang = 'ru') {
+  const noGoalsMsg = { ru: 'Цели не установлены. Составь план для общего улучшения формы.', uk: 'Цілі не встановлені. Склади план для загального покращення форми.', en: 'No goals set. Create a plan for general fitness improvement.' };
+  if (!goals.length) return noGoalsMsg[lang] || noGoalsMsg.ru;
+
+  const labels = getGoalLabels(lang);
+  const i18nGoal = { ru: 'цель', uk: 'ціль', en: 'goal' };
+  const i18nProgress = { ru: 'текущий прогресс', uk: 'поточний прогрес', en: 'current progress' };
+  const i18nDeadline = { ru: 'дедлайн', uk: 'дедлайн', en: 'deadline' };
+  const i18nDaysLeft = { ru: 'дней', uk: 'днів', en: 'days left' };
+  const i18nRemaining = { ru: 'осталось', uk: 'залишилось', en: '' };
 
   return goals.map(g => {
-    const label = GOAL_LABELS[g.type] || g.type;
-    const target = formatGoalValue(g.type, g.target_value);
-    const current = formatGoalValue(g.type, g.current_value);
+    const label = labels[g.type] || g.type;
+    const target = formatGoalValue(g.type, g.target_value, lang);
+    const current = formatGoalValue(g.type, g.current_value, lang);
     const progress = g.target_value > 0 ? Math.round((g.current_value / g.target_value) * 100) : 0;
     let deadlineInfo = '';
     if (g.deadline) {
       const daysLeft = Math.ceil((new Date(g.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-      deadlineInfo = `, дедлайн: ${g.deadline} (осталось ${daysLeft} дней)`;
+      if (lang === 'en') {
+        deadlineInfo = `, ${i18nDeadline.en}: ${g.deadline} (${daysLeft} ${i18nDaysLeft.en})`;
+      } else {
+        deadlineInfo = `, ${i18nDeadline[lang] || i18nDeadline.ru}: ${g.deadline} (${i18nRemaining[lang] || i18nRemaining.ru} ${daysLeft} ${i18nDaysLeft[lang] || i18nDaysLeft.ru})`;
+      }
     }
-    return `- ${label}: цель ${target}, текущий прогресс ${current} (${progress}%)${deadlineInfo}`;
+    return `- ${label}: ${i18nGoal[lang] || i18nGoal.ru} ${target}, ${i18nProgress[lang] || i18nProgress.ru} ${current} (${progress}%)${deadlineInfo}`;
   }).join('\n');
 }
 
@@ -103,24 +153,29 @@ async function getCurrentPlan(userId) {
 }
 
 // Helper: format plan for AI context
-function formatPlanForAI(plan) {
-  if (!plan) return 'План на неделю пока не создан.';
+function formatPlanForAI(plan, lang = 'ru') {
+  const noPlanMsg = { ru: 'План на неделю пока не создан.', uk: 'План на тиждень поки не створений.', en: 'No weekly plan created yet.' };
+  if (!plan) return noPlanMsg[lang] || noPlanMsg.ru;
 
+  const parseError = { ru: 'План есть, но не удалось прочитать.', uk: 'План є, але не вдалося прочитати.', en: 'Plan exists but could not be read.' };
   let workoutsList;
   try {
     workoutsList = typeof plan.workouts === 'string' ? JSON.parse(plan.workouts) : plan.workouts;
   } catch {
-    return 'План есть но не удалось прочитать.';
+    return parseError[lang] || parseError.ru;
   }
 
   // Calculate real dates for each day based on week_start
   const weekStart = new Date(plan.week_start + 'T00:00:00');
-  const header = `Текущий план на неделю (пн ${plan.week_start}):`;
+  const headerI18n = { ru: `Текущий план на неделю (пн ${plan.week_start}):`, uk: `Поточний план на тиждень (пн ${plan.week_start}):`, en: `Current weekly plan (Mon ${plan.week_start}):` };
+  const restI18n = { ru: 'Отдых', uk: 'Відпочинок', en: 'Rest' };
+  const kmI18n = { ru: 'км', uk: 'км', en: 'km' };
+  const header = headerI18n[lang] || headerI18n.ru;
   const days = workoutsList.map((d, i) => {
     const dayDate = new Date(weekStart);
     dayDate.setDate(dayDate.getDate() + i);
     const dateStr = dayDate.toISOString().split('T')[0];
-    return `- ${d.day} (${dateStr}): ${d.type === 'rest' ? 'Отдых' : `${d.type}, ${d.distance_km} км — ${d.description}`}`;
+    return `- ${d.day} (${dateStr}): ${d.type === 'rest' ? (restI18n[lang] || restI18n.ru) : `${d.type}, ${d.distance_km} ${kmI18n[lang] || kmI18n.ru} — ${d.description}`}`;
   }).join('\n');
 
   return `${header}\n${days}`;
@@ -199,20 +254,20 @@ async function getUserRecords(userId) {
 }
 
 // Helper: format personal records for AI context
-function formatRecordsForAI(records) {
-  if (!records.length) return 'Личные рекорды не указаны.';
+function formatRecordsForAI(records, lang = 'ru') {
+  const noRecordsMsg = { ru: 'Личные рекорды не указаны.', uk: 'Особисті рекорди не вказані.', en: 'No personal records set.' };
+  if (!records.length) return noRecordsMsg[lang] || noRecordsMsg.ru;
 
-  const DISTANCE_LABELS = {
-    '1km': '1 км',
-    '3km': '3 км',
-    '5km': '5 км',
-    '10km': '10 км',
-    '21km': 'Полумарафон (21.1 км)',
-    '42km': 'Марафон (42.2 км)'
+  const DISTANCE_LABELS_I18N = {
+    ru: { '1km': '1 км', '3km': '3 км', '5km': '5 км', '10km': '10 км', '21km': 'Полумарафон (21.1 км)', '42km': 'Марафон (42.2 км)' },
+    uk: { '1km': '1 км', '3km': '3 км', '5km': '5 км', '10km': '10 км', '21km': 'Півмарафон (21.1 км)', '42km': 'Марафон (42.2 км)' },
+    en: { '1km': '1 km', '3km': '3 km', '5km': '5 km', '10km': '10 km', '21km': 'Half marathon (21.1 km)', '42km': 'Marathon (42.2 km)' }
   };
+  const labels = DISTANCE_LABELS_I18N[lang] || DISTANCE_LABELS_I18N.ru;
+  const localeMap = { ru: 'ru-RU', uk: 'uk-UA', en: 'en-US' };
 
   return records.map(r => {
-    const label = DISTANCE_LABELS[r.distance_type] || r.distance_type;
+    const label = labels[r.distance_type] || r.distance_type;
     const h = Math.floor(r.time_seconds / 3600);
     const m = Math.floor((r.time_seconds % 3600) / 60);
     const s = r.time_seconds % 60;
@@ -220,7 +275,7 @@ function formatRecordsForAI(records) {
       ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
       : `${m}:${s.toString().padStart(2, '0')}`;
     const date = r.record_date
-      ? ` (${new Date(r.record_date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })})`
+      ? ` (${new Date(r.record_date).toLocaleDateString(localeMap[lang] || 'ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })})`
       : '';
     return `- ${label}: ${time}${date}`;
   }).join('\n');
@@ -237,73 +292,131 @@ async function getUserProfile(userId) {
 }
 
 // Helper: format profile for AI
-function formatProfileForAI(profile) {
+function formatProfileForAI(profile, lang = 'ru') {
+  const labels = {
+    ru: { age: 'Возраст', height: 'Рост', weight: 'Вес', years: 'лет', cm: 'см', kg: 'кг', noParams: 'Физические параметры не указаны.' },
+    uk: { age: 'Вік', height: 'Зріст', weight: 'Вага', years: 'р.', cm: 'см', kg: 'кг', noParams: 'Фізичні параметри не вказані.' },
+    en: { age: 'Age', height: 'Height', weight: 'Weight', years: 'y.o.', cm: 'cm', kg: 'kg', noParams: 'Physical parameters not set.' }
+  };
+  const l = labels[lang] || labels.ru;
   const parts = [];
-  if (profile.age) parts.push(`Возраст: ${profile.age} лет`);
-  if (profile.height_cm) parts.push(`Рост: ${profile.height_cm} см`);
-  if (profile.weight_kg) parts.push(`Вес: ${profile.weight_kg} кг`);
-  if (parts.length === 0) return 'Физические параметры не указаны.';
+  if (profile.age) parts.push(`${l.age}: ${profile.age} ${l.years}`);
+  if (profile.height_cm) parts.push(`${l.height}: ${profile.height_cm} ${l.cm}`);
+  if (profile.weight_kg) parts.push(`${l.weight}: ${profile.weight_kg} ${l.kg}`);
+  if (parts.length === 0) return l.noParams;
   return parts.join(', ');
 }
 
 // Helper: build chat system prompt
-function buildChatSystemPrompt(workoutsData, goals, currentPlan, userProfile, records) {
+function buildChatSystemPrompt(workoutsData, goals, currentPlan, userProfile, records, lang = 'ru') {
   const today = new Date();
-  const dayNames = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
+  const dayNamesMap = {
+    ru: ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'],
+    uk: ['неділя', 'понеділок', 'вівторок', 'середа', 'четвер', "п'ятниця", 'субота'],
+    en: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+  };
+  const dayNames = dayNamesMap[lang] || dayNamesMap.ru;
   const todayStr = `${today.toISOString().split('T')[0]} (${dayNames[today.getDay()]})`;
+  const langInstruction = getLangInstruction(lang);
 
-  return `Ты — Runwise, персональный AI тренер по бегу и настоящий бро пользователя. Отвечай на русском.
+  const DAY_NAMES_FULL = {
+    ru: ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'],
+    uk: ['Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота', 'Неділя'],
+    en: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+  };
+  const dayExample = (DAY_NAMES_FULL[lang] || DAY_NAMES_FULL.ru)[0];
 
-СЕГОДНЯ: ${todayStr}.
+  const PROMPTS = {
+    ru: {
+      intro: `Ты — Runwise, персональный AI тренер по бегу и настоящий бро пользователя.`,
+      today: 'СЕГОДНЯ',
+      whoAreYou: `КТО ТЫ:\nТы не бездушный бот, а дружелюбный тренер с характером. Ты искренне болеешь за успехи пользователя, радуешься его прогрессу и поддерживаешь когда тяжело. Ты общаешься как близкий друг, который разбирается в беге — с юмором, энергией и заботой. Можешь подколоть по-доброму, но всегда поддержишь. Используй обращение на "ты".`,
+      userData: 'ДАННЫЕ ПОЛЬЗОВАТЕЛЯ',
+      physParams: 'Физические параметры',
+      ageNote: 'Учитывай возраст при рекомендациях по пульсовым зонам и восстановлению.',
+      weightNote: 'Учитывай вес при рекомендациях по нагрузке и темпу.',
+      workoutHistory: 'История тренировок за последние 3 месяца',
+      goals: 'Цели',
+      records: 'Личные рекорды',
+      recordsNote: 'Используй рекорды для расчёта тренировочных темпов и зон.',
+      totalStats: (n) => `Общая статистика: ${n} тренировок за 3 месяца.`,
+      planUpdate: `ВОЗМОЖНОСТЬ ИЗМЕНЕНИЯ ПЛАНА:\nЕсли пользователь просит изменить план, уменьшить/увеличить нагрузку, поменять тренировки и т.п., ты МОЖЕШЬ изменить текущий план.\nДля этого в конце своего ответа добавь блок:\n===PLAN_UPDATE===\n[JSON массив из 7 дней в том же формате что и текущий план]\n===END_PLAN_UPDATE===`,
+      formatExample: (day) => `Формат каждого дня:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": число, "description": "описание", "badge": "🏃|⚡|🏔️|💨|😴"}`,
+      rules: `ПРАВИЛА:\n- Изменяй план ТОЛЬКО если пользователь явно просит это сделать или соглашается на твоё предложение.\n- При изменении плана сначала объясни коротко что и почему ты меняешь, а потом добавь блок PLAN_UPDATE.\n- Если пользователь просто спрашивает о плане — расскажи СВОИМИ СЛОВАМИ кратко: какой общий объём, что за ключевые тренировки, сколько дней отдыха. НЕ копируй план таблицей или списком.\n- Если пользователь говорит что ему тяжело — посочувствуй, предложи изменения и спроси подтверждение.\n- Математическая точность: дистанция × темп = время. Всегда проверяй цифры.\n- НЕ выдумывай даты — если не уверен в дате, не упоминай её.`,
+      style: `СТИЛЬ ОТВЕТОВ:\n- Отвечай КРАТКО — 3-6 предложений. Не растягивай.\n- Будь живым и эмоциональным — радуйся успехам ("ого, красавчик!"), поддерживай ("бывает, не парься"), мотивируй ("давай, ты можешь!").\n- Говори простым разговорным языком, как друг в чате. Можно сленг в меру.\n- Персонализируй ответы — ссылайся на конкретные тренировки, цифры, прогресс пользователя.\n- Не повторяй данные которые пользователь и так видит в приложении.\n- Используй 1-3 эмодзи.\n- НЕ используй таблицы, списки или markdown.`
+    },
+    uk: {
+      intro: `Ти — Runwise, персональний AI тренер з бігу і справжній бро користувача.`,
+      today: 'СЬОГОДНІ',
+      whoAreYou: `ХТО ТИ:\nТи не бездушний бот, а дружній тренер з характером. Ти щиро вболіваєш за успіхи користувача, радієш його прогресу і підтримуєш коли важко. Ти спілкуєшся як близький друг, який розбирається в бігу — з гумором, енергією і турботою. Можеш пожартувати по-доброму, але завжди підтримаєш. Використовуй звернення на "ти".`,
+      userData: 'ДАНІ КОРИСТУВАЧА',
+      physParams: 'Фізичні параметри',
+      ageNote: 'Враховуй вік при рекомендаціях щодо пульсових зон та відновлення.',
+      weightNote: 'Враховуй вагу при рекомендаціях щодо навантаження та темпу.',
+      workoutHistory: 'Історія тренувань за останні 3 місяці',
+      goals: 'Цілі',
+      records: 'Особисті рекорди',
+      recordsNote: 'Використовуй рекорди для розрахунку тренувальних темпів і зон.',
+      totalStats: (n) => `Загальна статистика: ${n} тренувань за 3 місяці.`,
+      planUpdate: `МОЖЛИВІСТЬ ЗМІНИ ПЛАНУ:\nЯкщо користувач просить змінити план, зменшити/збільшити навантаження, замінити тренування тощо, ти МОЖЕШ змінити поточний план.\nДля цього в кінці своєї відповіді додай блок:\n===PLAN_UPDATE===\n[JSON масив з 7 днів у тому ж форматі що й поточний план]\n===END_PLAN_UPDATE===`,
+      formatExample: (day) => `Формат кожного дня:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": число, "description": "опис", "badge": "🏃|⚡|🏔️|💨|😴"}`,
+      rules: `ПРАВИЛА:\n- Змінюй план ТІЛЬКИ якщо користувач явно просить це зробити або погоджується на твою пропозицію.\n- При зміні плану спочатку поясни коротко що і чому ти змінюєш, а потім додай блок PLAN_UPDATE.\n- Якщо користувач просто запитує про план — розкажи СВОЇМИ СЛОВАМИ коротко: який загальний об'єм, що за ключові тренування, скільки днів відпочинку. НЕ копіюй план таблицею чи списком.\n- Якщо користувач каже що йому важко — поспівчувай, запропонуй зміни і запитай підтвердження.\n- Математична точність: дистанція × темп = час. Завжди перевіряй цифри.\n- НЕ вигадуй дати — якщо не впевнений у даті, не згадуй її.`,
+      style: `СТИЛЬ ВІДПОВІДЕЙ:\n- Відповідай КОРОТКО — 3-6 речень. Не розтягуй.\n- Будь живим і емоційним — радій успіхам, підтримуй коли важко, мотивуй.\n- Говори простою розмовною мовою, як друг у чаті. Можна сленг в міру.\n- Персоналізуй відповіді — посилайся на конкретні тренування, цифри, прогрес користувача.\n- Не повторюй дані які користувач і так бачить у додатку.\n- Використовуй 1-3 емодзі.\n- НЕ використовуй таблиці, списки або markdown.`
+    },
+    en: {
+      intro: `You are Runwise, a personal AI running coach and the user's real buddy.`,
+      today: 'TODAY',
+      whoAreYou: `WHO YOU ARE:\nYou're not a soulless bot — you're a friendly coach with personality. You genuinely care about the user's success, celebrate their progress and support them when it's tough. You communicate like a close friend who knows running — with humor, energy and care. You can joke around but always have their back.`,
+      userData: 'USER DATA',
+      physParams: 'Physical parameters',
+      ageNote: 'Consider age when recommending heart rate zones and recovery.',
+      weightNote: 'Consider weight when recommending load and pace.',
+      workoutHistory: 'Workout history for the last 3 months',
+      goals: 'Goals',
+      records: 'Personal records',
+      recordsNote: 'Use records to calculate training paces and zones.',
+      totalStats: (n) => `Overall stats: ${n} workouts in 3 months.`,
+      planUpdate: `PLAN MODIFICATION CAPABILITY:\nIf the user asks to change the plan, reduce/increase load, swap workouts, etc., you CAN modify the current plan.\nTo do this, add a block at the end of your response:\n===PLAN_UPDATE===\n[JSON array of 7 days in the same format as the current plan]\n===END_PLAN_UPDATE===`,
+      formatExample: (day) => `Format for each day:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": number, "description": "description", "badge": "🏃|⚡|🏔️|💨|😴"}`,
+      rules: `RULES:\n- Only modify the plan if the user explicitly asks or agrees to your suggestion.\n- When modifying the plan, briefly explain what and why you're changing, then add the PLAN_UPDATE block.\n- If the user just asks about the plan — summarize IN YOUR OWN WORDS: total volume, key workouts, rest days. Do NOT copy the plan as a table or list.\n- If the user says it's hard — empathize, suggest changes and ask for confirmation.\n- Math accuracy: distance × pace = time. Always verify numbers.\n- Do NOT make up dates — if unsure about a date, don't mention it.`,
+      style: `RESPONSE STYLE:\n- Keep answers SHORT — 3-6 sentences. Don't drag on.\n- Be lively and emotional — celebrate wins, support through struggles, motivate.\n- Use casual, conversational language, like a friend in chat. Light slang is okay.\n- Personalize answers — reference specific workouts, numbers, user's progress.\n- Don't repeat data the user can already see in the app.\n- Use 1-3 emojis.\n- Do NOT use tables, lists or markdown.`
+    }
+  };
 
-КТО ТЫ:
-Ты не бездушный бот, а дружелюбный тренер с характером. Ты искренне болеешь за успехи пользователя, радуешься его прогрессу и поддерживаешь когда тяжело. Ты общаешься как близкий друг, который разбирается в беге — с юмором, энергией и заботой. Можешь подколоть по-доброму, но всегда поддержишь. Используй имя/обращение на "ты".
+  const p = PROMPTS[lang] || PROMPTS.ru;
 
-ДАННЫЕ ПОЛЬЗОВАТЕЛЯ:
-Физические параметры: ${formatProfileForAI(userProfile || {})}
-${userProfile?.age ? `Учитывай возраст при рекомендациях по пульсовым зонам и восстановлению.` : ''}
-${userProfile?.weight_kg ? `Учитывай вес при рекомендациях по нагрузке и темпу.` : ''}
+  return `${p.intro} ${langInstruction}
 
-История тренировок за последние 3 месяца:
+${p.today}: ${todayStr}.
+
+${p.whoAreYou}
+
+${p.userData}:
+${p.physParams}: ${formatProfileForAI(userProfile || {}, lang)}
+${userProfile?.age ? p.ageNote : ''}
+${userProfile?.weight_kg ? p.weightNote : ''}
+
+${p.workoutHistory}:
 ${JSON.stringify(workoutsData, null, 2)}
 
-Цели:
-${formatGoalsForAI(goals)}
+${p.goals}:
+${formatGoalsForAI(goals, lang)}
 
-Личные рекорды:
-${formatRecordsForAI(records || [])}
-Используй рекорды для расчёта тренировочных темпов и зон.
+${p.records}:
+${formatRecordsForAI(records || [], lang)}
+${p.recordsNote}
 
-${formatPlanForAI(currentPlan)}
+${formatPlanForAI(currentPlan, lang)}
 
-Общая статистика: ${workoutsData.length} тренировок за 3 месяца.
+${p.totalStats(workoutsData.length)}
 
-ВОЗМОЖНОСТЬ ИЗМЕНЕНИЯ ПЛАНА:
-Если пользователь просит изменить план, уменьшить/увеличить нагрузку, поменять тренировки и т.п., ты МОЖЕШЬ изменить текущий план.
-Для этого в конце своего ответа добавь блок:
-===PLAN_UPDATE===
-[JSON массив из 7 дней в том же формате что и текущий план]
-===END_PLAN_UPDATE===
+${p.planUpdate}
 
-Формат каждого дня:
-{"day": "Понедельник", "type": "easy|tempo|long|interval|rest", "distance_km": число, "description": "описание", "badge": "🏃|⚡|🏔️|💨|😴"}
+${p.formatExample(dayExample)}
 
-ПРАВИЛА:
-- Изменяй план ТОЛЬКО если пользователь явно просит это сделать или соглашается на твоё предложение.
-- При изменении плана сначала объясни коротко что и почему ты меняешь, а потом добавь блок PLAN_UPDATE.
-- Если пользователь просто спрашивает о плане — расскажи СВОИМИ СЛОВАМИ кратко: какой общий объём, что за ключевые тренировки, сколько дней отдыха. НЕ копируй план таблицей или списком.
-- Если пользователь говорит что ему тяжело — посочувствуй, предложи изменения и спроси подтверждение.
-- Математическая точность: дистанция × темп = время. Всегда проверяй цифры.
-- НЕ выдумывай даты — если не уверен в дате, не упоминай её.
+${p.rules}
 
-СТИЛЬ ОТВЕТОВ:
-- Отвечай КРАТКО — 3-6 предложений. Не растягивай.
-- Будь живым и эмоциональным — радуйся успехам ("ого, красавчик!"), поддерживай ("бывает, не парься"), мотивируй ("давай, ты можешь!").
-- Говори простым разговорным языком, как друг в чате. Можно сленг в меру.
-- Персонализируй ответы — ссылайся на конкретные тренировки, цифры, прогресс пользователя.
-- Не повторяй данные которые пользователь и так видит в приложении.
-- Используй 1-3 эмодзи.
-- НЕ используй таблицы, списки или markdown.`;
+${p.style}`;
 }
 
 // Helper: process plan update from AI reply
@@ -369,7 +482,7 @@ router.delete('/chat/history', authMiddleware, async (req, res) => {
 });
 
 // Helper: load chat context (history + workouts + goals + plan)
-async function loadChatContext(userId) {
+async function loadChatContext(userId, lang = 'ru') {
   const { data: chatHistoryData } = await supabase
     .from('chat_messages')
     .select('role, content')
@@ -390,7 +503,7 @@ async function loadChatContext(userId) {
     getUserRecords(userId)
   ]);
 
-  const systemPrompt = buildChatSystemPrompt(workoutsData, goals, currentPlan, userProfile, records);
+  const systemPrompt = buildChatSystemPrompt(workoutsData, goals, currentPlan, userProfile, records, lang);
 
   return { chatHistory, systemPrompt, currentPlan };
 }
@@ -398,12 +511,12 @@ async function loadChatContext(userId) {
 // POST /api/ai/chat — AI chat with plan awareness
 router.post('/chat', authMiddleware, async (req, res) => {
   try {
-    const { message } = req.body;
+    const { message, lang } = req.body;
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    const { chatHistory, systemPrompt, currentPlan } = await loadChatContext(req.user.id);
+    const { chatHistory, systemPrompt, currentPlan } = await loadChatContext(req.user.id, lang || 'ru');
     const reply = await callDeepSeek(systemPrompt, message, 2500, chatHistory);
     const { textReply, planUpdated } = await processPlanUpdate(reply, req.user.id, currentPlan);
 
@@ -422,12 +535,12 @@ router.post('/chat', authMiddleware, async (req, res) => {
 // POST /api/ai/chat/stream — SSE streaming AI chat
 router.post('/chat/stream', authMiddleware, async (req, res) => {
   try {
-    const { message } = req.body;
+    const { message, lang } = req.body;
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    const { chatHistory, systemPrompt, currentPlan } = await loadChatContext(req.user.id);
+    const { chatHistory, systemPrompt, currentPlan } = await loadChatContext(req.user.id, lang || 'ru');
 
     // Set SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
@@ -520,7 +633,7 @@ router.post('/chat/stream', authMiddleware, async (req, res) => {
 // POST /api/ai/analyze-workout — AI comment for a specific workout
 router.post('/analyze-workout', authMiddleware, async (req, res) => {
   try {
-    const { workoutId } = req.body;
+    const { workoutId, lang } = req.body;
 
     const { data: workout } = await supabase
       .from('workouts')
@@ -535,21 +648,50 @@ router.post('/analyze-workout', authMiddleware, async (req, res) => {
 
     const recentWorkouts = await getWorkoutsContext(req.user.id, 1);
 
-    const systemPrompt = `Ты персональный AI тренер по бегу. Проанализируй конкретную тренировку и дай краткий комментарий (3-5 предложений). Отвечай на русском.
+    const useLang = lang || 'ru';
+    const analyzePrompts = {
+      ru: {
+        system: `Ты персональный AI тренер по бегу. Проанализируй конкретную тренировку и дай краткий комментарий (3-5 предложений).`,
+        context: 'Контекст — последние тренировки юзера',
+        analyze: 'Проанализируй эту тренировку',
+        name: 'Название', date: 'Дата', distance: 'Дистанция', time: 'Время', pace: 'Темп', hr: 'Пульс', type: 'Тип',
+        km: 'км', min: 'мин', minKm: 'мин/км', max: 'макс', noData: 'нет данных',
+        splitsKm: 'Сплиты по км', splits500: 'Сплиты по 500м'
+      },
+      uk: {
+        system: `Ти персональний AI тренер з бігу. Проаналізуй конкретне тренування і дай короткий коментар (3-5 речень).`,
+        context: 'Контекст — останні тренування юзера',
+        analyze: 'Проаналізуй це тренування',
+        name: 'Назва', date: 'Дата', distance: 'Дистанція', time: 'Час', pace: 'Темп', hr: 'Пульс', type: 'Тип',
+        km: 'км', min: 'хв', minKm: 'хв/км', max: 'макс', noData: 'немає даних',
+        splitsKm: 'Спліти по км', splits500: 'Спліти по 500м'
+      },
+      en: {
+        system: `You are a personal AI running coach. Analyze this specific workout and give a brief comment (3-5 sentences).`,
+        context: "Context — user's recent workouts",
+        analyze: 'Analyze this workout',
+        name: 'Name', date: 'Date', distance: 'Distance', time: 'Time', pace: 'Pace', hr: 'Heart rate', type: 'Type',
+        km: 'km', min: 'min', minKm: 'min/km', max: 'max', noData: 'no data',
+        splitsKm: 'Splits per km', splits500: '500m splits'
+      }
+    };
+    const ap = analyzePrompts[useLang] || analyzePrompts.ru;
 
-Контекст — последние тренировки юзера:
+    const systemPrompt = `${ap.system} ${getLangInstruction(useLang)}
+
+${ap.context}:
 ${JSON.stringify(recentWorkouts.slice(0, 10), null, 2)}`;
 
-    const workoutInfo = `Проанализируй эту тренировку:
-- Название: ${workout.name}
-- Дата: ${workout.date}
-- Дистанция: ${(workout.distance / 1000).toFixed(2)} км
-- Время: ${Math.floor(workout.moving_time / 60)} мин
-- Темп: ${formatPace(workout.average_pace)} мин/км
-- Пульс: ${workout.average_heartrate || 'нет данных'} (макс: ${workout.max_heartrate || 'нет данных'})
-- Тип: ${workout.type}
-${workout.splits ? `- Сплиты по км: ${workout.splits}` : ''}
-${workout.splits_500m ? `- Сплиты по 500м: ${workout.splits_500m}` : ''}`;
+    const workoutInfo = `${ap.analyze}:
+- ${ap.name}: ${workout.name}
+- ${ap.date}: ${workout.date}
+- ${ap.distance}: ${(workout.distance / 1000).toFixed(2)} ${ap.km}
+- ${ap.time}: ${Math.floor(workout.moving_time / 60)} ${ap.min}
+- ${ap.pace}: ${formatPace(workout.average_pace)} ${ap.minKm}
+- ${ap.hr}: ${workout.average_heartrate || ap.noData} (${ap.max}: ${workout.max_heartrate || ap.noData})
+- ${ap.type}: ${workout.type}
+${workout.splits ? `- ${ap.splitsKm}: ${workout.splits}` : ''}
+${workout.splits_500m ? `- ${ap.splits500}: ${workout.splits_500m}` : ''}`;
 
     const reply = await callDeepSeek(systemPrompt, workoutInfo);
     res.json({ analysis: reply });
@@ -562,6 +704,7 @@ ${workout.splits_500m ? `- Сплиты по 500м: ${workout.splits_500m}` : ''
 // POST /api/ai/generate-plan — generate weekly training plan
 router.post('/generate-plan', authMiddleware, async (req, res) => {
   try {
+    const lang = req.body?.lang || 'ru';
     // Get last 4 weeks of workouts
     const fourWeeksAgo = new Date();
     fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
@@ -596,40 +739,82 @@ router.post('/generate-plan', authMiddleware, async (req, res) => {
       ? Math.round(weeklyDistances.reduce((a, b) => a + b, 0) / weeklyDistances.length * 10) / 10
       : 0;
 
-    const systemPrompt = `Ты персональный AI тренер по бегу. Сгенерируй план тренировок на следующую неделю (7 дней, начиная с понедельника).
+    const DAY_NAMES_I18N = {
+      ru: ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'],
+      uk: ['Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота', 'Неділя'],
+      en: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    };
+    const dayNamesList = DAY_NAMES_I18N[lang] || DAY_NAMES_I18N.ru;
+    const dayNamesExample = dayNamesList[0]; // e.g. "Monday" or "Понедельник"
 
-ЦЕЛИ ПОЛЬЗОВАТЕЛЯ:
-${formatGoalsForAI(goals)}
+    const genPlanPrompts = {
+      ru: {
+        system: `Ты персональный AI тренер по бегу. Сгенерируй план тренировок на следующую неделю (7 дней, начиная с понедельника).`,
+        userGoals: 'ЦЕЛИ ПОЛЬЗОВАТЕЛЯ',
+        userRecords: 'ЛИЧНЫЕ РЕКОРДЫ ПОЛЬЗОВАТЕЛЯ',
+        recordsNote: 'Используй рекорды для расчёта тренировочных темпов и зон.',
+        rules: `ПРАВИЛА ГЕНЕРАЦИИ ПЛАНА:\n1. План должен быть направлен на достижение целей пользователя.\n2. Если цель — личный рекорд (pb_5k, pb_10k и т.д.), включай соответствующие скоростные и темповые работы.\n3. Если цель — объём (monthly_distance, weekly_distance), фокусируйся на набеге километража.\n4. Учитывай прогресс к цели: если прогресс низкий а времени мало — увеличивай интенсивность; если прогресс хороший — поддерживай текущий уровень.`,
+        avgWeekly: (km) => `5. Средний недельный объём за последние 4 недели: ${km} км. Не увеличивай объём более чем на 10-15% за неделю.`,
+        mathRules: `КРИТИЧЕСКИ ВАЖНО — МАТЕМАТИЧЕСКАЯ ТОЧНОСТЬ:\n- Если пишешь темп (мин/км) и время — проверь что дистанция = время / темп. Например: 20 мин в темпе 5:00/км = 4 км, НЕ 9 км.\n- Если пишешь дистанцию и темп — рассчитай ожидаемое время и укажи его.\n- distance_km должна точно соответствовать описанию. Если в описании "5 км легко + 3 км темпом", то distance_km = 8.\n- Всегда перепроверяй: дистанция × темп = время.`,
+        jsonOnly: 'ВАЖНО: Ответ должен быть ТОЛЬКО валидным JSON массивом из 7 объектов, без markdown, без пояснений, без текста до или после JSON.',
+        format: (day) => `Формат каждого дня:\n{\n  "day": "${day}",\n  "type": "easy|tempo|long|interval|rest",\n  "distance_km": число или 0 для отдыха,\n  "description": "краткое описание тренировки с ТОЧНЫМИ цифрами (темп, время, дистанция — всё должно быть математически согласовано)",\n  "badge": "🏃|⚡|🏔️|💨|😴"\n}`,
+        contextLabel: 'Тренировки за последние 4 недели',
+        weeklyVolumes: 'Недельные объёмы (последние 4 недели)',
+        km: 'км',
+        generate: 'Сгенерируй план на следующую неделю, ориентируясь на цели пользователя.'
+      },
+      uk: {
+        system: `Ти персональний AI тренер з бігу. Згенеруй план тренувань на наступний тиждень (7 днів, починаючи з понеділка).`,
+        userGoals: 'ЦІЛІ КОРИСТУВАЧА',
+        userRecords: 'ОСОБИСТІ РЕКОРДИ КОРИСТУВАЧА',
+        recordsNote: 'Використовуй рекорди для розрахунку тренувальних темпів і зон.',
+        rules: `ПРАВИЛА ГЕНЕРАЦІЇ ПЛАНУ:\n1. План має бути спрямований на досягнення цілей користувача.\n2. Якщо ціль — особистий рекорд (pb_5k, pb_10k тощо), включай відповідні швидкісні та темпові роботи.\n3. Якщо ціль — об'єм (monthly_distance, weekly_distance), фокусуйся на набігу кілометражу.\n4. Враховуй прогрес до цілі: якщо прогрес низький а часу мало — збільшуй інтенсивність; якщо прогрес хороший — підтримуй поточний рівень.`,
+        avgWeekly: (km) => `5. Середній тижневий об'єм за останні 4 тижні: ${km} км. Не збільшуй об'єм більше ніж на 10-15% за тиждень.`,
+        mathRules: `КРИТИЧНО ВАЖЛИВО — МАТЕМАТИЧНА ТОЧНІСТЬ:\n- Якщо пишеш темп (хв/км) і час — перевір що дистанція = час / темп. Наприклад: 20 хв у темпі 5:00/км = 4 км, НЕ 9 км.\n- Якщо пишеш дистанцію і темп — розрахуй очікуваний час і вкажи його.\n- distance_km має точно відповідати опису.\n- Завжди перевіряй: дистанція × темп = час.`,
+        jsonOnly: 'ВАЖЛИВО: Відповідь має бути ТІЛЬКИ валідним JSON масивом з 7 об\'єктів, без markdown, без пояснень, без тексту до або після JSON.',
+        format: (day) => `Формат кожного дня:\n{\n  "day": "${day}",\n  "type": "easy|tempo|long|interval|rest",\n  "distance_km": число або 0 для відпочинку,\n  "description": "короткий опис тренування з ТОЧНИМИ цифрами",\n  "badge": "🏃|⚡|🏔️|💨|😴"\n}`,
+        contextLabel: 'Тренування за останні 4 тижні',
+        weeklyVolumes: 'Тижневі об\'єми (останні 4 тижні)',
+        km: 'км',
+        generate: 'Згенеруй план на наступний тиждень, орієнтуючись на цілі користувача.'
+      },
+      en: {
+        system: `You are a personal AI running coach. Generate a training plan for the next week (7 days, starting from Monday).`,
+        userGoals: 'USER GOALS',
+        userRecords: 'USER PERSONAL RECORDS',
+        recordsNote: 'Use records to calculate training paces and zones.',
+        rules: `PLAN GENERATION RULES:\n1. The plan must be aimed at achieving the user's goals.\n2. If the goal is a personal best (pb_5k, pb_10k, etc.), include appropriate speed and tempo workouts.\n3. If the goal is volume (monthly_distance, weekly_distance), focus on building mileage.\n4. Consider goal progress: if progress is low and time is short — increase intensity; if progress is good — maintain current level.`,
+        avgWeekly: (km) => `5. Average weekly volume for the last 4 weeks: ${km} km. Do not increase volume by more than 10-15% per week.`,
+        mathRules: `CRITICALLY IMPORTANT — MATH ACCURACY:\n- If you write pace (min/km) and time — verify that distance = time / pace. For example: 20 min at 5:00/km = 4 km, NOT 9 km.\n- If you write distance and pace — calculate expected time and include it.\n- distance_km must exactly match the description.\n- Always double-check: distance × pace = time.`,
+        jsonOnly: 'IMPORTANT: Response must be ONLY a valid JSON array of 7 objects, no markdown, no explanations, no text before or after JSON.',
+        format: (day) => `Format for each day:\n{\n  "day": "${day}",\n  "type": "easy|tempo|long|interval|rest",\n  "distance_km": number or 0 for rest,\n  "description": "brief workout description with EXACT numbers (pace, time, distance — all mathematically consistent)",\n  "badge": "🏃|⚡|🏔️|💨|😴"\n}`,
+        contextLabel: 'Workouts for the last 4 weeks',
+        weeklyVolumes: 'Weekly volumes (last 4 weeks)',
+        km: 'km',
+        generate: "Generate a plan for the next week, based on the user's goals."
+      }
+    };
+    const gp = genPlanPrompts[lang] || genPlanPrompts.ru;
 
-ЛИЧНЫЕ РЕКОРДЫ ПОЛЬЗОВАТЕЛЯ:
-${formatRecordsForAI(records)}
-Используй рекорды для расчёта тренировочных темпов и зон.
+    const systemPrompt = `${gp.system} ${getLangInstruction(lang)}
 
-ПРАВИЛА ГЕНЕРАЦИИ ПЛАНА:
-1. План должен быть направлен на достижение целей пользователя.
-2. Если цель — личный рекорд (pb_5k, pb_10k и т.д.), включай соответствующие скоростные и темповые работы.
-3. Если цель — объём (monthly_distance, weekly_distance), фокусируйся на набеге километража.
-4. Учитывай прогресс к цели: если прогресс низкий а времени мало — увеличивай интенсивность; если прогресс хороший — поддерживай текущий уровень.
-5. Средний недельный объём за последние 4 недели: ${avgWeeklyKm} км. Не увеличивай объём более чем на 10-15% за неделю.
+${gp.userGoals}:
+${formatGoalsForAI(goals, lang)}
 
-КРИТИЧЕСКИ ВАЖНО — МАТЕМАТИЧЕСКАЯ ТОЧНОСТЬ:
-- Если пишешь темп (мин/км) и время — проверь что дистанция = время / темп. Например: 20 мин в темпе 5:00/км = 4 км, НЕ 9 км.
-- Если пишешь дистанцию и темп — рассчитай ожидаемое время и укажи его.
-- distance_km должна точно соответствовать описанию. Если в описании "5 км легко + 3 км темпом", то distance_km = 8.
-- Всегда перепроверяй: дистанция × темп = время.
+${gp.userRecords}:
+${formatRecordsForAI(records, lang)}
+${gp.recordsNote}
 
-ВАЖНО: Ответ должен быть ТОЛЬКО валидным JSON массивом из 7 объектов, без markdown, без пояснений, без текста до или после JSON.
+${gp.rules}
+${gp.avgWeekly(avgWeeklyKm)}
 
-Формат каждого дня:
-{
-  "day": "Понедельник",
-  "type": "easy|tempo|long|interval|rest",
-  "distance_km": число или 0 для отдыха,
-  "description": "краткое описание тренировки с ТОЧНЫМИ цифрами (темп, время, дистанция — всё должно быть математически согласовано)",
-  "badge": "🏃|⚡|🏔️|💨|😴"
-}`;
+${gp.mathRules}
 
-    const context = `Тренировки за последние 4 недели:
+${gp.jsonOnly}
+
+${gp.format(dayNamesExample)}`;
+
+    const context = `${gp.contextLabel}:
 ${JSON.stringify((recentWorkouts || []).map(w => ({
   date: w.date?.split('T')[0],
   distance_km: (w.distance / 1000).toFixed(1),
@@ -638,9 +823,9 @@ ${JSON.stringify((recentWorkouts || []).map(w => ({
   heartrate: w.average_heartrate
 })), null, 2)}
 
-Недельные объёмы (последние 4 недели): ${weeklyDistances.join(', ')} км
+${gp.weeklyVolumes}: ${weeklyDistances.join(', ')} ${gp.km}
 
-Сгенерируй план на следующую неделю, ориентируясь на цели пользователя.`;
+${gp.generate}`;
 
     const reply = await callDeepSeek(systemPrompt, context);
 
@@ -734,6 +919,7 @@ router.get('/plan', authMiddleware, async (req, res) => {
 // POST /api/ai/weekly-analysis — AI analysis of current week
 router.post('/weekly-analysis', authMiddleware, async (req, res) => {
   try {
+    const lang = req.body?.lang || 'ru';
     // Get workouts for current Mon-Sun week
     const now = new Date();
     const dayOfWeek = now.getDay();
@@ -759,12 +945,20 @@ router.post('/weekly-analysis', authMiddleware, async (req, res) => {
     }));
 
     if (weekWorkouts.length === 0) {
-      return res.json({ analysis: 'Пока нет тренировок для анализа. Начни бегать и я помогу тебе стать лучше! 🏃' });
+      const emptyMsg = { ru: 'Пока нет тренировок для анализа. Начни бегать и я помогу тебе стать лучше! 🏃', uk: 'Поки немає тренувань для аналізу. Почни бігати і я допоможу тобі стати кращим! 🏃', en: 'No workouts to analyze yet. Start running and I\'ll help you get better! 🏃' };
+      return res.json({ analysis: emptyMsg[lang] || emptyMsg.ru });
     }
 
-    const systemPrompt = `Ты персональный AI тренер по бегу. Дай краткий анализ тренировочной недели (3-4 предложения). Отвечай на русском. Будь конкретным, опирайся на данные.`;
+    const weeklyPrompts = {
+      ru: { system: 'Ты персональный AI тренер по бегу. Дай краткий анализ тренировочной недели (3-4 предложения). Будь конкретным, опирайся на данные.', msg: 'Проанализируй мою неделю тренировок' },
+      uk: { system: 'Ти персональний AI тренер з бігу. Дай короткий аналіз тренувального тижня (3-4 речення). Будь конкретним, спирайся на дані.', msg: 'Проаналізуй мій тиждень тренувань' },
+      en: { system: 'You are a personal AI running coach. Give a brief analysis of the training week (3-4 sentences). Be specific, use the data.', msg: 'Analyze my training week' }
+    };
+    const wp = weeklyPrompts[lang] || weeklyPrompts.ru;
 
-    const message = `Проанализируй мою неделю тренировок:\n${JSON.stringify(weekWorkouts, null, 2)}`;
+    const systemPrompt = `${wp.system} ${getLangInstruction(lang)}`;
+
+    const message = `${wp.msg}:\n${JSON.stringify(weekWorkouts, null, 2)}`;
 
     const reply = await callDeepSeek(systemPrompt, message);
     res.json({ analysis: reply });

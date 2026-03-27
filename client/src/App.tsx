@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from './hooks/useAuth';
 import Login from './screens/Login';
 import Home from './screens/Home';
@@ -21,6 +22,7 @@ const SCREEN_ORDER: Record<string, number> = {
 };
 
 const App: React.FC = () => {
+  const { t } = useTranslation();
   const { isAuthenticated, loading, loginWithStrava, handleCallback, logout } = useAuth();
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null);
@@ -53,7 +55,7 @@ const App: React.FC = () => {
     return (
       <div className="app-loading">
         <div className="loader"></div>
-        <p>Загрузка...</p>
+        <p>{t('common.loading')}</p>
       </div>
     );
   }
@@ -124,35 +126,35 @@ const App: React.FC = () => {
           onClick={() => navigateTo('home')}
         >
           <span className="nav-icon">🏠</span>
-          <span className="nav-label">Главная</span>
+          <span className="nav-label">{t('nav.home')}</span>
         </button>
         <button
           className={`nav-item ${currentScreen === 'history' ? 'active' : ''}`}
           onClick={() => navigateTo('history')}
         >
           <span className="nav-icon">📅</span>
-          <span className="nav-label">История</span>
+          <span className="nav-label">{t('nav.history')}</span>
         </button>
         <button
           className={`nav-item ${currentScreen === 'plan' ? 'active' : ''}`}
           onClick={() => navigateTo('plan')}
         >
           <span className="nav-icon">📋</span>
-          <span className="nav-label">План</span>
+          <span className="nav-label">{t('nav.plan')}</span>
         </button>
         <button
           className={`nav-item ${currentScreen === 'ai' ? 'active' : ''}`}
           onClick={() => navigateTo('ai')}
         >
           <span className="nav-icon">🤖</span>
-          <span className="nav-label">AI</span>
+          <span className="nav-label">{t('nav.ai')}</span>
         </button>
         <button
           className={`nav-item ${currentScreen === 'profile' ? 'active' : ''}`}
           onClick={() => navigateTo('profile')}
         >
           <span className="nav-icon">👤</span>
-          <span className="nav-label">Профиль</span>
+          <span className="nav-label">{t('nav.profile')}</span>
         </button>
       </nav>
     </div>

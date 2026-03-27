@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import MetricCard from '../components/MetricCard';
 import WorkoutRow from '../components/WorkoutRow';
 import { useWorkoutHistory } from '../hooks/useWorkouts';
@@ -10,6 +11,7 @@ interface HistoryProps {
 }
 
 const History: React.FC<HistoryProps> = ({ onWorkoutClick }) => {
+  const { t } = useTranslation();
   const {
     allWorkouts,
     monthStats,
@@ -152,17 +154,17 @@ const History: React.FC<HistoryProps> = ({ onWorkoutClick }) => {
   return (
     <div className="screen history-screen">
       <div className="home-header">
-        <h2 className="screen-title">📅 История</h2>
+        <h2 className="screen-title">📅 {t('history.title')}</h2>
         <div className="home-header-actions">
           {editMode && (
-            <button className="btn-icon" onClick={openSettings} title="Добавить/убрать виджеты">
+            <button className="btn-icon" onClick={openSettings} title={t('home.addRemoveWidgets')}>
               ➕
             </button>
           )}
           <button
             className={`btn-icon ${editMode ? 'btn-icon-active' : ''}`}
             onClick={() => setEditMode(!editMode)}
-            title={editMode ? 'Готово' : 'Настроить виджеты'}
+            title={editMode ? t('common.done') : t('home.configureWidgets')}
           >
             {editMode ? '✓' : '⚙️'}
           </button>
@@ -194,9 +196,9 @@ const History: React.FC<HistoryProps> = ({ onWorkoutClick }) => {
             >
               <MetricCard
                 icon={metric.icon}
-                label={metric.label}
+                label={t(metric.labelKey)}
                 value={metric.getValue(monthStats)}
-                sub={metric.sub}
+                sub={metric.subKey ? t(metric.subKey) : undefined}
               />
               {editMode && (
                 <button
@@ -218,7 +220,7 @@ const History: React.FC<HistoryProps> = ({ onWorkoutClick }) => {
           <div className="loader"></div>
         </div>
       ) : allWorkouts.length === 0 ? (
-        <p className="empty-text">Нет тренировок за этот месяц</p>
+        <p className="empty-text">{t('history.noWorkouts')}</p>
       ) : (
         <div className="workouts-list">
           {allWorkouts.map(w => (
@@ -231,7 +233,7 @@ const History: React.FC<HistoryProps> = ({ onWorkoutClick }) => {
         <div className="widget-settings-overlay" onClick={() => setShowSettings(false)}>
           <div className="widget-settings-modal" onClick={e => e.stopPropagation()}>
             <div className="widget-settings-header">
-              <h3>Настройка виджетов</h3>
+              <h3>{t('home.widgetSettings')}</h3>
               <button className="btn-icon" onClick={() => setShowSettings(false)}>✕</button>
             </div>
 
@@ -250,7 +252,7 @@ const History: React.FC<HistoryProps> = ({ onWorkoutClick }) => {
                         onChange={() => toggleMetric(metric.id)}
                       />
                       <span className="widget-settings-icon">{metric.icon}</span>
-                      <span className="widget-settings-label">{metric.label}</span>
+                      <span className="widget-settings-label">{t(metric.labelKey)}</span>
                     </label>
                   </div>
                 );
@@ -262,7 +264,7 @@ const History: React.FC<HistoryProps> = ({ onWorkoutClick }) => {
               onClick={saveSettings}
               disabled={tempWidgets.length === 0}
             >
-              Сохранить ({tempWidgets.length})
+              {t('home.saveCount', { count: tempWidgets.length })}
             </button>
           </div>
         </div>

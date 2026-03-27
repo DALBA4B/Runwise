@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { formatDistance, formatPace } from '../utils';
 
 interface PeriodStats {
@@ -13,11 +14,13 @@ interface PeriodComparisonProps {
 }
 
 const PeriodComparison: React.FC<PeriodComparisonProps> = ({ data, loading }) => {
+  const { t } = useTranslation();
+
   if (loading) {
     return (
       <div className="period-comparison">
-        <div className="period-comparison-title">Этот месяц vs прошлый</div>
-        <div className="period-comparison-loading">Загрузка...</div>
+        <div className="period-comparison-title">{t('comparison.title')}</div>
+        <div className="period-comparison-loading">{t('comparison.loading')}</div>
       </div>
     );
   }
@@ -26,19 +29,19 @@ const PeriodComparison: React.FC<PeriodComparisonProps> = ({ data, loading }) =>
 
   const metrics = [
     {
-      label: 'Дистанция',
+      label: t('comparison.distance'),
       value: formatDistance(data.current.distance),
       change: data.changes.distance,
       improved: data.changes.distance > 0
     },
     {
-      label: 'Тренировки',
+      label: t('comparison.workouts'),
       value: `${data.current.workoutCount}`,
       change: data.changes.workoutCount,
       improved: data.changes.workoutCount > 0
     },
     {
-      label: 'Ср. темп',
+      label: t('comparison.avgPace'),
       value: formatPace(data.current.avgPace),
       change: data.changes.avgPace,
       improved: data.changes.avgPace < 0 // negative pace change = faster = better
@@ -47,7 +50,7 @@ const PeriodComparison: React.FC<PeriodComparisonProps> = ({ data, loading }) =>
 
   return (
     <div className="period-comparison">
-      <div className="period-comparison-title">Этот месяц vs прошлый</div>
+      <div className="period-comparison-title">{t('comparison.title')}</div>
       <div className="period-comparison-row">
         {metrics.map((m, i) => (
           <div className="period-comparison-item" key={i}>

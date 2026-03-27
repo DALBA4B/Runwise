@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface Goal {
   id: string;
@@ -13,24 +14,16 @@ interface GoalProgressMiniProps {
   onNavigate: (screen: string) => void;
 }
 
-const goalTypeLabels: Record<string, string> = {
-  monthly_distance: 'Месячный объём',
-  weekly_distance: 'Недельный объём',
-  pb_5k: 'ЛР 5 км',
-  pb_10k: 'ЛР 10 км',
-  pb_21k: 'ЛР полумарафон',
-  pb_42k: 'ЛР марафон',
-  monthly_runs: 'Пробежки/мес'
-};
-
 const GoalProgressMini: React.FC<GoalProgressMiniProps> = ({ goals, onNavigate }) => {
+  const { t } = useTranslation();
+
   if (!goals || goals.length === 0) return null;
 
   const displayed = goals.slice(0, 3);
 
   return (
     <div className="goal-mini">
-      <div className="goal-mini-title">Цели</div>
+      <div className="goal-mini-title">{t('goalsMini.title')}</div>
       {displayed.map(goal => {
         const pct = goal._predPercent != null
           ? Math.min(100, goal._predPercent)
@@ -40,7 +33,7 @@ const GoalProgressMini: React.FC<GoalProgressMiniProps> = ({ goals, onNavigate }
         return (
           <div className="goal-mini-item" key={goal.id}>
             <div className="goal-mini-info">
-              <span className="goal-mini-name">{goalTypeLabels[goal.type] || goal.type}</span>
+              <span className="goal-mini-name">{t(`goalTypesMini.${goal.type}`, { defaultValue: goal.type })}</span>
               <span className="goal-mini-pct">{pct}%</span>
             </div>
             <div className="goal-mini-bar">
@@ -54,7 +47,7 @@ const GoalProgressMini: React.FC<GoalProgressMiniProps> = ({ goals, onNavigate }
       })}
       {goals.length > 3 && (
         <button className="btn-link goal-mini-link" onClick={() => onNavigate('profile')}>
-          Все цели →
+          {t('goalsMini.allGoals')}
         </button>
       )}
     </div>
