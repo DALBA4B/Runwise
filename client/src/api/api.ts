@@ -39,6 +39,16 @@ async function request(endpoint: string, options: RequestInit = {}): Promise<any
   return response.json();
 }
 
+// ============ TYPES ============
+
+export interface AiPreferences {
+  coach_gender?: 'male' | 'female';
+  response_length?: 'short' | 'medium' | 'long';
+  personality?: 'bro' | 'strict' | 'calm' | 'motivator';
+  humor?: boolean;
+  emoji_level?: 'few' | 'many';
+}
+
 // ============ AUTH ============
 
 export const auth = {
@@ -94,7 +104,7 @@ export const workouts = {
 
 export const profile = {
   get: () => request('/api/profile'),
-  update: (data: { age?: number | null; height_cm?: number | null; weight_kg?: number | null }) =>
+  update: (data: { age?: number | null; height_cm?: number | null; weight_kg?: number | null; gender?: string | null; ai_preferences?: AiPreferences }) =>
     request('/api/profile', { method: 'PUT', body: JSON.stringify(data) }),
   getRecords: () => request('/api/profile/records'),
   updateRecord: (data: { distance_type: string; time_seconds: number; record_date?: string }) =>

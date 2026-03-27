@@ -9,7 +9,7 @@ router.get('/', authMiddleware, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('users')
-      .select('age, height_cm, weight_kg')
+      .select('age, height_cm, weight_kg, gender, ai_preferences')
       .eq('id', req.user.id)
       .single();
 
@@ -23,13 +23,20 @@ router.get('/', authMiddleware, async (req, res) => {
 // PUT /api/profile — update user profile data
 router.put('/', authMiddleware, async (req, res) => {
   try {
-    const { age, height_cm, weight_kg } = req.body;
+    const { age, height_cm, weight_kg, gender, ai_preferences } = req.body;
+
+    const updateFields = {};
+    if (age !== undefined) updateFields.age = age;
+    if (height_cm !== undefined) updateFields.height_cm = height_cm;
+    if (weight_kg !== undefined) updateFields.weight_kg = weight_kg;
+    if (gender !== undefined) updateFields.gender = gender;
+    if (ai_preferences !== undefined) updateFields.ai_preferences = ai_preferences;
 
     const { data, error } = await supabase
       .from('users')
-      .update({ age, height_cm, weight_kg })
+      .update(updateFields)
       .eq('id', req.user.id)
-      .select('age, height_cm, weight_kg')
+      .select('age, height_cm, weight_kg, gender, ai_preferences')
       .single();
 
     if (error) throw error;

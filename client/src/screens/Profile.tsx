@@ -57,6 +57,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
   const [removingGoalId, setRemovingGoalId] = useState<string | null>(null);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [settingsModalClosing, setSettingsModalClosing] = useState(false);
+  const [gender, setGender] = useState<string | null>(null);
   const [age, setAge] = useState('');
   const [height, setHeight] = useState('');
   const [weight, setWeight] = useState('');
@@ -253,6 +254,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
         setPredictions(predsData.value);
       }
       if (profileData.status === 'fulfilled' && profileData.value) {
+        if (profileData.value.gender) setGender(profileData.value.gender);
         if (profileData.value.age) setAge(profileData.value.age.toString());
         if (profileData.value.height_cm) setHeight(profileData.value.height_cm.toString());
         if (profileData.value.weight_kg) setWeight(profileData.value.weight_kg.toString());
@@ -376,6 +378,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
     setSavingProfile(true);
     try {
       await profileApi.update({
+        gender: gender || null,
         age: age ? parseInt(age) : null,
         height_cm: height ? parseFloat(height) : null,
         weight_kg: weight ? parseFloat(weight) : null
@@ -822,6 +825,24 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
         <div className={`modal-overlay${paramsModalClosing ? ' modal-closing' : ''}`} onClick={closeParamsModal}>
           <div className={`modal-content${paramsModalClosing ? ' modal-content-closing' : ''}`} onClick={e => e.stopPropagation()}>
             <h3 className="modal-title">{t('profile.physicalParams')}</h3>
+
+            <div className="modal-field">
+              <label className="param-label">{t('profile.gender')}</label>
+              <div className="gender-selector">
+                <button
+                  className={`gender-btn${gender === 'male' ? ' active' : ''}`}
+                  onClick={() => setGender(gender === 'male' ? null : 'male')}
+                >
+                  ♂ {t('profile.gender_male')}
+                </button>
+                <button
+                  className={`gender-btn${gender === 'female' ? ' active' : ''}`}
+                  onClick={() => setGender(gender === 'female' ? null : 'female')}
+                >
+                  ♀ {t('profile.gender_female')}
+                </button>
+              </div>
+            </div>
 
             <div className="modal-field">
               <label className="param-label">{t('profile.age')}</label>

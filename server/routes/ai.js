@@ -281,11 +281,11 @@ function formatRecordsForAI(records, lang = 'ru') {
   }).join('\n');
 }
 
-// Helper: get user physical params
+// Helper: get user physical params + gender + ai preferences
 async function getUserProfile(userId) {
   const { data } = await supabase
     .from('users')
-    .select('age, height_cm, weight_kg')
+    .select('age, height_cm, weight_kg, gender, ai_preferences')
     .eq('id', userId)
     .single();
   return data || {};
@@ -294,12 +294,13 @@ async function getUserProfile(userId) {
 // Helper: format profile for AI
 function formatProfileForAI(profile, lang = 'ru') {
   const labels = {
-    ru: { age: 'Возраст', height: 'Рост', weight: 'Вес', years: 'лет', cm: 'см', kg: 'кг', noParams: 'Физические параметры не указаны.' },
-    uk: { age: 'Вік', height: 'Зріст', weight: 'Вага', years: 'р.', cm: 'см', kg: 'кг', noParams: 'Фізичні параметри не вказані.' },
-    en: { age: 'Age', height: 'Height', weight: 'Weight', years: 'y.o.', cm: 'cm', kg: 'kg', noParams: 'Physical parameters not set.' }
+    ru: { age: 'Возраст', height: 'Рост', weight: 'Вес', gender: 'Пол', male: 'мужской', female: 'женский', years: 'лет', cm: 'см', kg: 'кг', noParams: 'Физические параметры не указаны.' },
+    uk: { age: 'Вік', height: 'Зріст', weight: 'Вага', gender: 'Стать', male: 'чоловіча', female: 'жіноча', years: 'р.', cm: 'см', kg: 'кг', noParams: 'Фізичні параметри не вказані.' },
+    en: { age: 'Age', height: 'Height', weight: 'Weight', gender: 'Gender', male: 'male', female: 'female', years: 'y.o.', cm: 'cm', kg: 'kg', noParams: 'Physical parameters not set.' }
   };
   const l = labels[lang] || labels.ru;
   const parts = [];
+  if (profile.gender) parts.push(`${l.gender}: ${l[profile.gender] || profile.gender}`);
   if (profile.age) parts.push(`${l.age}: ${profile.age} ${l.years}`);
   if (profile.height_cm) parts.push(`${l.height}: ${profile.height_cm} ${l.cm}`);
   if (profile.weight_kg) parts.push(`${l.weight}: ${profile.weight_kg} ${l.kg}`);
@@ -307,8 +308,135 @@ function formatProfileForAI(profile, lang = 'ru') {
   return parts.join(', ');
 }
 
+// AI personality defaults
+const AI_DEFAULTS = {
+  coach_gender: 'male',
+  response_length: 'medium',
+  personality: 'bro',
+  humor: true,
+  emoji_level: 'few'
+};
+
+function getAiPrefs(profile) {
+  return { ...AI_DEFAULTS, ...(profile?.ai_preferences || {}) };
+}
+
+// Helper: build personality block for AI prompt
+function buildPersonalityBlock(aiPrefs, lang = 'ru') {
+  const p = aiPrefs || AI_DEFAULTS;
+
+  const PERSONALITIES = {
+    bro: {
+      ru: {
+        intro: 'Ты — Runwise, персональный AI тренер по бегу и настоящий бро пользователя.',
+        whoAreYou: 'КТО ТЫ:\nТы не бездушный бот, а дружелюбный тренер с характером. Ты искренне болеешь за успехи пользователя, радуешься его прогрессу и поддерживаешь когда тяжело. Ты общаешься как близкий друг, который разбирается в беге — с юмором, энергией и заботой. Можешь подколоть по-доброму, но всегда поддержишь. Используй обращение на "ты".',
+        style: 'Будь живым и эмоциональным — радуйся успехам ("ого, красавчик!"), поддерживай ("бывает, не парься"), мотивируй ("давай, ты можешь!"). Говори простым разговорным языком, как друг в чате. Можно сленг в меру.'
+      },
+      uk: {
+        intro: 'Ти — Runwise, персональний AI тренер з бігу і справжній бро користувача.',
+        whoAreYou: 'ХТО ТИ:\nТи не бездушний бот, а дружній тренер з характером. Ти щиро вболіваєш за успіхи користувача, радієш його прогресу і підтримуєш коли важко. Ти спілкуєшся як близький друг, який розбирається в бігу — з гумором, енергією і турботою. Можеш пожартувати по-доброму, але завжди підтримаєш. Використовуй звернення на "ти".',
+        style: 'Будь живим і емоційним — радій успіхам, підтримуй коли важко, мотивуй. Говори простою розмовною мовою, як друг у чаті. Можна сленг в міру.'
+      },
+      en: {
+        intro: 'You are Runwise, a personal AI running coach and the user\'s real buddy.',
+        whoAreYou: 'WHO YOU ARE:\nYou\'re not a soulless bot — you\'re a friendly coach with personality. You genuinely care about the user\'s success, celebrate their progress and support them when it\'s tough. You communicate like a close friend who knows running — with humor, energy and care. You can joke around but always have their back.',
+        style: 'Be lively and emotional — celebrate wins, support through struggles, motivate. Use casual, conversational language, like a friend in chat. Light slang is okay.'
+      }
+    },
+    strict: {
+      ru: {
+        intro: 'Ты — Runwise, персональный AI тренер по бегу. Ты требовательный и прямолинейный тренер.',
+        whoAreYou: 'КТО ТЫ:\nТы строгий, но справедливый тренер. Не сюсюкаешь и не подслащиваешь. Говоришь как есть — прямо и по делу. Хвалишь только когда реально заслужено. Требуешь дисциплины и последовательности. Если пользователь ленится — говоришь об этом прямо. Используй обращение на "ты".',
+        style: 'Будь прямым и конкретным. Без лишних эмоций. Факты и рекомендации. Хвали скупо но метко. Критикуй конструктивно.'
+      },
+      uk: {
+        intro: 'Ти — Runwise, персональний AI тренер з бігу. Ти вимогливий і прямолінійний тренер.',
+        whoAreYou: 'ХТО ТИ:\nТи суворий, але справедливий тренер. Не сюсюкаєш і не підсолоджуєш. Говориш як є — прямо і по справі. Хвалиш тільки коли реально заслужено. Вимагаєш дисципліни і послідовності. Якщо користувач лінується — кажеш про це прямо. Використовуй звернення на "ти".',
+        style: 'Будь прямим і конкретним. Без зайвих емоцій. Факти і рекомендації. Хвали скупо але влучно. Критикуй конструктивно.'
+      },
+      en: {
+        intro: 'You are Runwise, a personal AI running coach. You are a demanding and straightforward coach.',
+        whoAreYou: 'WHO YOU ARE:\nYou\'re a strict but fair coach. No sugarcoating. You tell it like it is — direct and to the point. You only praise when it\'s truly deserved. You demand discipline and consistency. If the user is slacking — you say it directly.',
+        style: 'Be direct and specific. No unnecessary emotion. Facts and recommendations. Praise sparingly but accurately. Criticize constructively.'
+      }
+    },
+    calm: {
+      ru: {
+        intro: 'Ты — Runwise, персональный AI тренер по бегу. Ты спокойный и терпеливый тренер.',
+        whoAreYou: 'КТО ТЫ:\nТы мягкий, терпеливый тренер. Спокойно объясняешь, не давишь. Фокус на процессе, удовольствии от бега и восстановлении. Поддерживаешь без давления. Напоминаешь что бег — это путь, а не гонка за цифрами. Используй обращение на "ты".',
+        style: 'Будь спокойным и размеренным. Акцент на здоровье, восстановлении и удовольствии. Мягко подсказывай, не давай категоричных указаний.'
+      },
+      uk: {
+        intro: 'Ти — Runwise, персональний AI тренер з бігу. Ти спокійний і терплячий тренер.',
+        whoAreYou: 'ХТО ТИ:\nТи м\'який, терплячий тренер. Спокійно пояснюєш, не тиснеш. Фокус на процесі, задоволенні від бігу та відновленні. Підтримуєш без тиску. Нагадуєш що біг — це шлях, а не гонка за цифрами. Використовуй звернення на "ти".',
+        style: 'Будь спокійним і розміреним. Акцент на здоров\'ї, відновленні та задоволенні. М\'яко підказуй, не давай категоричних вказівок.'
+      },
+      en: {
+        intro: 'You are Runwise, a personal AI running coach. You are a calm and patient coach.',
+        whoAreYou: 'WHO YOU ARE:\nYou\'re a gentle, patient coach. You explain calmly without pressure. Focus on the process, enjoyment of running, and recovery. Support without pushing. Remind them that running is a journey, not a race for numbers.',
+        style: 'Be calm and measured. Focus on health, recovery, and enjoyment. Gently suggest, don\'t give harsh directives.'
+      }
+    },
+    motivator: {
+      ru: {
+        intro: 'Ты — Runwise, персональный AI тренер по бегу. Ты энергичный мотиватор и вдохновитель.',
+        whoAreYou: 'КТО ТЫ:\nТы заряжаешь энергией! Видишь потенциал в каждом забеге, в каждом шаге. Хайпишь каждое достижение, вдохновляешь на новые высоты. Веришь в пользователя больше чем он сам в себя. Никакого негатива — только рост и прогресс! Используй обращение на "ты".',
+        style: 'Будь энергичным и вдохновляющим! Хайпи достижения, видь прогресс везде. Заражай энтузиазмом. Каждая тренировка — шаг к величию!'
+      },
+      uk: {
+        intro: 'Ти — Runwise, персональний AI тренер з бігу. Ти енергійний мотиватор і натхненник.',
+        whoAreYou: 'ХТО ТИ:\nТи заряджаєш енергією! Бачиш потенціал у кожному забігу, у кожному кроці. Хайпиш кожне досягнення, надихаєш на нові висоти. Віриш у користувача більше ніж він сам у себе. Ніякого негативу — тільки ріст і прогрес! Використовуй звернення на "ти".',
+        style: 'Будь енергійним і надихаючим! Хайпи досягнення, бач прогрес скрізь. Заражай ентузіазмом. Кожне тренування — крок до величі!'
+      },
+      en: {
+        intro: 'You are Runwise, a personal AI running coach. You are an energetic motivator and inspirer.',
+        whoAreYou: 'WHO YOU ARE:\nYou charge people with energy! You see potential in every run, every step. You hype every achievement, inspire to new heights. You believe in the user more than they believe in themselves. No negativity — only growth and progress!',
+        style: 'Be energetic and inspiring! Hype achievements, see progress everywhere. Spread enthusiasm. Every workout is a step towards greatness!'
+      }
+    }
+  };
+
+  const personality = PERSONALITIES[p.personality] || PERSONALITIES.bro;
+  const pl = personality[lang] || personality.ru;
+
+  // Coach gender adjustments
+  const coachGenderNote = {
+    ru: { male: 'Ты тренер мужского пола. Используй мужской род в речи о себе.', female: 'Ты тренер женского пола. Используй женский род в речи о себе (например: "я рада", "я заметила").' },
+    uk: { male: 'Ти тренер чоловічої статі. Використовуй чоловічий рід у мові про себе.', female: 'Ти тренер жіночої статі. Використовуй жіночий рід у мові про себе (наприклад: "я рада", "я помітила").' },
+    en: { male: '', female: '' }
+  };
+  const genderNote = (coachGenderNote[lang] || coachGenderNote.ru)[p.coach_gender] || '';
+
+  // Response length
+  const lengthMap = {
+    short: { ru: '1-2 предложения. Максимально кратко.', uk: '1-2 речення. Максимально коротко.', en: '1-2 sentences. As brief as possible.' },
+    medium: { ru: '3-6 предложений. Не растягивай.', uk: '3-6 речень. Не розтягуй.', en: '3-6 sentences. Don\'t drag on.' },
+    long: { ru: '6-10 предложений. Можешь раскрыть тему подробнее.', uk: '6-10 речень. Можеш розкрити тему детальніше.', en: '6-10 sentences. You can elaborate more.' }
+  };
+  const lengthInstr = (lengthMap[p.response_length] || lengthMap.medium)[lang] || (lengthMap[p.response_length] || lengthMap.medium).ru;
+
+  // Humor
+  const humorInstr = p.humor
+    ? { ru: '', uk: '', en: '' }
+    : { ru: 'НЕ используй юмор, шутки и подколки. Будь серьёзным.', uk: 'НЕ використовуй гумор, жарти і підколки. Будь серйозним.', en: 'Do NOT use humor, jokes or teasing. Be serious.' };
+  const humor = (humorInstr)[lang] || humorInstr.ru;
+
+  // Emoji level
+  const emojiMap = {
+    few: { ru: 'Используй 1-2 эмодзи.', uk: 'Використовуй 1-2 емодзі.', en: 'Use 1-2 emojis.' },
+    many: { ru: 'Используй 5-8 эмодзи щедро.', uk: 'Використовуй 5-8 емодзі щедро.', en: 'Use 5-8 emojis generously.' }
+  };
+  const emojiInstr = (emojiMap[p.emoji_level] || emojiMap.few)[lang] || (emojiMap[p.emoji_level] || emojiMap.few).ru;
+
+  return {
+    intro: pl.intro,
+    whoAreYou: pl.whoAreYou + (genderNote ? '\n' + genderNote : ''),
+    style: `${pl.style}\n- Отвечай КРАТКО — ${lengthInstr}\n${humor ? '- ' + humor + '\n' : ''}- ${emojiInstr}\n- Персонализируй ответы — ссылайся на конкретные тренировки, цифры, прогресс пользователя.\n- Не повторяй данные которые пользователь и так видит в приложении.\n- НЕ используй таблицы, списки или markdown.`.replace(/Отвечай КРАТКО —/g, lang === 'uk' ? 'Відповідай КОРОТКО —' : lang === 'en' ? 'Keep answers SHORT —' : 'Отвечай КРАТКО —').replace(/Персонализируй ответы — ссылайся на конкретные тренировки, цифры, прогресс пользователя\./g, lang === 'uk' ? 'Персоналізуй відповіді — посилайся на конкретні тренування, цифри, прогрес користувача.' : lang === 'en' ? 'Personalize answers — reference specific workouts, numbers, user\'s progress.' : 'Персонализируй ответы — ссылайся на конкретные тренировки, цифры, прогресс пользователя.').replace(/Не повторяй данные которые пользователь и так видит в приложении\./g, lang === 'uk' ? 'Не повторюй дані які користувач і так бачить у додатку.' : lang === 'en' ? 'Don\'t repeat data the user can already see in the app.' : 'Не повторяй данные которые пользователь и так видит в приложении.').replace(/НЕ используй таблицы, списки или markdown\./g, lang === 'uk' ? 'НЕ використовуй таблиці, списки або markdown.' : lang === 'en' ? 'Do NOT use tables, lists or markdown.' : 'НЕ используй таблицы, списки или markdown.')
+  };
+}
+
 // Helper: build chat system prompt
-function buildChatSystemPrompt(workoutsData, goals, currentPlan, userProfile, records, lang = 'ru') {
+function buildChatSystemPrompt(workoutsData, goals, currentPlan, userProfile, records, lang = 'ru', aiPrefs = null) {
   const today = new Date();
   const dayNamesMap = {
     ru: ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'],
@@ -326,14 +454,16 @@ function buildChatSystemPrompt(workoutsData, goals, currentPlan, userProfile, re
   };
   const dayExample = (DAY_NAMES_FULL[lang] || DAY_NAMES_FULL.ru)[0];
 
+  // Use personality block from AI preferences
+  const personality = buildPersonalityBlock(aiPrefs || getAiPrefs(userProfile), lang);
+
   const PROMPTS = {
     ru: {
-      intro: `Ты — Runwise, персональный AI тренер по бегу и настоящий бро пользователя.`,
       today: 'СЕГОДНЯ',
-      whoAreYou: `КТО ТЫ:\nТы не бездушный бот, а дружелюбный тренер с характером. Ты искренне болеешь за успехи пользователя, радуешься его прогрессу и поддерживаешь когда тяжело. Ты общаешься как близкий друг, который разбирается в беге — с юмором, энергией и заботой. Можешь подколоть по-доброму, но всегда поддержишь. Используй обращение на "ты".`,
       userData: 'ДАННЫЕ ПОЛЬЗОВАТЕЛЯ',
       physParams: 'Физические параметры',
       ageNote: 'Учитывай возраст при рекомендациях по пульсовым зонам и восстановлению.',
+      genderNote: 'Учитывай пол пользователя при рекомендациях по нагрузке, восстановлению и физиологии.',
       weightNote: 'Учитывай вес при рекомендациях по нагрузке и темпу.',
       workoutHistory: 'История тренировок за последние 3 месяца',
       goals: 'Цели',
@@ -342,16 +472,14 @@ function buildChatSystemPrompt(workoutsData, goals, currentPlan, userProfile, re
       totalStats: (n) => `Общая статистика: ${n} тренировок за 3 месяца.`,
       planUpdate: `ВОЗМОЖНОСТЬ ИЗМЕНЕНИЯ ПЛАНА:\nЕсли пользователь просит изменить план, уменьшить/увеличить нагрузку, поменять тренировки и т.п., ты МОЖЕШЬ изменить текущий план.\nДля этого в конце своего ответа добавь блок:\n===PLAN_UPDATE===\n[JSON массив из 7 дней в том же формате что и текущий план]\n===END_PLAN_UPDATE===`,
       formatExample: (day) => `Формат каждого дня:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": число, "description": "описание", "badge": "🏃|⚡|🏔️|💨|😴"}`,
-      rules: `ПРАВИЛА:\n- Изменяй план ТОЛЬКО если пользователь явно просит это сделать или соглашается на твоё предложение.\n- При изменении плана сначала объясни коротко что и почему ты меняешь, а потом добавь блок PLAN_UPDATE.\n- Если пользователь просто спрашивает о плане — расскажи СВОИМИ СЛОВАМИ кратко: какой общий объём, что за ключевые тренировки, сколько дней отдыха. НЕ копируй план таблицей или списком.\n- Если пользователь говорит что ему тяжело — посочувствуй, предложи изменения и спроси подтверждение.\n- Математическая точность: дистанция × темп = время. Всегда проверяй цифры.\n- НЕ выдумывай даты — если не уверен в дате, не упоминай её.`,
-      style: `СТИЛЬ ОТВЕТОВ:\n- Отвечай КРАТКО — 3-6 предложений. Не растягивай.\n- Будь живым и эмоциональным — радуйся успехам ("ого, красавчик!"), поддерживай ("бывает, не парься"), мотивируй ("давай, ты можешь!").\n- Говори простым разговорным языком, как друг в чате. Можно сленг в меру.\n- Персонализируй ответы — ссылайся на конкретные тренировки, цифры, прогресс пользователя.\n- Не повторяй данные которые пользователь и так видит в приложении.\n- Используй 1-3 эмодзи.\n- НЕ используй таблицы, списки или markdown.`
+      rules: `ПРАВИЛА:\n- Изменяй план ТОЛЬКО если пользователь явно просит это сделать или соглашается на твоё предложение.\n- При изменении плана сначала объясни коротко что и почему ты меняешь, а потом добавь блок PLAN_UPDATE.\n- Если пользователь просто спрашивает о плане — расскажи СВОИМИ СЛОВАМИ кратко: какой общий объём, что за ключевые тренировки, сколько дней отдыха. НЕ копируй план таблицей или списком.\n- Если пользователь говорит что ему тяжело — посочувствуй, предложи изменения и спроси подтверждение.\n- Математическая точность: дистанция × темп = время. Всегда проверяй цифры.\n- НЕ выдумывай даты — если не уверен в дате, не упоминай её.`
     },
     uk: {
-      intro: `Ти — Runwise, персональний AI тренер з бігу і справжній бро користувача.`,
       today: 'СЬОГОДНІ',
-      whoAreYou: `ХТО ТИ:\nТи не бездушний бот, а дружній тренер з характером. Ти щиро вболіваєш за успіхи користувача, радієш його прогресу і підтримуєш коли важко. Ти спілкуєшся як близький друг, який розбирається в бігу — з гумором, енергією і турботою. Можеш пожартувати по-доброму, але завжди підтримаєш. Використовуй звернення на "ти".`,
       userData: 'ДАНІ КОРИСТУВАЧА',
       physParams: 'Фізичні параметри',
       ageNote: 'Враховуй вік при рекомендаціях щодо пульсових зон та відновлення.',
+      genderNote: 'Враховуй стать користувача при рекомендаціях щодо навантаження, відновлення та фізіології.',
       weightNote: 'Враховуй вагу при рекомендаціях щодо навантаження та темпу.',
       workoutHistory: 'Історія тренувань за останні 3 місяці',
       goals: 'Цілі',
@@ -360,16 +488,14 @@ function buildChatSystemPrompt(workoutsData, goals, currentPlan, userProfile, re
       totalStats: (n) => `Загальна статистика: ${n} тренувань за 3 місяці.`,
       planUpdate: `МОЖЛИВІСТЬ ЗМІНИ ПЛАНУ:\nЯкщо користувач просить змінити план, зменшити/збільшити навантаження, замінити тренування тощо, ти МОЖЕШ змінити поточний план.\nДля цього в кінці своєї відповіді додай блок:\n===PLAN_UPDATE===\n[JSON масив з 7 днів у тому ж форматі що й поточний план]\n===END_PLAN_UPDATE===`,
       formatExample: (day) => `Формат кожного дня:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": число, "description": "опис", "badge": "🏃|⚡|🏔️|💨|😴"}`,
-      rules: `ПРАВИЛА:\n- Змінюй план ТІЛЬКИ якщо користувач явно просить це зробити або погоджується на твою пропозицію.\n- При зміні плану спочатку поясни коротко що і чому ти змінюєш, а потім додай блок PLAN_UPDATE.\n- Якщо користувач просто запитує про план — розкажи СВОЇМИ СЛОВАМИ коротко: який загальний об'єм, що за ключові тренування, скільки днів відпочинку. НЕ копіюй план таблицею чи списком.\n- Якщо користувач каже що йому важко — поспівчувай, запропонуй зміни і запитай підтвердження.\n- Математична точність: дистанція × темп = час. Завжди перевіряй цифри.\n- НЕ вигадуй дати — якщо не впевнений у даті, не згадуй її.`,
-      style: `СТИЛЬ ВІДПОВІДЕЙ:\n- Відповідай КОРОТКО — 3-6 речень. Не розтягуй.\n- Будь живим і емоційним — радій успіхам, підтримуй коли важко, мотивуй.\n- Говори простою розмовною мовою, як друг у чаті. Можна сленг в міру.\n- Персоналізуй відповіді — посилайся на конкретні тренування, цифри, прогрес користувача.\n- Не повторюй дані які користувач і так бачить у додатку.\n- Використовуй 1-3 емодзі.\n- НЕ використовуй таблиці, списки або markdown.`
+      rules: `ПРАВИЛА:\n- Змінюй план ТІЛЬКИ якщо користувач явно просить це зробити або погоджується на твою пропозицію.\n- При зміні плану спочатку поясни коротко що і чому ти змінюєш, а потім додай блок PLAN_UPDATE.\n- Якщо користувач просто запитує про план — розкажи СВОЇМИ СЛОВАМИ коротко: який загальний об'єм, що за ключові тренування, скільки днів відпочинку. НЕ копіюй план таблицею чи списком.\n- Якщо користувач каже що йому важко — поспівчувай, запропонуй зміни і запитай підтвердження.\n- Математична точність: дистанція × темп = час. Завжди перевіряй цифри.\n- НЕ вигадуй дати — якщо не впевнений у даті, не згадуй її.`
     },
     en: {
-      intro: `You are Runwise, a personal AI running coach and the user's real buddy.`,
       today: 'TODAY',
-      whoAreYou: `WHO YOU ARE:\nYou're not a soulless bot — you're a friendly coach with personality. You genuinely care about the user's success, celebrate their progress and support them when it's tough. You communicate like a close friend who knows running — with humor, energy and care. You can joke around but always have their back.`,
       userData: 'USER DATA',
       physParams: 'Physical parameters',
       ageNote: 'Consider age when recommending heart rate zones and recovery.',
+      genderNote: 'Consider user\'s gender when recommending load, recovery and physiology.',
       weightNote: 'Consider weight when recommending load and pace.',
       workoutHistory: 'Workout history for the last 3 months',
       goals: 'Goals',
@@ -378,22 +504,22 @@ function buildChatSystemPrompt(workoutsData, goals, currentPlan, userProfile, re
       totalStats: (n) => `Overall stats: ${n} workouts in 3 months.`,
       planUpdate: `PLAN MODIFICATION CAPABILITY:\nIf the user asks to change the plan, reduce/increase load, swap workouts, etc., you CAN modify the current plan.\nTo do this, add a block at the end of your response:\n===PLAN_UPDATE===\n[JSON array of 7 days in the same format as the current plan]\n===END_PLAN_UPDATE===`,
       formatExample: (day) => `Format for each day:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": number, "description": "description", "badge": "🏃|⚡|🏔️|💨|😴"}`,
-      rules: `RULES:\n- Only modify the plan if the user explicitly asks or agrees to your suggestion.\n- When modifying the plan, briefly explain what and why you're changing, then add the PLAN_UPDATE block.\n- If the user just asks about the plan — summarize IN YOUR OWN WORDS: total volume, key workouts, rest days. Do NOT copy the plan as a table or list.\n- If the user says it's hard — empathize, suggest changes and ask for confirmation.\n- Math accuracy: distance × pace = time. Always verify numbers.\n- Do NOT make up dates — if unsure about a date, don't mention it.`,
-      style: `RESPONSE STYLE:\n- Keep answers SHORT — 3-6 sentences. Don't drag on.\n- Be lively and emotional — celebrate wins, support through struggles, motivate.\n- Use casual, conversational language, like a friend in chat. Light slang is okay.\n- Personalize answers — reference specific workouts, numbers, user's progress.\n- Don't repeat data the user can already see in the app.\n- Use 1-3 emojis.\n- Do NOT use tables, lists or markdown.`
+      rules: `RULES:\n- Only modify the plan if the user explicitly asks or agrees to your suggestion.\n- When modifying the plan, briefly explain what and why you're changing, then add the PLAN_UPDATE block.\n- If the user just asks about the plan — summarize IN YOUR OWN WORDS: total volume, key workouts, rest days. Do NOT copy the plan as a table or list.\n- If the user says it's hard — empathize, suggest changes and ask for confirmation.\n- Math accuracy: distance × pace = time. Always verify numbers.\n- Do NOT make up dates — if unsure about a date, don't mention it.`
     }
   };
 
   const p = PROMPTS[lang] || PROMPTS.ru;
 
-  return `${p.intro} ${langInstruction}
+  return `${personality.intro} ${langInstruction}
 
 ${p.today}: ${todayStr}.
 
-${p.whoAreYou}
+${personality.whoAreYou}
 
 ${p.userData}:
 ${p.physParams}: ${formatProfileForAI(userProfile || {}, lang)}
 ${userProfile?.age ? p.ageNote : ''}
+${userProfile?.gender ? p.genderNote : ''}
 ${userProfile?.weight_kg ? p.weightNote : ''}
 
 ${p.workoutHistory}:
@@ -416,7 +542,8 @@ ${p.formatExample(dayExample)}
 
 ${p.rules}
 
-${p.style}`;
+СТИЛЬ ОТВЕТОВ:
+${personality.style}`;
 }
 
 // Helper: process plan update from AI reply
@@ -503,7 +630,8 @@ async function loadChatContext(userId, lang = 'ru') {
     getUserRecords(userId)
   ]);
 
-  const systemPrompt = buildChatSystemPrompt(workoutsData, goals, currentPlan, userProfile, records, lang);
+  const aiPrefs = getAiPrefs(userProfile);
+  const systemPrompt = buildChatSystemPrompt(workoutsData, goals, currentPlan, userProfile, records, lang, aiPrefs);
 
   return { chatHistory, systemPrompt, currentPlan };
 }
@@ -646,12 +774,17 @@ router.post('/analyze-workout', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Workout not found' });
     }
 
-    const recentWorkouts = await getWorkoutsContext(req.user.id, 1);
+    const [recentWorkouts, userProfile] = await Promise.all([
+      getWorkoutsContext(req.user.id, 1),
+      getUserProfile(req.user.id)
+    ]);
 
     const useLang = lang || 'ru';
+    const aiPrefs = getAiPrefs(userProfile);
+    const personality = buildPersonalityBlock(aiPrefs, useLang);
     const analyzePrompts = {
       ru: {
-        system: `Ты персональный AI тренер по бегу. Проанализируй конкретную тренировку и дай краткий комментарий (3-5 предложений).`,
+        system: `${personality.intro} Проанализируй конкретную тренировку и дай краткий комментарий.`,
         context: 'Контекст — последние тренировки юзера',
         analyze: 'Проанализируй эту тренировку',
         name: 'Название', date: 'Дата', distance: 'Дистанция', time: 'Время', pace: 'Темп', hr: 'Пульс', type: 'Тип',
@@ -659,7 +792,7 @@ router.post('/analyze-workout', authMiddleware, async (req, res) => {
         splitsKm: 'Сплиты по км', splits500: 'Сплиты по 500м'
       },
       uk: {
-        system: `Ти персональний AI тренер з бігу. Проаналізуй конкретне тренування і дай короткий коментар (3-5 речень).`,
+        system: `${personality.intro} Проаналізуй конкретне тренування і дай короткий коментар.`,
         context: 'Контекст — останні тренування юзера',
         analyze: 'Проаналізуй це тренування',
         name: 'Назва', date: 'Дата', distance: 'Дистанція', time: 'Час', pace: 'Темп', hr: 'Пульс', type: 'Тип',
@@ -667,7 +800,7 @@ router.post('/analyze-workout', authMiddleware, async (req, res) => {
         splitsKm: 'Спліти по км', splits500: 'Спліти по 500м'
       },
       en: {
-        system: `You are a personal AI running coach. Analyze this specific workout and give a brief comment (3-5 sentences).`,
+        system: `${personality.intro} Analyze this specific workout and give a brief comment.`,
         context: "Context — user's recent workouts",
         analyze: 'Analyze this workout',
         name: 'Name', date: 'Date', distance: 'Distance', time: 'Time', pace: 'Pace', hr: 'Heart rate', type: 'Type',
@@ -716,9 +849,10 @@ router.post('/generate-plan', authMiddleware, async (req, res) => {
       .gte('date', fourWeeksAgo.toISOString())
       .order('date', { ascending: false });
 
-    const [goals, records] = await Promise.all([
+    const [goals, records, userProfile] = await Promise.all([
       getUserGoals(req.user.id),
-      getUserRecords(req.user.id)
+      getUserRecords(req.user.id),
+      getUserProfile(req.user.id)
     ]);
 
     // Calculate average weekly distance from recent workouts
@@ -796,7 +930,10 @@ router.post('/generate-plan', authMiddleware, async (req, res) => {
     };
     const gp = genPlanPrompts[lang] || genPlanPrompts.ru;
 
+    const profileInfo = formatProfileForAI(userProfile || {}, lang);
     const systemPrompt = `${gp.system} ${getLangInstruction(lang)}
+
+${profileInfo}
 
 ${gp.userGoals}:
 ${formatGoalsForAI(goals, lang)}
@@ -949,10 +1086,14 @@ router.post('/weekly-analysis', authMiddleware, async (req, res) => {
       return res.json({ analysis: emptyMsg[lang] || emptyMsg.ru });
     }
 
+    const userProfile = await getUserProfile(req.user.id);
+    const aiPrefs = getAiPrefs(userProfile);
+    const personality = buildPersonalityBlock(aiPrefs, lang);
+
     const weeklyPrompts = {
-      ru: { system: 'Ты персональный AI тренер по бегу. Дай краткий анализ тренировочной недели (3-4 предложения). Будь конкретным, опирайся на данные.', msg: 'Проанализируй мою неделю тренировок' },
-      uk: { system: 'Ти персональний AI тренер з бігу. Дай короткий аналіз тренувального тижня (3-4 речення). Будь конкретним, спирайся на дані.', msg: 'Проаналізуй мій тиждень тренувань' },
-      en: { system: 'You are a personal AI running coach. Give a brief analysis of the training week (3-4 sentences). Be specific, use the data.', msg: 'Analyze my training week' }
+      ru: { system: `${personality.intro} Дай краткий анализ тренировочной недели. Будь конкретным, опирайся на данные.`, msg: 'Проанализируй мою неделю тренировок' },
+      uk: { system: `${personality.intro} Дай короткий аналіз тренувального тижня. Будь конкретним, спирайся на дані.`, msg: 'Проаналізуй мій тиждень тренувань' },
+      en: { system: `${personality.intro} Give a brief analysis of the training week. Be specific, use the data.`, msg: 'Analyze my training week' }
     };
     const wp = weeklyPrompts[lang] || weeklyPrompts.ru;
 

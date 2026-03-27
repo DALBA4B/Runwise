@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import ChatMessage from '../components/ChatMessage';
-import { ai } from '../api/api';
+import { ai, profile as profileApi } from '../api/api';
+import type { AiPreferences } from '../api/api';
 
 interface Message {
   id: string;
@@ -29,11 +31,23 @@ const AIChat: React.FC = () => {
     timestamp: new Date()
   };
 
+  const AI_DEFAULTS: AiPreferences = {
+    coach_gender: 'male',
+    response_length: 'medium',
+    personality: 'bro',
+    humor: true,
+    emoji_level: 'few'
+  };
+
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [updatingPlan, setUpdatingPlan] = useState(false);
+  const [showAiSettings, setShowAiSettings] = useState(false);
+  const [aiSettingsClosing, setAiSettingsClosing] = useState(false);
+  const [aiPrefs, setAiPrefs] = useState<AiPreferences>(AI_DEFAULTS);
+  const [savingPrefs, setSavingPrefs] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const userScrolledUp = useRef(false);
@@ -58,7 +72,7 @@ const AIChat: React.FC = () => {
     userScrolledUp.current = distanceFromBottom > threshold;
   };
 
-  // Load chat history on mount
+  // Load chat history and AI prefs on mount
   useEffect(() => {
     const loadHistory = async () => {
       try {
@@ -79,6 +93,19 @@ const AIChat: React.FC = () => {
       }
     };
     loadHistory();
+
+    // Load AI preferences
+    const cached = localStorage.getItem('runwise_ai_prefs');
+    if (cached) {
+      try { setAiPrefs({ ...AI_DEFAULTS, ...JSON.parse(cached) }); } catch {}
+    }
+    profileApi.get().then((data: any) => {
+      if (data?.ai_preferences) {
+        const prefs = { ...AI_DEFAULTS, ...data.ai_preferences };
+        setAiPrefs(prefs);
+        localStorage.setItem('runwise_ai_prefs', JSON.stringify(prefs));
+      }
+    }).catch(() => {});
   }, []);
 
   const handleClearHistory = async () => {
@@ -182,13 +209,42 @@ const AIChat: React.FC = () => {
     }
   };
 
+  const closeAiSettings = () => {
+    setAiSettingsClosing(true);
+    setTimeout(() => {
+      setShowAiSettings(false);
+      setAiSettingsClosing(false);
+    }, 1000);
+  };
+
+  const handleSaveAiPrefs = async () => {
+    setSavingPrefs(true);
+    try {
+      await profileApi.update({ ai_preferences: aiPrefs });
+      localStorage.setItem('runwise_ai_prefs', JSON.stringify(aiPrefs));
+      closeAiSettings();
+    } catch (err) {
+      console.error('Failed to save AI prefs:', err);
+    } finally {
+      setSavingPrefs(false);
+    }
+  };
+
   return (
     <div className="screen ai-chat-screen">
       <div className="chat-header">
         <h2 className="screen-title">🤖 {t('chat.title')}</h2>
-        {messages.length > 1 && (
-          <button className="clear-chat-btn" onClick={handleClearHistory}>{t('common.clear')}</button>
-        )}
+        <div className="chat-header-actions">
+          <button className="chat-settings-btn" onClick={() => setShowAiSettings(true)} title={t('chat.aiSettings')}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </button>
+          {messages.length > 1 && (
+            <button className="clear-chat-btn" onClick={handleClearHistory}>{t('common.clear')}</button>
+          )}
+        </div>
       </div>
 
       <div className="chat-container">
@@ -259,6 +315,90 @@ const AIChat: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {showAiSettings && ReactDOM.createPortal(
+        <div className={`modal-overlay${aiSettingsClosing ? ' modal-closing' : ''}`} onClick={closeAiSettings}>
+          <div className={`modal-content${aiSettingsClosing ? ' modal-content-closing' : ''}`} onClick={e => e.stopPropagation()}>
+            <h3 className="modal-title">{t('chat.aiSettings')}</h3>
+
+            <div className="ai-settings-section">
+              <div className="ai-settings-title">{t('chat.coachGender')}</div>
+              <div className="ai-option-group">
+                <button
+                  className={`ai-option-btn${aiPrefs.coach_gender === 'male' ? ' active' : ''}`}
+                  onClick={() => setAiPrefs(p => ({ ...p, coach_gender: 'male' }))}
+                >
+                  ♂ {t('chat.coachGenderMale')}
+                </button>
+                <button
+                  className={`ai-option-btn${aiPrefs.coach_gender === 'female' ? ' active' : ''}`}
+                  onClick={() => setAiPrefs(p => ({ ...p, coach_gender: 'female' }))}
+                >
+                  ♀ {t('chat.coachGenderFemale')}
+                </button>
+              </div>
+            </div>
+
+            <div className="ai-settings-section">
+              <div className="ai-settings-title">{t('chat.personality')}</div>
+              <div className="personality-grid">
+                {(['bro', 'strict', 'calm', 'motivator'] as const).map(p => (
+                  <button
+                    key={p}
+                    className={`ai-option-btn${aiPrefs.personality === p ? ' active' : ''}`}
+                    onClick={() => setAiPrefs(prev => ({ ...prev, personality: p }))}
+                  >
+                    {p === 'bro' && '😎'} {p === 'strict' && '🎯'} {p === 'calm' && '🧘'} {p === 'motivator' && '🔥'} {t(`chat.personality${p.charAt(0).toUpperCase() + p.slice(1)}`)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="ai-settings-section">
+              <div className="ai-settings-title">{t('chat.responseLength')}</div>
+              <div className="ai-option-group ai-option-group-3">
+                {(['short', 'medium', 'long'] as const).map(l => (
+                  <button
+                    key={l}
+                    className={`ai-option-btn${aiPrefs.response_length === l ? ' active' : ''}`}
+                    onClick={() => setAiPrefs(p => ({ ...p, response_length: l }))}
+                  >
+                    {t(`chat.responseLength${l.charAt(0).toUpperCase() + l.slice(1)}`)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="ai-settings-section">
+              <div className="ai-settings-title">{t('chat.emojiLevel')}</div>
+              <div className="ai-option-group">
+                <button
+                  className={`ai-option-btn${aiPrefs.emoji_level === 'few' ? ' active' : ''}`}
+                  onClick={() => setAiPrefs(p => ({ ...p, emoji_level: 'few' }))}
+                >
+                  {t('chat.emojiFew')}
+                </button>
+                <button
+                  className={`ai-option-btn${aiPrefs.emoji_level === 'many' ? ' active' : ''}`}
+                  onClick={() => setAiPrefs(p => ({ ...p, emoji_level: 'many' }))}
+                >
+                  {t('chat.emojiMany')}
+                </button>
+              </div>
+            </div>
+
+            <button
+              className="btn btn-accent btn-full"
+              onClick={handleSaveAiPrefs}
+              disabled={savingPrefs}
+              style={{ marginTop: '16px' }}
+            >
+              {savingPrefs ? t('common.saving') : t('common.save')}
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

@@ -2475,3 +2475,157 @@ input[type="number"] {
   color: var(--text-secondary);
   margin-bottom: 8px;
 }
+
+/* ============ GENDER SELECTOR ============ */
+.gender-selector {
+  display: flex;
+  gap: var(--spacing-sm);
+  justify-content: center;
+}
+
+.gender-btn {
+  flex: 1;
+  padding: 10px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.gender-btn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+.gender-btn.active {
+  border-color: var(--color-accent);
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--color-text);
+}
+
+/* ============ CHAT HEADER ACTIONS ============ */
+.chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.chat-settings-btn {
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  padding: 4px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-settings-btn:hover {
+  color: var(--color-text);
+}
+
+.chat-settings-btn:active {
+  color: var(--color-accent);
+}
+
+/* ============ AI SETTINGS MODAL ============ */
+.ai-settings-section {
+  margin-bottom: var(--spacing-md);
+}
+
+.ai-settings-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-sm);
+}
+
+.ai-option-group {
+  display: flex;
+  gap: 6px;
+}
+
+.ai-option-group-3 {
+  display: flex;
+  gap: 6px;
+}
+
+.ai-option-group-3 .ai-option-btn {
+  flex: 1;
+}
+
+.ai-option-btn {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.ai-option-btn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+.ai-option-btn.active {
+  border-color: var(--color-accent);
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--color-text);
+}
+
+.personality-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+/* ============ TOGGLE SWITCH ============ */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.toggle-switch {
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  background: var(--color-border);
+  border: none;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.2s ease;
+  padding: 0;
+}
+
+.toggle-switch.active {
+  background: var(--color-accent);
+}
+
+.toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: white;
+  transition: transform 0.2s ease;
+}
+
+.toggle-switch.active .toggle-knob {
+  transform: translateX(20px);
+}

@@ -80,6 +80,10 @@ CREATE TABLE IF NOT EXISTS personal_records (
 );
 CREATE INDEX IF NOT EXISTS idx_personal_records_user ON personal_records(user_id);
 
+-- User gender and AI preferences
+ALTER TABLE users ADD COLUMN IF NOT EXISTS gender TEXT CHECK (gender IN ('male', 'female'));
+ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_preferences JSONB DEFAULT '{}';
+
 -- Enable Row Level Security (optional, since we use service key on backend)
 -- ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 -- ALTER TABLE workouts ENABLE ROW LEVEL SECURITY;
