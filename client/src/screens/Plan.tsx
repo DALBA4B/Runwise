@@ -124,14 +124,6 @@ const Plan: React.FC = () => {
             ))}
           </div>
 
-          <button
-            className="btn btn-secondary btn-full"
-            onClick={handleGenerate}
-            disabled={generating}
-            style={{ marginTop: '16px' }}
-          >
-            {generating ? `🔄 ${t('plan.regenerating')}` : `🔄 ${t('plan.regenerate')}`}
-          </button>
         </>
       ) : (
         <div className="plan-empty">
