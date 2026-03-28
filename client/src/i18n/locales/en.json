@@ -257,6 +257,7 @@
   },
   "comparison": {
     "title": "This month vs last",
+    "byDay": "by day {{day}}",
     "loading": "Loading...",
     "distance": "Distance",
     "workouts": "Workouts",

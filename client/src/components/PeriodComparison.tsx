@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatDistance, formatPace } from '../utils';
+import i18n from '../i18n';
 
 interface PeriodStats {
   distance: number;
@@ -9,9 +10,11 @@ interface PeriodStats {
 }
 
 interface PeriodComparisonProps {
-  data: { current: PeriodStats; previous: PeriodStats; changes: PeriodStats } | null;
+  data: { current: PeriodStats; previous: PeriodStats; changes: PeriodStats; dayOfMonth?: number } | null;
   loading: boolean;
 }
+
+const LOCALE_MAP: Record<string, string> = { ru: 'ru-RU', uk: 'uk-UA', en: 'en-US' };
 
 const PeriodComparison: React.FC<PeriodComparisonProps> = ({ data, loading }) => {
   const { t } = useTranslation();
@@ -26,6 +29,17 @@ const PeriodComparison: React.FC<PeriodComparisonProps> = ({ data, loading }) =>
   }
 
   if (!data) return null;
+
+  const locale = LOCALE_MAP[i18n.language] || 'ru-RU';
+  const now = new Date();
+  const curMonth = now.toLocaleDateString(locale, { month: 'long' });
+  const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toLocaleDateString(locale, { month: 'long' });
+  const day = data.dayOfMonth || now.getDate();
+
+  // Capitalize first letter
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+  const title = `${cap(curMonth)} vs ${cap(prevMonth)} · ${t('comparison.byDay', { day })}`;
 
   const metrics = [
     {
@@ -50,7 +64,7 @@ const PeriodComparison: React.FC<PeriodComparisonProps> = ({ data, loading }) =>
 
   return (
     <div className="period-comparison">
-      <div className="period-comparison-title">{t('comparison.title')}</div>
+      <div className="period-comparison-title">{title}</div>
       <div className="period-comparison-row">
         {metrics.map((m, i) => (
           <div className="period-comparison-item" key={i}>

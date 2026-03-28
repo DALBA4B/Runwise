@@ -171,14 +171,21 @@ router.get('/weekly', authMiddleware, async (req, res) => {
   }
 });
 
-// GET /api/workouts/comparison — current vs previous month
+// GET /api/workouts/comparison — current vs previous month (same day cutoff)
 router.get('/comparison', authMiddleware, async (req, res) => {
   try {
     const now = new Date();
+    const dayOfMonth = now.getDate();
+
+    // Current month: 1st to today
     const curStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const curEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
+    const curEnd = new Date(now.getFullYear(), now.getMonth(), dayOfMonth, 23, 59, 59).toISOString();
+
+    // Previous month: 1st to same day number (clamped to last day of prev month)
+    const lastDayPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0).getDate();
+    const prevDay = Math.min(dayOfMonth, lastDayPrevMonth);
     const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
-    const prevEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59).toISOString();
+    const prevEnd = new Date(now.getFullYear(), now.getMonth() - 1, prevDay, 23, 59, 59).toISOString();
 
     const [curRes, prevRes] = await Promise.all([
       supabase.from('workouts').select('distance, moving_time, average_pace').eq('user_id', req.user.id).gte('date', curStart).lte('date', curEnd),
@@ -207,7 +214,7 @@ router.get('/comparison', authMiddleware, async (req, res) => {
       avgPace: previous.avgPace === 0 ? 0 : Math.round(((current.avgPace - previous.avgPace) / previous.avgPace) * 1000) / 10
     };
 
-    res.json({ current, previous, changes });
+    res.json({ current, previous, changes, dayOfMonth });
   } catch (err) {
     console.error('Comparison error:', err.message);
     res.status(500).json({ error: 'Failed to fetch comparison' });

@@ -257,6 +257,7 @@
   },
   "comparison": {
     "title": "Этот месяц vs прошлый",
+    "byDay": "к {{day}} числу",
     "loading": "Загрузка...",
     "distance": "Дистанция",
     "workouts": "Тренировки",
