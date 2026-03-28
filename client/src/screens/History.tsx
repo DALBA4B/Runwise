@@ -215,11 +215,7 @@ const History: React.FC<HistoryProps> = ({ onWorkoutClick }) => {
         </div>
       )}
 
-      {loading ? (
-        <div className="screen-loading">
-          <div className="loader"></div>
-        </div>
-      ) : allWorkouts.length === 0 ? (
+      {!loading && allWorkouts.length === 0 ? (
         <p className="empty-text">{t('history.noWorkouts')}</p>
       ) : (
         <div className="workouts-list">

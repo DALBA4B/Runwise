@@ -5,11 +5,12 @@ import { WeekDay } from '../hooks/useWorkouts';
 
 interface WeekChartProps {
   data: WeekDay[];
+  skipAnimation?: boolean;
 }
 
 const DAY_KEYS = ['monShort', 'tueShort', 'wedShort', 'thuShort', 'friShort', 'satShort', 'sunShort'];
 
-const WeekChart: React.FC<WeekChartProps> = ({ data }) => {
+const WeekChart: React.FC<WeekChartProps> = ({ data, skipAnimation }) => {
   const { t } = useTranslation();
   const maxKm = Math.max(...data.map(d => d.km), 1);
 
@@ -46,7 +47,7 @@ const WeekChart: React.FC<WeekChartProps> = ({ data }) => {
             formatter={(value: number) => [`${value} ${t('units.km')}`, t('weekChart.tooltipDistance')]}
             cursor={{ fill: 'rgba(255,255,255,0.05)' }}
           />
-          <Bar dataKey="km" radius={[6, 6, 0, 0]} maxBarSize={32}>
+          <Bar dataKey="km" radius={[6, 6, 0, 0]} maxBarSize={32} isAnimationActive={!skipAnimation}>
             {data.map((entry, index) => (
               <Cell
                 key={index}

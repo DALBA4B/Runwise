@@ -35,13 +35,21 @@ const LANGUAGES = [
   { code: 'en', label: '🇬🇧 English' },
 ];
 
+function readCache<T>(key: string): T | null {
+  try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch { return null; }
+}
+function writeCache(key: string, data: any) {
+  try { localStorage.setItem(key, JSON.stringify(data)); } catch {}
+}
+
 const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
   const { t } = useTranslation();
-  const [allTimeStats, setAllTimeStats] = useState<any>(null);
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [syncStatus, setSyncStatus] = useState<any>(null);
-  const [predictions, setPredictions] = useState<any[]>([]);
+  const cached = readCache<{ stats: any; goals: Goal[]; predictions: any[]; syncStatus: any; profile: any; records: PersonalRecord[] }>('rw_profile_cache');
+  const [allTimeStats, setAllTimeStats] = useState<any>(cached?.stats || null);
+  const [goals, setGoals] = useState<Goal[]>(cached?.goals || []);
+  const [loading, setLoading] = useState(!cached);
+  const [syncStatus, setSyncStatus] = useState<any>(cached?.syncStatus || null);
+  const [predictions, setPredictions] = useState<any[]>(cached?.predictions || []);
   const [newGoalType, setNewGoalType] = useState('monthly_distance');
   const [newGoalTarget, setNewGoalTarget] = useState('');
   const [newGoalUnit, setNewGoalUnit] = useState<'km' | 'm'>('km');
@@ -57,14 +65,14 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
   const [removingGoalId, setRemovingGoalId] = useState<string | null>(null);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [settingsModalClosing, setSettingsModalClosing] = useState(false);
-  const [gender, setGender] = useState<string | null>(null);
-  const [age, setAge] = useState('');
-  const [height, setHeight] = useState('');
-  const [weight, setWeight] = useState('');
+  const [gender, setGender] = useState<string | null>(cached?.profile?.gender || null);
+  const [age, setAge] = useState(cached?.profile?.age?.toString() || '');
+  const [height, setHeight] = useState(cached?.profile?.height_cm?.toString() || '');
+  const [weight, setWeight] = useState(cached?.profile?.weight_kg?.toString() || '');
   const [savingProfile, setSavingProfile] = useState(false);
   const [showParamsModal, setShowParamsModal] = useState(false);
   const [paramsModalClosing, setParamsModalClosing] = useState(false);
-  const [records, setRecords] = useState<PersonalRecord[]>([]);
+  const [records, setRecords] = useState<PersonalRecord[]>(cached?.records || []);
   const [showRecordModal, setShowRecordModal] = useState(false);
   const [editingRecord, setEditingRecord] = useState<PersonalRecord | null>(null);
   const [recordModalClosing, setRecordModalClosing] = useState(false);
@@ -230,7 +238,6 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
   }, []);
 
   const loadProfileData = async () => {
-    setLoading(true);
     try {
       const [statsData, goalsData, syncData, predsData, profileData, recordsData] = await Promise.allSettled([
         workouts.stats('all'),
@@ -241,27 +248,35 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
         profileApi.getRecords()
       ]);
 
+      const cacheObj: any = {};
       if (statsData.status === 'fulfilled') {
         setAllTimeStats(statsData.value);
+        cacheObj.stats = statsData.value;
       }
       if (goalsData.status === 'fulfilled') {
         setGoals(goalsData.value);
+        cacheObj.goals = goalsData.value;
       }
       if (syncData.status === 'fulfilled') {
         setSyncStatus(syncData.value);
+        cacheObj.syncStatus = syncData.value;
       }
       if (predsData.status === 'fulfilled') {
         setPredictions(predsData.value);
+        cacheObj.predictions = predsData.value;
       }
       if (profileData.status === 'fulfilled' && profileData.value) {
         if (profileData.value.gender) setGender(profileData.value.gender);
         if (profileData.value.age) setAge(profileData.value.age.toString());
         if (profileData.value.height_cm) setHeight(profileData.value.height_cm.toString());
         if (profileData.value.weight_kg) setWeight(profileData.value.weight_kg.toString());
+        cacheObj.profile = profileData.value;
       }
       if (recordsData.status === 'fulfilled') {
         setRecords(recordsData.value);
+        cacheObj.records = recordsData.value;
       }
+      writeCache('rw_profile_cache', cacheObj);
     } catch (err) {
       console.error('Failed to load profile:', err);
     } finally {
@@ -503,15 +518,6 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
     i18n.changeLanguage(code);
     localStorage.setItem('runwise_language', code);
   };
-
-  if (loading) {
-    return (
-      <div className="screen-loading">
-        <div className="loader"></div>
-        <p>{t('profile.loading')}</p>
-      </div>
-    );
-  }
 
   return (
     <div className="screen profile-screen">

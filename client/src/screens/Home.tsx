@@ -14,15 +14,23 @@ interface HomeProps {
   onNavigate: (screen: any) => void;
 }
 
+function readCache<T>(key: string): T | null {
+  try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch { return null; }
+}
+function writeCache(key: string, data: any) {
+  try { localStorage.setItem(key, JSON.stringify(data)); } catch {}
+}
+
 const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
   const { t } = useTranslation();
-  const { recentWorkouts, weeklyData, weekStats, loading } = useWorkouts();
+  const { recentWorkouts, weeklyData, weekStats, loading, hadCache } = useWorkouts();
+  const homeCache = readCache<{ comparison: any; goals: any[]; goalPreds: any[] }>('rw_home_extra');
   const [weekAnalysis, setWeekAnalysis] = useState<string | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
-  const [comparison, setComparison] = useState<any>(null);
-  const [comparisonLoading, setComparisonLoading] = useState(true);
-  const [goals, setGoals] = useState<any[]>([]);
-  const [goalPreds, setGoalPreds] = useState<any[]>([]);
+  const [comparison, setComparison] = useState<any>(homeCache?.comparison || null);
+  const [comparisonLoading, setComparisonLoading] = useState(!homeCache?.comparison);
+  const [goals, setGoals] = useState<any[]>(homeCache?.goals || []);
+  const [goalPreds, setGoalPreds] = useState<any[]>(homeCache?.goalPreds || []);
 
   const [selectedWidgets, setSelectedWidgets] = useState<string[]>(getSelectedWidgets);
   const [showSettings, setShowSettings] = useState(false);
@@ -35,16 +43,17 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
 
   useEffect(() => {
-    workoutsApi.comparison()
-      .then(data => setComparison(data))
-      .catch(() => {})
-      .finally(() => setComparisonLoading(false));
-    workoutsApi.getGoals()
-      .then(data => setGoals(data || []))
-      .catch(() => {});
-    workoutsApi.goalPredictions()
-      .then(data => setGoalPreds(data || []))
-      .catch(() => {});
+    Promise.all([
+      workoutsApi.comparison().catch(() => null),
+      workoutsApi.getGoals().catch(() => []),
+      workoutsApi.goalPredictions().catch(() => [])
+    ]).then(([comp, g, preds]) => {
+      if (comp) setComparison(comp);
+      setGoals(g || []);
+      setGoalPreds(preds || []);
+      setComparisonLoading(false);
+      writeCache('rw_home_extra', { comparison: comp, goals: g || [], goalPreds: preds || [] });
+    });
   }, []);
 
   const handleWeeklyAnalysis = async () => {
@@ -172,15 +181,6 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
     .map(id => ALL_METRICS.find(m => m.id === id))
     .filter(Boolean) as typeof ALL_METRICS;
 
-  if (loading) {
-    return (
-      <div className="screen-loading">
-        <div className="loader"></div>
-        <p>{t('common.loadingData')}</p>
-      </div>
-    );
-  }
-
   return (
     <div className="screen home-screen">
       <div className="home-header">
@@ -240,7 +240,7 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
         return { ...g, current_value: pred?.computedCurrentValue ?? g.current_value, _predPercent: pred?.percent };
       })} onNavigate={onNavigate} />
 
-      <WeekChart data={weeklyData} />
+      <WeekChart data={weeklyData} skipAnimation={hadCache} />
 
       <PeriodComparison data={comparison} loading={comparisonLoading} />
 

@@ -16,11 +16,19 @@ interface PlanDay {
 
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
+function readCache<T>(key: string): T | null {
+  try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch { return null; }
+}
+function writeCache(key: string, data: any) {
+  try { localStorage.setItem(key, JSON.stringify(data)); } catch {}
+}
+
 const Plan: React.FC = () => {
   const { t } = useTranslation();
-  const [plan, setPlan] = useState<PlanDay[] | null>(null);
-  const [weekStart, setWeekStart] = useState<string>('');
-  const [loading, setLoading] = useState(true);
+  const cached = readCache<{ plan: PlanDay[]; weekStart: string }>('rw_plan_cache');
+  const [plan, setPlan] = useState<PlanDay[] | null>(cached?.plan || null);
+  const [weekStart, setWeekStart] = useState<string>(cached?.weekStart || '');
+  const [loading, setLoading] = useState(!cached);
   const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
@@ -28,7 +36,6 @@ const Plan: React.FC = () => {
   }, []);
 
   const fetchPlan = async () => {
-    setLoading(true);
     try {
       const data = await ai.getPlan();
       if (data.plan) {
@@ -37,6 +44,7 @@ const Plan: React.FC = () => {
           : data.plan.workouts;
         setPlan(workouts);
         setWeekStart(data.plan.week_start);
+        writeCache('rw_plan_cache', { plan: workouts, weekStart: data.plan.week_start });
       }
     } catch (err) {
       console.error('Failed to fetch plan:', err);
@@ -55,6 +63,7 @@ const Plan: React.FC = () => {
           : data.plan.workouts;
         setPlan(workouts);
         setWeekStart(data.plan.week_start);
+        writeCache('rw_plan_cache', { plan: workouts, weekStart: data.plan.week_start });
       }
     } catch (err) {
       console.error('Failed to generate plan:', err);
@@ -74,15 +83,6 @@ const Plan: React.FC = () => {
   const trainingDays = plan
     ? plan.filter(d => d.type !== 'rest').length
     : 0;
-
-  if (loading) {
-    return (
-      <div className="screen-loading">
-        <div className="loader"></div>
-        <p>{t('plan.loading')}</p>
-      </div>
-    );
-  }
 
   return (
     <div className="screen plan-screen">
