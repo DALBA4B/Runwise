@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import PlanRow from '../components/PlanRow';
 import { ai } from '../api/api';
@@ -23,7 +23,11 @@ function writeCache(key: string, data: any) {
   try { localStorage.setItem(key, JSON.stringify(data)); } catch {}
 }
 
-const Plan: React.FC = () => {
+interface PlanProps {
+  isActive?: boolean;
+}
+
+const Plan: React.FC<PlanProps> = ({ isActive }) => {
   const { t } = useTranslation();
   const cached = readCache<{ plan: PlanDay[]; weekStart: string }>('rw_plan_cache');
   const [plan, setPlan] = useState<PlanDay[] | null>(cached?.plan || null);
@@ -31,9 +35,18 @@ const Plan: React.FC = () => {
   const [loading, setLoading] = useState(!cached);
   const [generating, setGenerating] = useState(false);
 
+  const mountedRef = useRef(true);
+
   useEffect(() => {
     fetchPlan();
   }, []);
+
+  useEffect(() => {
+    if (!mountedRef.current && isActive) {
+      fetchPlan();
+    }
+    mountedRef.current = false;
+  }, [isActive]);
 
   const fetchPlan = async () => {
     try {
@@ -76,6 +89,13 @@ const Plan: React.FC = () => {
   // Convert JS day (0=Sun) to our index (0=Mon)
   const todayPlanIndex = todayIndex === 0 ? 6 : todayIndex - 1;
 
+  // Slavic plural: 1 → one, 2-4 → few, 0/5+ → many
+  const plural = (n: number, key: string) => {
+    if (n === 1) return t(`plan.${key}_one`);
+    if (n >= 2 && n <= 4) return t(`plan.${key}_few`);
+    return t(`plan.${key}_many`);
+  };
+
   const totalPlannedKm = plan
     ? plan.reduce((sum, d) => sum + (d.distance_km || 0), 0)
     : 0;
@@ -97,21 +117,13 @@ const Plan: React.FC = () => {
             </div>
             <div className="plan-summary-item">
               <span className="plan-summary-value">{trainingDays}</span>
-              <span className="plan-summary-label">{t('plan.workouts')}</span>
+              <span className="plan-summary-label">{plural(trainingDays, 'workouts')}</span>
             </div>
             <div className="plan-summary-item">
               <span className="plan-summary-value">{7 - trainingDays}</span>
-              <span className="plan-summary-label">{t('plan.restDays')}</span>
+              <span className="plan-summary-label">{plural(7 - trainingDays, 'restDays')}</span>
             </div>
           </div>
-
-          {weekStart && (
-            <p className="plan-week-label">
-              {t('plan.weekFrom', {
-                date: new Date(weekStart).toLocaleDateString(LOCALE_MAP[i18n.language] || 'ru-RU', { day: 'numeric', month: 'long' })
-              })}
-            </p>
-          )}
 
           <div className="plan-list">
             {plan.map((day, index) => (

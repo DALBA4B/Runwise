@@ -12,6 +12,7 @@ import { ALL_METRICS, getSelectedWidgets, saveSelectedWidgets } from '../config/
 interface HomeProps {
   onWorkoutClick: (id: string) => void;
   onNavigate: (screen: any) => void;
+  isActive?: boolean;
 }
 
 function readCache<T>(key: string): T | null {
@@ -21,9 +22,9 @@ function writeCache(key: string, data: any) {
   try { localStorage.setItem(key, JSON.stringify(data)); } catch {}
 }
 
-const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
+const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate, isActive }) => {
   const { t } = useTranslation();
-  const { recentWorkouts, weeklyData, weekStats, loading, hadCache } = useWorkouts();
+  const { recentWorkouts, weeklyData, weekStats, loading, hadCache, refresh } = useWorkouts();
   const homeCache = readCache<{ comparison: any; goals: any[]; goalPreds: any[] }>('rw_home_extra');
   const [weekAnalysis, setWeekAnalysis] = useState<string | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
@@ -42,7 +43,9 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
   const dragOverItem = useRef<number | null>(null);
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
 
-  useEffect(() => {
+  const mountedRef = useRef(true);
+
+  const refreshExtra = () => {
     Promise.all([
       workoutsApi.comparison().catch(() => null),
       workoutsApi.getGoals().catch(() => []),
@@ -54,7 +57,20 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate }) => {
       setComparisonLoading(false);
       writeCache('rw_home_extra', { comparison: comp, goals: g || [], goalPreds: preds || [] });
     });
+  };
+
+  useEffect(() => {
+    refreshExtra();
   }, []);
+
+  // Refresh data when tab becomes active (skip initial mount)
+  useEffect(() => {
+    if (!mountedRef.current && isActive) {
+      refresh();
+      refreshExtra();
+    }
+    mountedRef.current = false;
+  }, [isActive]);
 
   const handleWeeklyAnalysis = async () => {
     setAnalysisLoading(true);

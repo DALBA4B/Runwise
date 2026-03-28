@@ -103,18 +103,21 @@ const App: React.FC = () => {
   return (
     <div className="app">
       <div className={`app-container ${animClass}`}>
-        {currentScreen === 'home' && (
-          <Home onWorkoutClick={handleWorkoutClick} onNavigate={handleNavigate} />
-        )}
-        {currentScreen === 'history' && (
-          <History onWorkoutClick={handleWorkoutClick} />
-        )}
-        {currentScreen === 'plan' && <Plan />}
-        {/* AIChat stays mounted so streaming continues when switching tabs */}
+        <div style={{ display: currentScreen === 'home' ? 'contents' : 'none' }}>
+          <Home onWorkoutClick={handleWorkoutClick} onNavigate={handleNavigate} isActive={currentScreen === 'home'} />
+        </div>
+        <div style={{ display: currentScreen === 'history' ? 'contents' : 'none' }}>
+          <History onWorkoutClick={handleWorkoutClick} isActive={currentScreen === 'history'} />
+        </div>
+        <div style={{ display: currentScreen === 'plan' ? 'contents' : 'none' }}>
+          <Plan isActive={currentScreen === 'plan'} />
+        </div>
         <div style={{ display: currentScreen === 'ai' ? 'contents' : 'none' }}>
           <AIChat />
         </div>
-        {currentScreen === 'profile' && <Profile onLogout={logout} />}
+        <div style={{ display: currentScreen === 'profile' ? 'contents' : 'none' }}>
+          <Profile onLogout={logout} isActive={currentScreen === 'profile'} />
+        </div>
         {currentScreen === 'workout-detail' && selectedWorkoutId && (
           <WorkoutDetail workoutId={selectedWorkoutId} onBack={handleBackFromDetail} />
         )}

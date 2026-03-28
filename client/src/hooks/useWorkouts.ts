@@ -139,6 +139,7 @@ export function useWorkoutHistory() {
     selectedMonth,
     selectedYear,
     setSelectedMonth,
-    setSelectedYear
+    setSelectedYear,
+    refresh: fetchHistory
   };
 }

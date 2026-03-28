@@ -52,25 +52,48 @@ const AIChat: React.FC = () => {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const userScrolledUp = useRef(false);
 
+  const scrollRestoredRef = useRef(false);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   // Only auto-scroll if user hasn't scrolled up
   useEffect(() => {
-    if (!userScrolledUp.current) {
+    if (!userScrolledUp.current && scrollRestoredRef.current) {
       scrollToBottom();
     }
   }, [messages]);
 
-  // Detect if user scrolled up
+  // Detect if user scrolled up + save scroll position
   const handleScroll = () => {
     const container = messagesContainerRef.current;
     if (!container) return;
     const threshold = 100;
     const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
     userScrolledUp.current = distanceFromBottom > threshold;
+    // Save scroll position for session restore
+    try { sessionStorage.setItem('rw_chat_scroll', container.scrollTop.toString()); } catch {}
   };
+
+  // Restore scroll position after history loads
+  useEffect(() => {
+    if (historyLoaded && messagesContainerRef.current) {
+      const savedScroll = sessionStorage.getItem('rw_chat_scroll');
+      if (savedScroll) {
+        const pos = parseInt(savedScroll, 10);
+        messagesContainerRef.current.scrollTop = pos;
+        // Check if restored position is near bottom
+        const container = messagesContainerRef.current;
+        const distanceFromBottom = container.scrollHeight - pos - container.clientHeight;
+        userScrolledUp.current = distanceFromBottom > 100;
+      } else {
+        // No saved position — scroll to bottom
+        messagesEndRef.current?.scrollIntoView();
+      }
+      scrollRestoredRef.current = true;
+    }
+  }, [historyLoaded]);
 
   // Load chat history and AI prefs on mount
   useEffect(() => {

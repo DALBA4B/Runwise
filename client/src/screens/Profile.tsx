@@ -25,6 +25,7 @@ interface Goal {
 
 interface ProfileProps {
   onLogout: () => void;
+  isActive?: boolean;
 }
 
 const LOCALE_MAP: Record<string, string> = { ru: 'ru-RU', uk: 'uk-UA', en: 'en-US' };
@@ -42,7 +43,7 @@ function writeCache(key: string, data: any) {
   try { localStorage.setItem(key, JSON.stringify(data)); } catch {}
 }
 
-const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
+const Profile: React.FC<ProfileProps> = ({ onLogout, isActive }) => {
   const { t } = useTranslation();
   const cached = readCache<{ stats: any; goals: Goal[]; predictions: any[]; syncStatus: any; profile: any; records: PersonalRecord[] }>('rw_profile_cache');
   const [allTimeStats, setAllTimeStats] = useState<any>(cached?.stats || null);
@@ -233,9 +234,18 @@ const Profile: React.FC<ProfileProps> = ({ onLogout }) => {
     .map(id => ALL_METRICS.find(m => m.id === id))
     .filter(Boolean) as typeof ALL_METRICS;
 
+  const mountedRef = useRef(true);
+
   useEffect(() => {
     loadProfileData();
   }, []);
+
+  useEffect(() => {
+    if (!mountedRef.current && isActive) {
+      loadProfileData();
+    }
+    mountedRef.current = false;
+  }, [isActive]);
 
   const loadProfileData = async () => {
     try {

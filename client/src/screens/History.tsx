@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import MetricCard from '../components/MetricCard';
 import WorkoutRow from '../components/WorkoutRow';
@@ -8,9 +8,10 @@ import { ALL_METRICS, getHistoryWidgets, saveHistoryWidgets } from '../config/me
 
 interface HistoryProps {
   onWorkoutClick: (id: string) => void;
+  isActive?: boolean;
 }
 
-const History: React.FC<HistoryProps> = ({ onWorkoutClick }) => {
+const History: React.FC<HistoryProps> = ({ onWorkoutClick, isActive }) => {
   const { t } = useTranslation();
   const {
     allWorkouts,
@@ -19,8 +20,18 @@ const History: React.FC<HistoryProps> = ({ onWorkoutClick }) => {
     selectedMonth,
     selectedYear,
     setSelectedMonth,
-    setSelectedYear
+    setSelectedYear,
+    refresh
   } = useWorkoutHistory();
+
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    if (!mountedRef.current && isActive) {
+      refresh();
+    }
+    mountedRef.current = false;
+  }, [isActive]);
 
   const [selectedWidgets, setSelectedWidgets] = useState<string[]>(getHistoryWidgets);
   const [editMode, setEditMode] = useState(false);
