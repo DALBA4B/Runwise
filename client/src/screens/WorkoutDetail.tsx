@@ -431,12 +431,19 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
                 {saving ? t('common.saving') : t('workout.allCorrect')}
               </button>
               <button
-                className="btn btn-secondary"
+                className="btn btn-outline"
                 onClick={openEditModal}
               >
                 {t('workout.editWorkout')}
               </button>
             </div>
+            <button
+              className="btn btn-outline"
+              style={{ width: '100%', marginTop: '8px' }}
+              onClick={() => setShowExplainModal(false)}
+            >
+              {t('workout.postpone')}
+            </button>
           </div>
         </div>
       )}
