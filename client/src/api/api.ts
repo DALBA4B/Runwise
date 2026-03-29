@@ -81,6 +81,9 @@ export const workouts = {
     return request(`/api/workouts${qs ? `?${qs}` : ''}`);
   },
   get: (id: string) => request(`/api/workouts/${id}`),
+  update: (id: string, data: { action: 'verify' } | { action: 'edit'; manual_distance: number; manual_moving_time: number }) =>
+    request(`/api/workouts/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  reanalyze: () => request('/api/workouts/reanalyze', { method: 'POST' }),
   stats: (period: 'week' | 'month' | 'all') => request(`/api/workouts/stats?period=${period}`),
   weekly: () => {
     const tz = -(new Date().getTimezoneOffset() / 60);

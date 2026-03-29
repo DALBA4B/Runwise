@@ -249,7 +249,19 @@
     "loading500m": "Loading 500m splits...",
     "noGps": "GPS data not available for this workout",
     "rateLimit": "Strava rate limit, try again later",
-    "splits500mError": "Failed to load 500m splits"
+    "splits500mError": "Failed to load 500m splits",
+    "suspiciousWarning": "Possible GPS anomaly",
+    "suspiciousExplain": "Suspicious data detected",
+    "splitTooFast": "Km {{km}}: pace {{pace}} — unrealistically fast",
+    "splitTooSlow": "Km {{km}}: pace {{pace}} — too slow",
+    "avgMedianDrift": "Average pace differs from median by {{percent}}%",
+    "allCorrect": "All correct",
+    "editWorkout": "Edit",
+    "editDistance": "Distance",
+    "editTime": "Time",
+    "calculatedPace": "Calculated pace",
+    "verified": "Verified",
+    "savingCorrection": "Saving..."
   },
   "weekChart": {
     "title": "Weekly kilometers",

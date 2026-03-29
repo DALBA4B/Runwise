@@ -821,6 +821,25 @@ const Profile: React.FC<ProfileProps> = ({ onLogout, isActive }) => {
                 </div>
               )}
 
+              <button
+                className="btn btn-secondary btn-full"
+                style={{ marginTop: 8 }}
+                onClick={async (e) => {
+                  const btn = e.currentTarget;
+                  btn.disabled = true;
+                  btn.textContent = '⏳ Анализирую...';
+                  try {
+                    const res = await workouts.reanalyze();
+                    btn.textContent = `✅ Готово: ${res.updated} из ${res.total} обновлено`;
+                  } catch {
+                    btn.textContent = '❌ Ошибка';
+                  }
+                  setTimeout(() => { btn.disabled = false; btn.textContent = '🔍 Перепроверить GPS-аномалии'; }, 3000);
+                }}
+              >
+                🔍 Перепроверить GPS-аномалии
+              </button>
+
             </div>
 
             <button

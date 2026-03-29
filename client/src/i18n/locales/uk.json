@@ -249,7 +249,19 @@
     "loading500m": "Завантаження 500м сплітів...",
     "noGps": "GPS-дані недоступні для цього тренування",
     "rateLimit": "Ліміт запитів Strava, спробуйте пізніше",
-    "splits500mError": "Не вдалося завантажити 500м спліти"
+    "splits500mError": "Не вдалося завантажити 500м спліти",
+    "suspiciousWarning": "Можлива GPS-аномалія",
+    "suspiciousExplain": "Виявлено підозрілі дані",
+    "splitTooFast": "Км {{km}}: темп {{pace}} — нереально швидко",
+    "splitTooSlow": "Км {{km}}: темп {{pace}} — занадто повільно",
+    "avgMedianDrift": "Середній темп відрізняється від медіанного на {{percent}}%",
+    "allCorrect": "Все вірно",
+    "editWorkout": "Редагувати",
+    "editDistance": "Дистанція",
+    "editTime": "Час",
+    "calculatedPace": "Розрахунковий темп",
+    "verified": "Перевірено",
+    "savingCorrection": "Зберігаю..."
   },
   "weekChart": {
     "title": "Кілометраж за тиждень",

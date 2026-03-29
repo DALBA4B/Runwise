@@ -1,7 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { workouts, ai, strava } from '../api/api';
 import { formatPace, formatDistance, formatTime, formatDateFull, getTypeLabel, getTypeBadge } from '../utils';
+
+// Helper: localize suspicious reason code
+function localizeReason(reason: string, t: any): string {
+  const [type, ...params] = reason.split(':');
+  if (type === 'split_too_fast') {
+    const km = params[0];
+    const pace = parseInt(params[1]);
+    const min = Math.floor(pace / 60);
+    const sec = pace % 60;
+    return t('workout.splitTooFast', { km, pace: `${min}:${sec.toString().padStart(2, '0')}` });
+  }
+  if (type === 'split_too_slow') {
+    const km = params[0];
+    const pace = parseInt(params[1]);
+    const min = Math.floor(pace / 60);
+    const sec = pace % 60;
+    return t('workout.splitTooSlow', { km, pace: `${min}:${sec.toString().padStart(2, '0')}` });
+  }
+  if (type === 'avg_median_drift') {
+    return t('workout.avgMedianDrift', { percent: params[0] });
+  }
+  return reason;
+}
 
 interface WorkoutDetailProps {
   workoutId: string;
@@ -33,6 +56,75 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
   const [splits500m, setSplits500m] = useState<Split[] | null>(null);
   const [splits500mLoading, setSplits500mLoading] = useState(false);
   const [splits500mError, setSplits500mError] = useState<string | null>(null);
+
+  // GPS anomaly states
+  const [showExplainModal, setShowExplainModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editDistance, setEditDistance] = useState('');
+  const [editMinutes, setEditMinutes] = useState('');
+  const [editSeconds, setEditSeconds] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const isSuspicious = workout?.is_suspicious && !workout?.user_verified;
+  const isVerified = workout?.is_suspicious && workout?.user_verified;
+
+  const handleVerify = useCallback(async () => {
+    if (!workout) return;
+    setSaving(true);
+    try {
+      const updated = await workouts.update(workout.id, { action: 'verify' });
+      setWorkout(updated);
+      setShowExplainModal(false);
+    } catch (err) {
+      console.error('Verify failed:', err);
+    } finally {
+      setSaving(false);
+    }
+  }, [workout]);
+
+  const handleSaveEdit = useCallback(async () => {
+    if (!workout) return;
+    const distMeters = Math.round(parseFloat(editDistance) * 1000);
+    const timeSec = parseInt(editMinutes) * 60 + parseInt(editSeconds);
+    if (isNaN(distMeters) || isNaN(timeSec) || distMeters <= 0 || timeSec <= 0) return;
+
+    setSaving(true);
+    try {
+      const updated = await workouts.update(workout.id, {
+        action: 'edit',
+        manual_distance: distMeters,
+        manual_moving_time: timeSec
+      });
+      setWorkout(updated);
+      setShowEditModal(false);
+      setShowExplainModal(false);
+    } catch (err) {
+      console.error('Edit failed:', err);
+    } finally {
+      setSaving(false);
+    }
+  }, [workout, editDistance, editMinutes, editSeconds]);
+
+  const openEditModal = useCallback(() => {
+    if (!workout) return;
+    const dist = workout.manual_distance || workout.distance;
+    const time = workout.manual_moving_time || workout.moving_time;
+    setEditDistance((dist / 1000).toFixed(2));
+    setEditMinutes(Math.floor(time / 60).toString());
+    setEditSeconds((time % 60).toString());
+    setShowEditModal(true);
+  }, [workout]);
+
+  // Computed live pace for edit modal
+  const editLivePace = (() => {
+    const d = parseFloat(editDistance);
+    const t = parseInt(editMinutes) * 60 + parseInt(editSeconds);
+    if (!d || !t || d <= 0 || t <= 0) return '';
+    const pace = t / d; // sec per km
+    const m = Math.floor(pace / 60);
+    const s = Math.round(pace % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  })();
 
   useEffect(() => {
     const fetchWorkout = async () => {
@@ -156,33 +248,51 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
 
       <div className="workout-detail-header">
         <span className="workout-detail-badge">{getTypeBadge(workout.type)}</span>
-        <h2 className="workout-detail-name">{workout.name}</h2>
+        <h2 className="workout-detail-name">
+          {workout.name}
+          {isVerified && <span className="workout-verified-badge" style={{ marginLeft: 8 }}>✅</span>}
+        </h2>
         <span className="workout-detail-date">{formatDateFull(workout.date)}</span>
         <span className="workout-detail-type">{getTypeLabel(workout.type)}</span>
       </div>
 
+      {isSuspicious && (
+        <div className="workout-warning-banner" onClick={() => setShowExplainModal(true)}>
+          <span>⚠️ {t('workout.suspiciousWarning')}</span>
+          <span className="workout-warning-arrow">›</span>
+        </div>
+      )}
+
       <div className="metrics-grid">
+        {(() => {
+          const effectiveDistance = workout.manual_distance || workout.distance;
+          const effectiveTime = workout.manual_moving_time || workout.moving_time;
+          const effectivePace = effectiveDistance > 0 ? Math.round(effectiveTime / (effectiveDistance / 1000)) : workout.average_pace;
+          const hasManual = !!(workout.manual_distance || workout.manual_moving_time);
+          return (<>
         <div className="metric-card">
           <div className="metric-icon">📏</div>
           <div className="metric-info">
-            <span className="metric-value">{formatDistance(workout.distance)}</span>
-            <span className="metric-label">{t('workout.distance')}</span>
+            <span className="metric-value">{formatDistance(effectiveDistance)}</span>
+            <span className="metric-label">{t('workout.distance')}{hasManual ? ' ✎' : ''}</span>
           </div>
         </div>
         <div className="metric-card">
           <div className="metric-icon">⏱️</div>
           <div className="metric-info">
-            <span className="metric-value">{formatPace(workout.average_pace)}</span>
-            <span className="metric-label">{t('workout.pace')}</span>
+            <span className="metric-value">{formatPace(effectivePace)}</span>
+            <span className="metric-label">{t('workout.pace')}{hasManual ? ' ✎' : ''}</span>
           </div>
         </div>
         <div className="metric-card">
           <div className="metric-icon">⏳</div>
           <div className="metric-info">
-            <span className="metric-value">{formatTime(workout.moving_time)}</span>
-            <span className="metric-label">{t('workout.time')}</span>
+            <span className="metric-value">{formatTime(effectiveTime)}</span>
+            <span className="metric-label">{t('workout.time')}{hasManual ? ' ✎' : ''}</span>
           </div>
         </div>
+          </>);
+        })()}
         <div className="metric-card">
           <div className="metric-icon">❤️</div>
           <div className="metric-info">
@@ -294,6 +404,101 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
           </button>
         )}
       </div>
+
+      {/* Explain modal */}
+      {showExplainModal && (
+        <div className="modal-overlay" onClick={() => setShowExplainModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <h3>⚠️ {t('workout.suspiciousExplain')}</h3>
+            <ul className="suspicious-reasons-list">
+              {(() => {
+                const reasons: string[] = workout.suspicious_reasons
+                  ? (typeof workout.suspicious_reasons === 'string'
+                    ? JSON.parse(workout.suspicious_reasons)
+                    : workout.suspicious_reasons)
+                  : [];
+                return reasons.map((r: string, i: number) => (
+                  <li key={i}>{localizeReason(r, t)}</li>
+                ));
+              })()}
+            </ul>
+            <div className="modal-actions">
+              <button
+                className="btn btn-accent"
+                onClick={handleVerify}
+                disabled={saving}
+              >
+                {saving ? t('common.saving') : t('workout.allCorrect')}
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={openEditModal}
+              >
+                {t('workout.editWorkout')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit modal */}
+      {showEditModal && (
+        <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <h3>{t('workout.editWorkout')}</h3>
+            <div className="form-group">
+              <label>{t('workout.editDistance')} ({t('units.km')})</label>
+              <input
+                type="number"
+                step="0.01"
+                value={editDistance}
+                onChange={e => setEditDistance(e.target.value)}
+                className="form-input"
+              />
+            </div>
+            <div className="form-group">
+              <label>{t('workout.editTime')}</label>
+              <div className="time-inputs">
+                <input
+                  type="number"
+                  value={editMinutes}
+                  onChange={e => setEditMinutes(e.target.value)}
+                  className="form-input time-input"
+                  placeholder={t('units.min')}
+                />
+                <span className="time-separator">:</span>
+                <input
+                  type="number"
+                  value={editSeconds}
+                  onChange={e => setEditSeconds(e.target.value)}
+                  className="form-input time-input"
+                  placeholder={t('units.sec')}
+                />
+              </div>
+            </div>
+            {editLivePace && (
+              <div className="edit-live-pace">
+                {t('workout.calculatedPace')}: <strong>{editLivePace}</strong> {t('units.minKm')}
+              </div>
+            )}
+            <div className="modal-actions">
+              <button
+                className="btn btn-accent"
+                onClick={handleSaveEdit}
+                disabled={saving}
+              >
+                {saving ? t('workout.savingCorrection') : t('common.save')}
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowEditModal(false)}
+              >
+                {t('common.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

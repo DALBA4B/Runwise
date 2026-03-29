@@ -62,7 +62,7 @@ function parseActivity(activity, userId) {
   const movingTime = activity.moving_time || 0;
   const paceSecPerKm = distanceM > 0 ? movingTime / (distanceM / 1000) : 0;
 
-  return {
+  const parsed = {
     user_id: userId,
     strava_id: activity.id.toString(),
     name: activity.name || 'Untitled',
@@ -92,6 +92,8 @@ function parseActivity(activity, userId) {
       : null,
     raw_data: JSON.stringify(activity)
   };
+
+  return detectAnomalies(parsed);
 }
 
 // Helper: calculate 500m splits from GPS streams (distance, time, heartrate arrays)
@@ -182,6 +184,52 @@ function calculate500mSplits(distArr, timeArr, hrArr) {
   }
 
   return splits;
+}
+
+// Helper: detect GPS anomalies in parsed workout
+function detectAnomalies(parsed) {
+  const reasons = [];
+
+  // Check splits for anomalies
+  if (parsed.splits) {
+    const splits = typeof parsed.splits === 'string' ? JSON.parse(parsed.splits) : parsed.splits;
+    for (const s of splits) {
+      const pace = s.pace || (s.time && s.distance ? s.time / (s.distance / 1000) : 0);
+      if (pace > 0 && pace < 150) {
+        // Faster than 2:30/km — unrealistic
+        reasons.push(`split_too_fast:${s.km}:${Math.round(pace)}`);
+      }
+      if (pace > 720) {
+        // Slower than 12:00/km — walking/standing
+        reasons.push(`split_too_slow:${s.km}:${Math.round(pace)}`);
+      }
+    }
+
+    // Check avg vs median drift
+    if (splits.length >= 3 && parsed.average_pace > 0) {
+      const paces = splits
+        .map(s => s.pace || (s.time && s.distance ? s.time / (s.distance / 1000) : 0))
+        .filter(p => p > 0)
+        .sort((a, b) => a - b);
+      if (paces.length >= 3) {
+        const median = paces[Math.floor(paces.length / 2)];
+        const drift = Math.abs(parsed.average_pace - median) / median;
+        if (drift > 0.3) {
+          reasons.push(`avg_median_drift:${Math.round(drift * 100)}`);
+        }
+      }
+    }
+  }
+
+  if (reasons.length > 0) {
+    parsed.is_suspicious = true;
+    parsed.suspicious_reasons = JSON.stringify(reasons);
+  } else {
+    parsed.is_suspicious = false;
+    parsed.suspicious_reasons = null;
+  }
+
+  return parsed;
 }
 
 // Columns that may not exist in DB yet — detected at runtime
@@ -624,4 +672,5 @@ router.post('/webhook', async (req, res) => {
   }
 });
 
+router.detectAnomalies = detectAnomalies;
 module.exports = router;

@@ -1,31 +1,45 @@
 const express = require('express');
 const supabase = require('../supabase');
 const authMiddleware = require('../middleware/authMiddleware');
+const { detectAnomalies } = require('./strava');
 
 const router = express.Router();
 
 // GET /api/workouts — all workouts for user
+const WORKOUTS_BASE_FIELDS = 'id, strava_id, name, distance, moving_time, average_pace, average_heartrate, max_heartrate, date, type, splits';
+const WORKOUTS_ANOMALY_FIELDS = ', is_suspicious, user_verified, manual_distance, manual_moving_time';
+let hasAnomalyColumns = true; // optimistic, fallback if missing
+
 router.get('/', authMiddleware, async (req, res) => {
   try {
     const { month, year, limit } = req.query;
-    let query = supabase
-      .from('workouts')
-      .select('id, strava_id, name, distance, moving_time, average_pace, average_heartrate, max_heartrate, date, type, splits')
-      .eq('user_id', req.user.id)
-      .order('date', { ascending: false });
 
-    if (month && year) {
-      const startDate = new Date(year, month - 1, 1).toISOString();
-      const endDate = new Date(year, month, 0, 23, 59, 59).toISOString();
-      query = query.gte('date', startDate).lte('date', endDate);
+    const buildQuery = (fields) => {
+      let q = supabase
+        .from('workouts')
+        .select(fields)
+        .eq('user_id', req.user.id)
+        .order('date', { ascending: false });
+      if (month && year) {
+        const startDate = new Date(year, month - 1, 1).toISOString();
+        const endDate = new Date(year, month, 0, 23, 59, 59).toISOString();
+        q = q.gte('date', startDate).lte('date', endDate);
+      }
+      if (limit) q = q.limit(parseInt(limit));
+      return q;
+    };
+
+    let { data, error } = await buildQuery(WORKOUTS_BASE_FIELDS + (hasAnomalyColumns ? WORKOUTS_ANOMALY_FIELDS : ''));
+
+    // Fallback: if anomaly columns don't exist yet
+    if (error && error.message && (error.message.includes('is_suspicious') || error.message.includes('user_verified') || error.message.includes('manual_'))) {
+      hasAnomalyColumns = false;
+      const fallback = await buildQuery(WORKOUTS_BASE_FIELDS);
+      if (fallback.error) throw fallback.error;
+      data = fallback.data;
+    } else if (error) {
+      throw error;
     }
-
-    if (limit) {
-      query = query.limit(parseInt(limit));
-    }
-
-    const { data, error } = await query;
-    if (error) throw error;
 
     res.json(data);
   } catch (err) {
@@ -221,6 +235,63 @@ router.get('/comparison', authMiddleware, async (req, res) => {
   }
 });
 
+// POST /api/workouts/reanalyze — re-run anomaly detection on all existing workouts
+router.post('/reanalyze', authMiddleware, async (req, res) => {
+  try {
+    // First try with anomaly columns
+    let allWorkouts, fetchError;
+    if (hasAnomalyColumns) {
+      const result = await supabase
+        .from('workouts')
+        .select('id, distance, moving_time, average_pace, splits, is_suspicious, user_verified')
+        .eq('user_id', req.user.id);
+      allWorkouts = result.data;
+      fetchError = result.error;
+
+      if (fetchError && fetchError.message && (fetchError.message.includes('is_suspicious') || fetchError.message.includes('user_verified'))) {
+        hasAnomalyColumns = false;
+        return res.status(400).json({ error: 'Anomaly columns not in DB yet. Run the SQL migration first.' });
+      }
+    } else {
+      return res.status(400).json({ error: 'Anomaly columns not in DB yet. Run the SQL migration first.' });
+    }
+
+    if (fetchError) throw fetchError;
+    if (!allWorkouts || allWorkouts.length === 0) {
+      return res.json({ updated: 0, total: 0 });
+    }
+
+    let updated = 0;
+    for (const w of allWorkouts) {
+      if (w.user_verified) continue;
+
+      const result = detectAnomalies({
+        splits: w.splits,
+        average_pace: w.average_pace
+      });
+
+      const wasSuspicious = !!w.is_suspicious;
+      const nowSuspicious = !!result.is_suspicious;
+
+      if (wasSuspicious !== nowSuspicious || (nowSuspicious && JSON.stringify(w.suspicious_reasons) !== result.suspicious_reasons)) {
+        await supabase
+          .from('workouts')
+          .update({
+            is_suspicious: result.is_suspicious,
+            suspicious_reasons: result.suspicious_reasons
+          })
+          .eq('id', w.id);
+        updated++;
+      }
+    }
+
+    res.json({ updated, total: allWorkouts.length });
+  } catch (err) {
+    console.error('Reanalyze error:', err.message);
+    res.status(500).json({ error: 'Failed to reanalyze workouts' });
+  }
+});
+
 // GET /api/workouts/:id — single workout detail
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
@@ -239,6 +310,47 @@ router.get('/:id', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('Get workout error:', err.message);
     res.status(500).json({ error: 'Failed to fetch workout' });
+  }
+});
+
+// PATCH /api/workouts/:id — verify or edit a workout (GPS anomaly correction)
+router.patch('/:id', authMiddleware, async (req, res) => {
+  try {
+    if (!hasAnomalyColumns) {
+      return res.status(400).json({ error: 'Anomaly columns not in DB yet. Run the SQL migration first.' });
+    }
+
+    const { action, manual_distance, manual_moving_time } = req.body;
+
+    if (!action || !['verify', 'edit'].includes(action)) {
+      return res.status(400).json({ error: 'Invalid action. Use "verify" or "edit".' });
+    }
+
+    const updates = { user_verified: true };
+
+    if (action === 'edit') {
+      if (manual_distance == null || manual_moving_time == null) {
+        return res.status(400).json({ error: 'manual_distance and manual_moving_time required for edit' });
+      }
+      updates.manual_distance = Math.round(manual_distance);
+      updates.manual_moving_time = Math.round(manual_moving_time);
+    }
+
+    const { data, error } = await supabase
+      .from('workouts')
+      .update(updates)
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Workout not found' });
+
+    res.json(data);
+  } catch (err) {
+    console.error('Patch workout error:', err.message);
+    res.status(500).json({ error: 'Failed to update workout' });
   }
 });
 
@@ -361,14 +473,34 @@ router.get('/goals/predictions', authMiddleware, async (req, res) => {
     fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
     const fetchFrom = monthStart < eightWeeksAgo ? monthStart : eightWeeksAgo;
 
-    const { data: recentWorkouts } = await supabase
+    let { data: recentWorkouts, error: recentError } = await supabase
       .from('workouts')
-      .select('distance, moving_time, average_pace, date, best_efforts')
+      .select('distance, moving_time, average_pace, date, best_efforts' + (hasAnomalyColumns ? ', is_suspicious, user_verified, manual_distance, manual_moving_time' : ''))
       .eq('user_id', req.user.id)
       .gte('date', fetchFrom.toISOString())
       .order('date', { ascending: true });
 
+    // Fallback if anomaly columns missing
+    if (recentError && recentError.message && (recentError.message.includes('is_suspicious') || recentError.message.includes('user_verified') || recentError.message.includes('manual_'))) {
+      hasAnomalyColumns = false;
+      const fb = await supabase
+        .from('workouts')
+        .select('distance, moving_time, average_pace, date, best_efforts')
+        .eq('user_id', req.user.id)
+        .gte('date', fetchFrom.toISOString())
+        .order('date', { ascending: true });
+      if (fb.error) throw fb.error;
+      recentWorkouts = fb.data;
+    } else if (recentError) {
+      throw recentError;
+    }
+
     const workoutsArr = recentWorkouts || [];
+
+    // Helper: get effective distance (manual override or original)
+    const getEffectiveDistance = (w) => (hasAnomalyColumns && w.manual_distance) ? w.manual_distance : (w.distance || 0);
+    // Helper: check if workout is suspicious and unverified (should be excluded from PB calcs)
+    const isSuspiciousUnverified = (w) => hasAnomalyColumns && w.is_suspicious && !w.user_verified;
 
     // Pre-filter workouts for current month and current week
     const monthWorkouts = workoutsArr.filter(w => new Date(w.date) >= monthStart);
@@ -386,7 +518,7 @@ router.get('/goals/predictions', authMiddleware, async (req, res) => {
 
       if (goal.type === 'monthly_distance') {
         const targetKm = goal.target_value / 1000;
-        const computedCurrentValue = monthWorkouts.reduce((s, w) => s + (w.distance || 0), 0);
+        const computedCurrentValue = monthWorkouts.reduce((s, w) => s + getEffectiveDistance(w), 0);
         const currentKm = Math.round((computedCurrentValue / 1000) * 10) / 10;
 
         prediction.computedCurrentValue = computedCurrentValue;
@@ -417,7 +549,7 @@ router.get('/goals/predictions', authMiddleware, async (req, res) => {
 
       } else if (goal.type === 'weekly_distance') {
         const targetKm = goal.target_value / 1000;
-        const computedCurrentValue = weekWorkouts.reduce((s, w) => s + (w.distance || 0), 0);
+        const computedCurrentValue = weekWorkouts.reduce((s, w) => s + getEffectiveDistance(w), 0);
         const currentKm = Math.round((computedCurrentValue / 1000) * 10) / 10;
 
         prediction.computedCurrentValue = computedCurrentValue;
@@ -468,8 +600,10 @@ router.get('/goals/predictions', authMiddleware, async (req, res) => {
         };
 
         // --- Step 1: Riegel baseline from last 4 weeks ---
+        // Exclude suspicious unverified workouts from Riegel calculations
         const recentWorkouts = workoutsArr.filter(w => new Date(w.date) >= fourWeeksAgo);
         const relevantForRiegel = recentWorkouts.filter(w => {
+          if (isSuspiciousUnverified(w)) return false;
           const km = w.distance / 1000;
           return km >= targetDist * 0.3 && km <= targetDist * 2.0 && w.moving_time > 0 && w.distance > 0;
         });

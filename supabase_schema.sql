@@ -84,6 +84,13 @@ CREATE INDEX IF NOT EXISTS idx_personal_records_user ON personal_records(user_id
 ALTER TABLE users ADD COLUMN IF NOT EXISTS gender TEXT CHECK (gender IN ('male', 'female'));
 ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_preferences JSONB DEFAULT '{}';
 
+-- GPS anomaly detection columns
+ALTER TABLE workouts ADD COLUMN IF NOT EXISTS is_suspicious BOOLEAN DEFAULT false;
+ALTER TABLE workouts ADD COLUMN IF NOT EXISTS suspicious_reasons JSONB;
+ALTER TABLE workouts ADD COLUMN IF NOT EXISTS user_verified BOOLEAN DEFAULT false;
+ALTER TABLE workouts ADD COLUMN IF NOT EXISTS manual_distance INTEGER;
+ALTER TABLE workouts ADD COLUMN IF NOT EXISTS manual_moving_time INTEGER;
+
 -- Enable Row Level Security (optional, since we use service key on backend)
 -- ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 -- ALTER TABLE workouts ENABLE ROW LEVEL SECURITY;

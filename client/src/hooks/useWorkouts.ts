@@ -13,6 +13,10 @@ export interface Workout {
   date: string;
   type: string;
   splits: string | null;
+  is_suspicious?: boolean;
+  user_verified?: boolean;
+  manual_distance?: number | null;
+  manual_moving_time?: number | null;
 }
 
 export interface Stats {
