@@ -41,24 +41,42 @@ const PeriodComparison: React.FC<PeriodComparisonProps> = ({ data, loading }) =>
 
   const title = `${cap(curMonth)} vs ${cap(prevMonth)} · ${t('comparison.byDay', { day })}`;
 
+  // Absolute differences instead of percents — much clearer for users
+  const distDiff = data.current.distance - data.previous.distance; // meters
+  const workoutDiff = data.current.workoutCount - data.previous.workoutCount;
+  const paceDiff = (data.current.avgPace > 0 && data.previous.avgPace > 0)
+    ? data.current.avgPace - data.previous.avgPace
+    : 0;
+
   const metrics = [
     {
       label: t('comparison.distance'),
       value: formatDistance(data.current.distance),
-      change: data.changes.distance,
-      improved: data.changes.distance > 0
+      change: distDiff,
+      improved: distDiff > 0,
+      format: (v: number) => {
+        const km = Math.abs(v) / 1000;
+        return km >= 1 ? `${km.toFixed(1)} ${t('units.km')}` : `${Math.round(Math.abs(v))} ${t('units.m')}`;
+      }
     },
     {
       label: t('comparison.workouts'),
       value: `${data.current.workoutCount}`,
-      change: data.changes.workoutCount,
-      improved: data.changes.workoutCount > 0
+      change: workoutDiff,
+      improved: workoutDiff > 0,
+      format: (v: number) => `${Math.abs(v)}`
     },
     {
       label: t('comparison.avgPace'),
       value: formatPace(data.current.avgPace),
-      change: data.changes.avgPace,
-      improved: data.changes.avgPace < 0 // negative pace change = faster = better
+      change: paceDiff,
+      improved: paceDiff < 0, // negative = faster = better
+      format: (v: number) => {
+        const secs = Math.abs(Math.round(v));
+        const m = Math.floor(secs / 60);
+        const s = secs % 60;
+        return m > 0 ? `${m}:${s.toString().padStart(2, '0')}` : `${s} ${t('comparison.sec')}`;
+      }
     }
   ];
 
@@ -74,7 +92,7 @@ const PeriodComparison: React.FC<PeriodComparisonProps> = ({ data, loading }) =>
               {m.change === 0 ? '—' : (
                 <>
                   <span>{m.improved ? '▲' : '▼'}</span>
-                  {' '}{Math.abs(m.change).toFixed(1)}%
+                  {' '}{m.format(m.change)}
                 </>
               )}
             </div>

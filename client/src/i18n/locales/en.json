@@ -261,7 +261,8 @@
     "loading": "Loading...",
     "distance": "Distance",
     "workouts": "Workouts",
-    "avgPace": "Avg pace"
+    "avgPace": "Avg pace",
+    "sec": "sec"
   },
   "goalsMini": {
     "title": "Goals",

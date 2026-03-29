@@ -261,7 +261,8 @@
     "loading": "Загрузка...",
     "distance": "Дистанция",
     "workouts": "Тренировки",
-    "avgPace": "Ср. темп"
+    "avgPace": "Ср. темп",
+    "sec": "сек"
   },
   "goalsMini": {
     "title": "Цели",
