@@ -100,25 +100,22 @@ router.get('/stats', authMiddleware, async (req, res) => {
       throw error;
     }
 
-    // Filter out suspicious unverified workouts, use manual overrides
-    const isSuspiciousUnverified = (w) => hasAnomalyColumns && w.is_suspicious && !w.user_verified;
+    // Use manual overrides if user corrected anomaly data
     const getEffectiveDist = (w) => (hasAnomalyColumns && w.manual_distance) ? w.manual_distance : (w.distance || 0);
     const getEffectiveTime = (w) => (hasAnomalyColumns && w.manual_moving_time) ? w.manual_moving_time : (w.moving_time || 0);
 
-    const filtered = data.filter(w => !isSuspiciousUnverified(w));
-
-    const totalDistance = filtered.reduce((sum, w) => sum + getEffectiveDist(w), 0);
-    const totalTime = filtered.reduce((sum, w) => sum + getEffectiveTime(w), 0);
-    const avgPace = filtered.length > 0
-      ? Math.round(filtered.reduce((sum, w) => sum + (w.average_pace || 0), 0) / filtered.length)
+    const totalDistance = data.reduce((sum, w) => sum + getEffectiveDist(w), 0);
+    const totalTime = data.reduce((sum, w) => sum + getEffectiveTime(w), 0);
+    const avgPace = data.length > 0
+      ? Math.round(data.reduce((sum, w) => sum + (w.average_pace || 0), 0) / data.length)
       : 0;
-    const avgHr = filtered.filter(w => w.average_heartrate).length > 0
-      ? Math.round(filtered.filter(w => w.average_heartrate).reduce((sum, w) => sum + w.average_heartrate, 0) / filtered.filter(w => w.average_heartrate).length)
+    const avgHr = data.filter(w => w.average_heartrate).length > 0
+      ? Math.round(data.filter(w => w.average_heartrate).reduce((sum, w) => sum + w.average_heartrate, 0) / data.filter(w => w.average_heartrate).length)
       : 0;
-    const bestPace = filtered.length > 0
-      ? Math.min(...filtered.filter(w => w.average_pace > 0).map(w => w.average_pace))
+    const bestPace = data.length > 0
+      ? Math.min(...data.filter(w => w.average_pace > 0).map(w => w.average_pace))
       : 0;
-    const totalElevation = filtered.reduce((sum, w) => sum + (w.total_elevation_gain || 0), 0);
+    const totalElevation = data.reduce((sum, w) => sum + (w.total_elevation_gain || 0), 0);
 
     res.json({
       totalDistance,
@@ -127,7 +124,7 @@ router.get('/stats', authMiddleware, async (req, res) => {
       avgHeartrate: avgHr,
       bestPace: bestPace === Infinity ? 0 : bestPace,
       totalElevation: Math.round(totalElevation),
-      workoutCount: filtered.length
+      workoutCount: data.length
     });
   } catch (err) {
     console.error('Stats error:', err.message);
@@ -185,17 +182,16 @@ router.get('/weekly', authMiddleware, async (req, res) => {
       throw error;
     }
 
-    const isSuspiciousUnverified = (w) => hasAnomalyColumns && w.is_suspicious && !w.user_verified;
     const getEffectiveDist = (w) => (hasAnomalyColumns && w.manual_distance) ? w.manual_distance : (w.distance || 0);
 
-    // Group by day (Mon-Sun), exclude unverified anomalies, use manual distance
+    // Group by day (Mon-Sun), use manual distance if corrected
     const dayNames = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
     const days = [];
     for (let i = 0; i < 7; i++) {
       const d = new Date(monday);
       d.setUTCDate(d.getUTCDate() + i);
       const dayStr = d.toISOString().split('T')[0];
-      const dayWorkouts = data.filter(w => w.date && w.date.startsWith(dayStr) && !isSuspiciousUnverified(w));
+      const dayWorkouts = data.filter(w => w.date && w.date.startsWith(dayStr));
       const totalKm = dayWorkouts.reduce((sum, w) => sum + getEffectiveDist(w), 0) / 1000;
 
       days.push({
@@ -249,14 +245,12 @@ router.get('/comparison', authMiddleware, async (req, res) => {
     if (curRes.error) throw curRes.error;
     if (prevRes.error) throw prevRes.error;
 
-    const isSuspiciousUnverified = (w) => hasAnomalyColumns && w.is_suspicious && !w.user_verified;
     const getEffectiveDist = (w) => (hasAnomalyColumns && w.manual_distance) ? w.manual_distance : (w.distance || 0);
 
     const calcStats = (data) => {
-      const filtered = data.filter(w => !isSuspiciousUnverified(w));
-      const distance = filtered.reduce((s, w) => s + getEffectiveDist(w), 0);
-      const workoutCount = filtered.length;
-      const paces = filtered.filter(w => w.average_pace > 0).map(w => w.average_pace);
+      const distance = data.reduce((s, w) => s + getEffectiveDist(w), 0);
+      const workoutCount = data.length;
+      const paces = data.filter(w => w.average_pace > 0).map(w => w.average_pace);
       const avgPace = paces.length > 0 ? Math.round(paces.reduce((a, b) => a + b, 0) / paces.length) : 0;
       return { distance, workoutCount, avgPace };
     };
@@ -547,9 +541,10 @@ router.get('/goals/predictions', authMiddleware, async (req, res) => {
     const isSuspiciousUnverified = (w) => hasAnomalyColumns && w.is_suspicious && !w.user_verified;
 
     // Pre-filter workouts for current month and current week
-    // Exclude suspicious unverified workouts from ALL goal calculations
-    const monthWorkouts = workoutsArr.filter(w => new Date(w.date) >= monthStart && !isSuspiciousUnverified(w));
-    const weekWorkouts = workoutsArr.filter(w => new Date(w.date) >= weekStart && !isSuspiciousUnverified(w));
+    // All workouts shown as-is, but use manual_distance if user corrected anomaly
+    // Only PB/Riegel calculations exclude unverified anomalies
+    const monthWorkouts = workoutsArr.filter(w => new Date(w.date) >= monthStart);
+    const weekWorkouts = workoutsArr.filter(w => new Date(w.date) >= weekStart);
 
     const fmtTime = (s) => {
       const h = Math.floor(s / 3600);
