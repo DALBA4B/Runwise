@@ -15,6 +15,23 @@ function formatPace(secPerKm) {
   return `${min}:${sec.toString().padStart(2, '0')}`;
 }
 
+// Helpers: use manual (user-corrected) values if available
+function effectiveDistance(w) {
+  return w.manual_distance || w.distance || 0;
+}
+function effectiveMovingTime(w) {
+  return w.manual_moving_time || w.moving_time || 0;
+}
+function effectivePace(w) {
+  const dist = effectiveDistance(w);
+  const time = effectiveMovingTime(w);
+  if (w.manual_distance || w.manual_moving_time) {
+    // Recalculate pace from corrected data
+    return dist > 0 ? time / (dist / 1000) : null;
+  }
+  return w.average_pace;
+}
+
 // Helper: get last N months of workouts for AI context
 async function getWorkoutsContext(userId, months = 3) {
   const since = new Date();
@@ -22,7 +39,7 @@ async function getWorkoutsContext(userId, months = 3) {
 
   const { data } = await supabase
     .from('workouts')
-    .select('name, distance, moving_time, average_pace, average_heartrate, date, type')
+    .select('name, distance, moving_time, average_pace, average_heartrate, date, type, manual_distance, manual_moving_time')
     .eq('user_id', userId)
     .gte('date', since.toISOString())
     .order('date', { ascending: false });
@@ -30,8 +47,8 @@ async function getWorkoutsContext(userId, months = 3) {
   return (data || []).map(w => ({
     date: w.date?.split('T')[0],
     name: w.name,
-    distance_km: (w.distance / 1000).toFixed(2),
-    pace: formatPace(w.average_pace),
+    distance_km: (effectiveDistance(w) / 1000).toFixed(2),
+    pace: formatPace(effectivePace(w)),
     heartrate: w.average_heartrate || '—',
     type: w.type
   }));
@@ -44,7 +61,7 @@ async function getMonthlySummaryContext(userId) {
 
   const { data } = await supabase
     .from('workouts')
-    .select('name, distance, moving_time, average_pace, average_heartrate, date, type, total_elevation_gain')
+    .select('name, distance, moving_time, average_pace, average_heartrate, date, type, total_elevation_gain, manual_distance, manual_moving_time')
     .eq('user_id', userId)
     .gte('date', since.toISOString())
     .order('date', { ascending: false });
@@ -64,10 +81,10 @@ async function getMonthlySummaryContext(userId) {
     };
   }
 
-  const totalDist = workouts.reduce((s, w) => s + (w.distance || 0), 0);
-  const totalTime = workouts.reduce((s, w) => s + (w.moving_time || 0), 0);
+  const totalDist = workouts.reduce((s, w) => s + effectiveDistance(w), 0);
+  const totalTime = workouts.reduce((s, w) => s + effectiveMovingTime(w), 0);
   const totalElev = workouts.reduce((s, w) => s + (w.total_elevation_gain || 0), 0);
-  const paces = workouts.filter(w => w.average_pace).map(w => w.average_pace);
+  const paces = workouts.map(w => effectivePace(w)).filter(Boolean);
   const hrs = workouts.filter(w => w.average_heartrate).map(w => w.average_heartrate);
 
   // Weekly breakdown
@@ -78,7 +95,7 @@ async function getMonthlySummaryContext(userId) {
     weekStart.setDate(d.getDate() - d.getDay() + (d.getDay() === 0 ? -6 : 1)); // Monday
     const key = weekStart.toISOString().split('T')[0];
     if (!weeks[key]) weeks[key] = { week_start: key, km: 0, count: 0 };
-    weeks[key].km += w.distance / 1000;
+    weeks[key].km += effectiveDistance(w) / 1000;
     weeks[key].count++;
   });
   const weeklyBreakdown = Object.values(weeks)
@@ -89,8 +106,8 @@ async function getMonthlySummaryContext(userId) {
   const recent = workouts.slice(0, 5).map(w => ({
     date: w.date?.split('T')[0],
     name: w.name,
-    distance_km: +(w.distance / 1000).toFixed(2),
-    pace: formatPace(w.average_pace),
+    distance_km: +(effectiveDistance(w) / 1000).toFixed(2),
+    pace: formatPace(effectivePace(w)),
     type: w.type
   }));
 
@@ -401,7 +418,7 @@ async function toolGetWorkoutsByDateRange(userId, args) {
   const { start_date, end_date } = args;
   const { data } = await supabase
     .from('workouts')
-    .select('name, distance, moving_time, average_pace, average_heartrate, date, type, total_elevation_gain')
+    .select('name, distance, moving_time, average_pace, average_heartrate, date, type, total_elevation_gain, manual_distance, manual_moving_time')
     .eq('user_id', userId)
     .gte('date', start_date)
     .lte('date', end_date + 'T23:59:59')
@@ -411,9 +428,9 @@ async function toolGetWorkoutsByDateRange(userId, args) {
   return (data || []).map(w => ({
     date: w.date?.split('T')[0],
     name: w.name,
-    distance_km: (w.distance / 1000).toFixed(2),
-    time_min: Math.round(w.moving_time / 60),
-    pace: formatPace(w.average_pace),
+    distance_km: (effectiveDistance(w) / 1000).toFixed(2),
+    time_min: Math.round(effectiveMovingTime(w) / 60),
+    pace: formatPace(effectivePace(w)),
     heartrate: w.average_heartrate || null,
     type: w.type,
     elevation: w.total_elevation_gain || 0
@@ -425,7 +442,7 @@ async function toolGetWorkoutDetails(userId, args) {
   const { workout_date, workout_name } = args;
   let query = supabase
     .from('workouts')
-    .select('name, distance, moving_time, average_pace, average_heartrate, max_heartrate, date, type, total_elevation_gain, splits, splits_500m, best_efforts, description')
+    .select('name, distance, moving_time, average_pace, average_heartrate, max_heartrate, date, type, total_elevation_gain, splits, splits_500m, best_efforts, description, manual_distance, manual_moving_time, is_suspicious')
     .eq('user_id', userId)
     .gte('date', workout_date)
     .lte('date', workout_date + 'T23:59:59');
@@ -437,12 +454,13 @@ async function toolGetWorkoutDetails(userId, args) {
   const { data } = await query.order('date', { ascending: false }).limit(5);
 
   return (data || []).map(w => {
+    const gpsAnomaly = !!w.is_suspicious;
     const result = {
       date: w.date?.split('T')[0],
       name: w.name,
-      distance_km: (w.distance / 1000).toFixed(2),
-      time_min: Math.round(w.moving_time / 60),
-      pace: formatPace(w.average_pace),
+      distance_km: (effectiveDistance(w) / 1000).toFixed(2),
+      time_min: Math.round(effectiveMovingTime(w) / 60),
+      pace: formatPace(effectivePace(w)),
       heartrate: w.average_heartrate || null,
       max_heartrate: w.max_heartrate || null,
       type: w.type,
@@ -450,17 +468,22 @@ async function toolGetWorkoutDetails(userId, args) {
       description: w.description || null
     };
 
-    if (w.splits) {
+    if (gpsAnomaly) {
+      result.gps_anomaly = true;
+      result.note = 'GPS anomaly detected — splits and best efforts are unreliable and excluded. Distance and time were manually corrected by the user.';
+    }
+
+    if (!gpsAnomaly && w.splits) {
       try {
         result.splits = typeof w.splits === 'string' ? JSON.parse(w.splits) : w.splits;
       } catch { result.splits = null; }
     }
-    if (w.splits_500m) {
+    if (!gpsAnomaly && w.splits_500m) {
       try {
         result.splits_500m = typeof w.splits_500m === 'string' ? JSON.parse(w.splits_500m) : w.splits_500m;
       } catch { result.splits_500m = null; }
     }
-    if (w.best_efforts) {
+    if (!gpsAnomaly && w.best_efforts) {
       try {
         const efforts = typeof w.best_efforts === 'string' ? JSON.parse(w.best_efforts) : w.best_efforts;
         result.best_efforts = efforts.map(e => ({
@@ -488,11 +511,9 @@ async function toolSearchWorkouts(userId, args) {
 
   let query = supabase
     .from('workouts')
-    .select('name, distance, moving_time, average_pace, average_heartrate, date, type, total_elevation_gain')
+    .select('name, distance, moving_time, average_pace, average_heartrate, date, type, total_elevation_gain, manual_distance, manual_moving_time')
     .eq('user_id', userId);
 
-  if (min_distance_km) query = query.gte('distance', min_distance_km * 1000);
-  if (max_distance_km) query = query.lte('distance', max_distance_km * 1000);
   if (min_heartrate) query = query.gte('average_heartrate', min_heartrate);
   if (max_heartrate) query = query.lte('average_heartrate', max_heartrate);
   if (type) query = query.eq('type', type);
@@ -502,18 +523,29 @@ async function toolSearchWorkouts(userId, args) {
   const ascending = (sort_order === 'asc');
   query = query.order(sortField, { ascending });
 
-  const { data } = await query.limit(maxLimit);
+  // Fetch more to account for client-side filtering by effective distance
+  const { data } = await query.limit(maxLimit * 3);
 
   let results = (data || []).map(w => ({
     date: w.date?.split('T')[0],
     name: w.name,
-    distance_km: (w.distance / 1000).toFixed(2),
-    time_min: Math.round(w.moving_time / 60),
-    pace: formatPace(w.average_pace),
+    distance_km: +(effectiveDistance(w) / 1000).toFixed(2),
+    time_min: Math.round(effectiveMovingTime(w) / 60),
+    pace: formatPace(effectivePace(w)),
     heartrate: w.average_heartrate || null,
     type: w.type,
     elevation: w.total_elevation_gain || 0
   }));
+
+  // Client-side distance filter (uses effective distance which may differ from DB column)
+  if (min_distance_km) {
+    results = results.filter(w => w.distance_km >= min_distance_km);
+  }
+  if (max_distance_km) {
+    results = results.filter(w => w.distance_km <= max_distance_km);
+  }
+
+  results = results.slice(0, maxLimit);
 
   // Client-side pace filter (pace is in sec/km, lower = faster)
   if (args.max_pace) {
@@ -539,7 +571,7 @@ async function toolGetPeriodStats(userId, args) {
   const { start_date, end_date } = args;
   const { data } = await supabase
     .from('workouts')
-    .select('distance, moving_time, average_pace, average_heartrate, total_elevation_gain, type')
+    .select('distance, moving_time, average_pace, average_heartrate, total_elevation_gain, type, manual_distance, manual_moving_time')
     .eq('user_id', userId)
     .gte('date', start_date)
     .lte('date', end_date + 'T23:59:59');
@@ -549,10 +581,10 @@ async function toolGetPeriodStats(userId, args) {
     return { workouts_count: 0, message: 'No workouts found in this period' };
   }
 
-  const totalDistance = workouts.reduce((s, w) => s + (w.distance || 0), 0);
-  const totalTime = workouts.reduce((s, w) => s + (w.moving_time || 0), 0);
+  const totalDistance = workouts.reduce((s, w) => s + effectiveDistance(w), 0);
+  const totalTime = workouts.reduce((s, w) => s + effectiveMovingTime(w), 0);
   const totalElevation = workouts.reduce((s, w) => s + (w.total_elevation_gain || 0), 0);
-  const paces = workouts.filter(w => w.average_pace).map(w => w.average_pace);
+  const paces = workouts.map(w => effectivePace(w)).filter(Boolean);
   const hrs = workouts.filter(w => w.average_heartrate).map(w => w.average_heartrate);
 
   // Type breakdown
@@ -561,7 +593,7 @@ async function toolGetPeriodStats(userId, args) {
     const t = w.type || 'unknown';
     if (!typeBreakdown[t]) typeBreakdown[t] = { count: 0, distance_km: 0 };
     typeBreakdown[t].count++;
-    typeBreakdown[t].distance_km += w.distance / 1000;
+    typeBreakdown[t].distance_km += effectiveDistance(w) / 1000;
   });
   Object.keys(typeBreakdown).forEach(t => {
     typeBreakdown[t].distance_km = +typeBreakdown[t].distance_km.toFixed(2);
@@ -1399,16 +1431,20 @@ router.post('/analyze-workout', authMiddleware, async (req, res) => {
 ${ap.context}:
 ${JSON.stringify(recentWorkouts.slice(0, 10), null, 2)}`;
 
+    const gpsAnomaly = !!workout.is_suspicious;
+    const gpsNote = { ru: '⚠️ GPS-аномалия: сплиты ненадёжны, не анализируй их. Дистанция и время исправлены вручную.', uk: '⚠️ GPS-аномалія: спліти ненадійні, не аналізуй їх. Дистанцію та час виправлено вручну.', en: '⚠️ GPS anomaly: splits are unreliable, do not analyze them. Distance and time were manually corrected.' };
+
     const workoutInfo = `${ap.analyze}:
 - ${ap.name}: ${workout.name}
 - ${ap.date}: ${workout.date}
-- ${ap.distance}: ${(workout.distance / 1000).toFixed(2)} ${ap.km}
-- ${ap.time}: ${Math.floor(workout.moving_time / 60)} ${ap.min}
-- ${ap.pace}: ${formatPace(workout.average_pace)} ${ap.minKm}
+- ${ap.distance}: ${(effectiveDistance(workout) / 1000).toFixed(2)} ${ap.km}
+- ${ap.time}: ${Math.floor(effectiveMovingTime(workout) / 60)} ${ap.min}
+- ${ap.pace}: ${formatPace(effectivePace(workout))} ${ap.minKm}
 - ${ap.hr}: ${workout.average_heartrate || ap.noData} (${ap.max}: ${workout.max_heartrate || ap.noData})
 - ${ap.type}: ${workout.type}
-${workout.splits ? `- ${ap.splitsKm}: ${workout.splits}` : ''}
-${workout.splits_500m ? `- ${ap.splits500}: ${workout.splits_500m}` : ''}`;
+${gpsAnomaly ? (gpsNote[useLang] || gpsNote.ru) : ''}
+${!gpsAnomaly && workout.splits ? `- ${ap.splitsKm}: ${workout.splits}` : ''}
+${!gpsAnomaly && workout.splits_500m ? `- ${ap.splits500}: ${workout.splits_500m}` : ''}`;
 
     const reply = await callDeepSeek(systemPrompt, workoutInfo);
     res.json({ analysis: reply });
@@ -1428,7 +1464,7 @@ router.post('/generate-plan', authMiddleware, async (req, res) => {
 
     const { data: recentWorkouts } = await supabase
       .from('workouts')
-      .select('name, distance, moving_time, average_pace, average_heartrate, date, type')
+      .select('name, distance, moving_time, average_pace, average_heartrate, date, type, manual_distance, manual_moving_time')
       .eq('user_id', req.user.id)
       .gte('date', fourWeeksAgo.toISOString())
       .order('date', { ascending: false });
@@ -1450,7 +1486,7 @@ router.post('/generate-plan', authMiddleware, async (req, res) => {
         const d = new Date(wr.date);
         return d >= weekStart && d < weekEnd;
       });
-      const totalKm = weekWorkouts.reduce((s, wr) => s + (wr.distance || 0) / 1000, 0);
+      const totalKm = weekWorkouts.reduce((s, wr) => s + effectiveDistance(wr) / 1000, 0);
       weeklyDistances.push(Math.round(totalKm * 10) / 10);
     }
     const avgWeeklyKm = weeklyDistances.length > 0
@@ -1538,8 +1574,8 @@ ${gp.format(dayNamesExample)}`;
     const context = `${gp.contextLabel}:
 ${JSON.stringify((recentWorkouts || []).map(w => ({
   date: w.date?.split('T')[0],
-  distance_km: (w.distance / 1000).toFixed(1),
-  pace: formatPace(w.average_pace),
+  distance_km: (effectiveDistance(w) / 1000).toFixed(1),
+  pace: formatPace(effectivePace(w)),
   type: w.type,
   heartrate: w.average_heartrate
 })), null, 2)}
@@ -1651,7 +1687,7 @@ router.post('/weekly-analysis', authMiddleware, async (req, res) => {
 
     const { data: weekData } = await supabase
       .from('workouts')
-      .select('name, distance, moving_time, average_pace, average_heartrate, date, type')
+      .select('name, distance, moving_time, average_pace, average_heartrate, date, type, manual_distance, manual_moving_time')
       .eq('user_id', req.user.id)
       .gte('date', monday.toISOString())
       .order('date', { ascending: false });
@@ -1659,8 +1695,8 @@ router.post('/weekly-analysis', authMiddleware, async (req, res) => {
     const weekWorkouts = (weekData || []).map(w => ({
       date: w.date?.split('T')[0],
       name: w.name,
-      distance_km: (w.distance / 1000).toFixed(2),
-      pace: formatPace(w.average_pace),
+      distance_km: (effectiveDistance(w) / 1000).toFixed(2),
+      pace: formatPace(effectivePace(w)),
       heartrate: w.average_heartrate || '—',
       type: w.type
     }));
