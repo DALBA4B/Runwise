@@ -134,6 +134,7 @@
     "placeholder": "Ask me about your workouts...",
     "planUpdated": "✅ Training plan updated! Go to the Plan tab to see the changes.",
     "updatingPlan": "Updating training plan...",
+    "analyzing": "Analyzing data...",
     "error": "Sorry, something went wrong. Try again later.",
     "quickQuestions": "Quick questions:",
     "q1": "📋 Tell me about my current plan",

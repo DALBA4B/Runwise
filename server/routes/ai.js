@@ -37,6 +37,76 @@ async function getWorkoutsContext(userId, months = 3) {
   }));
 }
 
+// Helper: get compact monthly summary for AI context (replaces raw 3-month dump)
+async function getMonthlySummaryContext(userId) {
+  const since = new Date();
+  since.setDate(since.getDate() - 30);
+
+  const { data } = await supabase
+    .from('workouts')
+    .select('name, distance, moving_time, average_pace, average_heartrate, date, type, total_elevation_gain')
+    .eq('user_id', userId)
+    .gte('date', since.toISOString())
+    .order('date', { ascending: false });
+
+  const workouts = data || [];
+  if (workouts.length === 0) {
+    return {
+      period: '30 days',
+      workouts_count: 0,
+      total_km: 0,
+      total_time_min: 0,
+      avg_pace: null,
+      avg_heartrate: null,
+      total_elevation: 0,
+      weekly_breakdown: [],
+      recent_workouts: []
+    };
+  }
+
+  const totalDist = workouts.reduce((s, w) => s + (w.distance || 0), 0);
+  const totalTime = workouts.reduce((s, w) => s + (w.moving_time || 0), 0);
+  const totalElev = workouts.reduce((s, w) => s + (w.total_elevation_gain || 0), 0);
+  const paces = workouts.filter(w => w.average_pace).map(w => w.average_pace);
+  const hrs = workouts.filter(w => w.average_heartrate).map(w => w.average_heartrate);
+
+  // Weekly breakdown
+  const weeks = {};
+  workouts.forEach(w => {
+    const d = new Date(w.date);
+    const weekStart = new Date(d);
+    weekStart.setDate(d.getDate() - d.getDay() + (d.getDay() === 0 ? -6 : 1)); // Monday
+    const key = weekStart.toISOString().split('T')[0];
+    if (!weeks[key]) weeks[key] = { week_start: key, km: 0, count: 0 };
+    weeks[key].km += w.distance / 1000;
+    weeks[key].count++;
+  });
+  const weeklyBreakdown = Object.values(weeks)
+    .sort((a, b) => b.week_start.localeCompare(a.week_start))
+    .map(w => ({ ...w, km: +w.km.toFixed(2) }));
+
+  // Last 5 workouts
+  const recent = workouts.slice(0, 5).map(w => ({
+    date: w.date?.split('T')[0],
+    name: w.name,
+    distance_km: +(w.distance / 1000).toFixed(2),
+    pace: formatPace(w.average_pace),
+    type: w.type
+  }));
+
+  return {
+    period: '30 days',
+    workouts_count: workouts.length,
+    total_km: +(totalDist / 1000).toFixed(2),
+    total_time_min: Math.round(totalTime / 60),
+    avg_pace: paces.length ? formatPace(paces.reduce((s, p) => s + p, 0) / paces.length) : null,
+    avg_heartrate: hrs.length ? Math.round(hrs.reduce((s, h) => s + h, 0) / hrs.length) : null,
+    total_elevation: Math.round(totalElev),
+    weekly_breakdown: weeklyBreakdown,
+    recent_workouts: recent
+  };
+}
+
 // Language instruction helper
 const LANG_INSTRUCTIONS = {
   ru: 'Отвечай на русском.',
@@ -243,6 +313,541 @@ async function callDeepSeekStream(systemPrompt, userMessage, maxTokens = 2500, c
   return response.data;
 }
 
+// ============ AI TOOLS FOR CHAT ============
+
+const AI_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'get_workouts_by_date_range',
+      description: 'Get list of workouts for a date range. Use when user asks about workouts in a specific period (week, month, quarter, year).',
+      parameters: {
+        type: 'object',
+        properties: {
+          start_date: { type: 'string', description: 'Start date in YYYY-MM-DD format' },
+          end_date: { type: 'string', description: 'End date in YYYY-MM-DD format' }
+        },
+        required: ['start_date', 'end_date']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_workout_details',
+      description: 'Get full details of a specific workout including splits and best efforts. Use when user asks about a specific workout by date or name.',
+      parameters: {
+        type: 'object',
+        properties: {
+          workout_date: { type: 'string', description: 'Date of the workout in YYYY-MM-DD format' },
+          workout_name: { type: 'string', description: 'Optional: name/title of the workout to narrow search' }
+        },
+        required: ['workout_date']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_workouts',
+      description: 'Search workouts by criteria: distance, pace, heart rate, type. Use when user asks for fastest/longest/specific type of workouts.',
+      parameters: {
+        type: 'object',
+        properties: {
+          min_distance_km: { type: 'number', description: 'Minimum distance in km' },
+          max_distance_km: { type: 'number', description: 'Maximum distance in km' },
+          min_pace: { type: 'string', description: 'Minimum (slowest) pace in mm:ss format' },
+          max_pace: { type: 'string', description: 'Maximum (fastest) pace in mm:ss format' },
+          min_heartrate: { type: 'number', description: 'Minimum average heart rate' },
+          max_heartrate: { type: 'number', description: 'Maximum average heart rate' },
+          type: { type: 'string', description: 'Workout type filter (easy, tempo, long, interval, race, etc.)' },
+          sort_by: { type: 'string', enum: ['date', 'distance', 'pace', 'heartrate'], description: 'Sort field (default: date)' },
+          sort_order: { type: 'string', enum: ['asc', 'desc'], description: 'Sort order (default: desc)' },
+          limit: { type: 'number', description: 'Max results to return (default: 10, max: 50)' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_period_stats',
+      description: 'Get aggregated statistics for a period: total distance, total time, avg pace, avg heart rate, number of workouts, elevation gain. Use when user asks "how much did I run in January" or similar.',
+      parameters: {
+        type: 'object',
+        properties: {
+          start_date: { type: 'string', description: 'Start date in YYYY-MM-DD format' },
+          end_date: { type: 'string', description: 'End date in YYYY-MM-DD format' }
+        },
+        required: ['start_date', 'end_date']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_personal_records_history',
+      description: 'Get user personal records (best times for standard distances). Use when user asks about their PRs or records.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  }
+];
+
+// Tool executor: get workouts by date range
+async function toolGetWorkoutsByDateRange(userId, args) {
+  const { start_date, end_date } = args;
+  const { data } = await supabase
+    .from('workouts')
+    .select('name, distance, moving_time, average_pace, average_heartrate, date, type, total_elevation_gain')
+    .eq('user_id', userId)
+    .gte('date', start_date)
+    .lte('date', end_date + 'T23:59:59')
+    .order('date', { ascending: false })
+    .limit(50);
+
+  return (data || []).map(w => ({
+    date: w.date?.split('T')[0],
+    name: w.name,
+    distance_km: (w.distance / 1000).toFixed(2),
+    time_min: Math.round(w.moving_time / 60),
+    pace: formatPace(w.average_pace),
+    heartrate: w.average_heartrate || null,
+    type: w.type,
+    elevation: w.total_elevation_gain || 0
+  }));
+}
+
+// Tool executor: get workout details
+async function toolGetWorkoutDetails(userId, args) {
+  const { workout_date, workout_name } = args;
+  let query = supabase
+    .from('workouts')
+    .select('name, distance, moving_time, average_pace, average_heartrate, max_heartrate, date, type, total_elevation_gain, splits, splits_500m, best_efforts, description')
+    .eq('user_id', userId)
+    .gte('date', workout_date)
+    .lte('date', workout_date + 'T23:59:59');
+
+  if (workout_name) {
+    query = query.ilike('name', `%${workout_name}%`);
+  }
+
+  const { data } = await query.order('date', { ascending: false }).limit(5);
+
+  return (data || []).map(w => {
+    const result = {
+      date: w.date?.split('T')[0],
+      name: w.name,
+      distance_km: (w.distance / 1000).toFixed(2),
+      time_min: Math.round(w.moving_time / 60),
+      pace: formatPace(w.average_pace),
+      heartrate: w.average_heartrate || null,
+      max_heartrate: w.max_heartrate || null,
+      type: w.type,
+      elevation: w.total_elevation_gain || 0,
+      description: w.description || null
+    };
+
+    if (w.splits) {
+      try {
+        result.splits = typeof w.splits === 'string' ? JSON.parse(w.splits) : w.splits;
+      } catch { result.splits = null; }
+    }
+    if (w.splits_500m) {
+      try {
+        result.splits_500m = typeof w.splits_500m === 'string' ? JSON.parse(w.splits_500m) : w.splits_500m;
+      } catch { result.splits_500m = null; }
+    }
+    if (w.best_efforts) {
+      try {
+        const efforts = typeof w.best_efforts === 'string' ? JSON.parse(w.best_efforts) : w.best_efforts;
+        result.best_efforts = efforts.map(e => ({
+          name: e.name,
+          distance_m: e.distance,
+          time: `${Math.floor(e.moving_time / 60)}:${(e.moving_time % 60).toString().padStart(2, '0')}`
+        }));
+      } catch { result.best_efforts = null; }
+    }
+
+    return result;
+  });
+}
+
+// Helper: parse pace string "mm:ss" to seconds per km
+function parsePaceToSeconds(paceStr) {
+  const parts = paceStr.split(':');
+  return parseInt(parts[0]) * 60 + parseInt(parts[1] || 0);
+}
+
+// Tool executor: search workouts
+async function toolSearchWorkouts(userId, args) {
+  const { min_distance_km, max_distance_km, min_heartrate, max_heartrate, type, sort_by, sort_order, limit } = args;
+  const maxLimit = Math.min(limit || 10, 50);
+
+  let query = supabase
+    .from('workouts')
+    .select('name, distance, moving_time, average_pace, average_heartrate, date, type, total_elevation_gain')
+    .eq('user_id', userId);
+
+  if (min_distance_km) query = query.gte('distance', min_distance_km * 1000);
+  if (max_distance_km) query = query.lte('distance', max_distance_km * 1000);
+  if (min_heartrate) query = query.gte('average_heartrate', min_heartrate);
+  if (max_heartrate) query = query.lte('average_heartrate', max_heartrate);
+  if (type) query = query.eq('type', type);
+
+  // Sort
+  const sortField = { date: 'date', distance: 'distance', pace: 'average_pace', heartrate: 'average_heartrate' }[sort_by] || 'date';
+  const ascending = (sort_order === 'asc');
+  query = query.order(sortField, { ascending });
+
+  const { data } = await query.limit(maxLimit);
+
+  let results = (data || []).map(w => ({
+    date: w.date?.split('T')[0],
+    name: w.name,
+    distance_km: (w.distance / 1000).toFixed(2),
+    time_min: Math.round(w.moving_time / 60),
+    pace: formatPace(w.average_pace),
+    heartrate: w.average_heartrate || null,
+    type: w.type,
+    elevation: w.total_elevation_gain || 0
+  }));
+
+  // Client-side pace filter (pace is in sec/km, lower = faster)
+  if (args.max_pace) {
+    const maxPaceSec = parsePaceToSeconds(args.max_pace);
+    results = results.filter(w => {
+      const wPace = parsePaceToSeconds(w.pace);
+      return wPace <= maxPaceSec;
+    });
+  }
+  if (args.min_pace) {
+    const minPaceSec = parsePaceToSeconds(args.min_pace);
+    results = results.filter(w => {
+      const wPace = parsePaceToSeconds(w.pace);
+      return wPace >= minPaceSec;
+    });
+  }
+
+  return results;
+}
+
+// Tool executor: get period stats
+async function toolGetPeriodStats(userId, args) {
+  const { start_date, end_date } = args;
+  const { data } = await supabase
+    .from('workouts')
+    .select('distance, moving_time, average_pace, average_heartrate, total_elevation_gain, type')
+    .eq('user_id', userId)
+    .gte('date', start_date)
+    .lte('date', end_date + 'T23:59:59');
+
+  const workouts = data || [];
+  if (workouts.length === 0) {
+    return { workouts_count: 0, message: 'No workouts found in this period' };
+  }
+
+  const totalDistance = workouts.reduce((s, w) => s + (w.distance || 0), 0);
+  const totalTime = workouts.reduce((s, w) => s + (w.moving_time || 0), 0);
+  const totalElevation = workouts.reduce((s, w) => s + (w.total_elevation_gain || 0), 0);
+  const paces = workouts.filter(w => w.average_pace).map(w => w.average_pace);
+  const hrs = workouts.filter(w => w.average_heartrate).map(w => w.average_heartrate);
+
+  // Type breakdown
+  const typeBreakdown = {};
+  workouts.forEach(w => {
+    const t = w.type || 'unknown';
+    if (!typeBreakdown[t]) typeBreakdown[t] = { count: 0, distance_km: 0 };
+    typeBreakdown[t].count++;
+    typeBreakdown[t].distance_km += w.distance / 1000;
+  });
+  Object.keys(typeBreakdown).forEach(t => {
+    typeBreakdown[t].distance_km = +typeBreakdown[t].distance_km.toFixed(2);
+  });
+
+  return {
+    period: `${start_date} — ${end_date}`,
+    workouts_count: workouts.length,
+    total_distance_km: +(totalDistance / 1000).toFixed(2),
+    total_time_min: Math.round(totalTime / 60),
+    total_elevation_m: Math.round(totalElevation),
+    avg_pace: paces.length ? formatPace(paces.reduce((s, p) => s + p, 0) / paces.length) : null,
+    avg_heartrate: hrs.length ? Math.round(hrs.reduce((s, h) => s + h, 0) / hrs.length) : null,
+    type_breakdown: typeBreakdown
+  };
+}
+
+// Tool executor: get personal records history
+async function toolGetPersonalRecords(userId) {
+  const { data } = await supabase
+    .from('personal_records')
+    .select('distance_type, time_seconds, record_date')
+    .eq('user_id', userId);
+
+  if (!data || data.length === 0) {
+    return { message: 'No personal records set' };
+  }
+
+  return data.map(r => {
+    const h = Math.floor(r.time_seconds / 3600);
+    const m = Math.floor((r.time_seconds % 3600) / 60);
+    const s = Math.round(r.time_seconds % 60);
+    const timeStr = h > 0
+      ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+      : `${m}:${s.toString().padStart(2, '0')}`;
+    return {
+      distance: r.distance_type,
+      time: timeStr,
+      date: r.record_date || null
+    };
+  });
+}
+
+// Central tool dispatcher
+async function executeTool(userId, toolName, args) {
+  switch (toolName) {
+    case 'get_workouts_by_date_range':
+      return await toolGetWorkoutsByDateRange(userId, args);
+    case 'get_workout_details':
+      return await toolGetWorkoutDetails(userId, args);
+    case 'search_workouts':
+      return await toolSearchWorkouts(userId, args);
+    case 'get_period_stats':
+      return await toolGetPeriodStats(userId, args);
+    case 'get_personal_records_history':
+      return await toolGetPersonalRecords(userId);
+    default:
+      return { error: `Unknown tool: ${toolName}` };
+  }
+}
+
+// Non-streaming tool call loop: sends request, executes tool calls, repeats up to 5 rounds
+async function callDeepSeekWithTools(systemPrompt, userMessage, userId, maxTokens = 2500, chatHistory = []) {
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...chatHistory,
+    { role: 'user', content: userMessage }
+  ];
+
+  const MAX_ROUNDS = 5;
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    const requestBody = {
+      model: 'deepseek-chat',
+      messages,
+      temperature: 0.7,
+      max_tokens: maxTokens
+    };
+
+    // Only add tools on first few rounds (stop if we're on last round)
+    if (round < MAX_ROUNDS - 1) {
+      requestBody.tools = AI_TOOLS;
+    }
+
+    const response = await axios.post(DEEPSEEK_URL, requestBody, {
+      headers: {
+        'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const choice = response.data.choices[0];
+    const assistantMessage = choice.message;
+
+    // If no tool calls — return the text content
+    if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
+      return assistantMessage.content;
+    }
+
+    // Add assistant message with tool calls to history
+    messages.push(assistantMessage);
+
+    // Execute each tool call and add results
+    for (const toolCall of assistantMessage.tool_calls) {
+      let args = {};
+      try {
+        args = typeof toolCall.function.arguments === 'string'
+          ? JSON.parse(toolCall.function.arguments)
+          : toolCall.function.arguments || {};
+      } catch { args = {}; }
+
+      let result;
+      try {
+        result = await executeTool(userId, toolCall.function.name, args);
+      } catch (err) {
+        result = { error: `Tool execution failed: ${err.message}` };
+      }
+
+      messages.push({
+        role: 'tool',
+        tool_call_id: toolCall.id,
+        content: JSON.stringify(result)
+      });
+    }
+  }
+
+  // If we exhausted rounds, make one final call without tools
+  const finalResponse = await axios.post(DEEPSEEK_URL, {
+    model: 'deepseek-chat',
+    messages,
+    temperature: 0.7,
+    max_tokens: maxTokens
+  }, {
+    headers: {
+      'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  return finalResponse.data.choices[0].message.content;
+}
+
+// Helper: collect a full streamed response into a message object (tool_calls or content)
+async function collectStreamResponse(stream) {
+  return new Promise((resolve, reject) => {
+    let buffer = '';
+    let content = '';
+    let toolCalls = [];
+
+    stream.on('data', (chunk) => {
+      buffer += chunk.toString();
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data: ') || trimmed === 'data: [DONE]') continue;
+
+        try {
+          const json = JSON.parse(trimmed.slice(6));
+          const delta = json.choices?.[0]?.delta;
+          if (!delta) continue;
+
+          if (delta.content) {
+            content += delta.content;
+          }
+
+          if (delta.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index;
+              if (!toolCalls[idx]) {
+                toolCalls[idx] = {
+                  id: tc.id || '',
+                  type: 'function',
+                  function: { name: '', arguments: '' }
+                };
+              }
+              if (tc.id) toolCalls[idx].id = tc.id;
+              if (tc.function?.name) toolCalls[idx].function.name += tc.function.name;
+              if (tc.function?.arguments) toolCalls[idx].function.arguments += tc.function.arguments;
+            }
+          }
+        } catch {
+          // skip malformed
+        }
+      }
+    });
+
+    stream.on('end', () => {
+      toolCalls = toolCalls.filter(Boolean);
+      resolve({ content, toolCalls });
+    });
+
+    stream.on('error', (err) => {
+      reject(err);
+    });
+  });
+}
+
+// Streaming tool call loop: buffers tool rounds, streams final text response
+async function callDeepSeekStreamWithTools(systemPrompt, userMessage, userId, res, maxTokens = 2500, chatHistory = []) {
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...chatHistory,
+    { role: 'user', content: userMessage }
+  ];
+
+  const MAX_ROUNDS = 5;
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    const requestBody = {
+      model: 'deepseek-chat',
+      messages,
+      temperature: 0.7,
+      max_tokens: maxTokens,
+      stream: true
+    };
+
+    if (round < MAX_ROUNDS - 1) {
+      requestBody.tools = AI_TOOLS;
+    }
+
+    const response = await axios.post(DEEPSEEK_URL, requestBody, {
+      headers: {
+        'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      responseType: 'stream'
+    });
+
+    const { content, toolCalls } = await collectStreamResponse(response.data);
+
+    // No tool calls — this is the final round, we need to re-stream it
+    if (toolCalls.length === 0) {
+      // We already consumed the stream, so return collected content
+      return content;
+    }
+
+    // Tool calls found — send thinking indicator to client
+    res.write(`data: ${JSON.stringify({ thinking: true })}\n\n`);
+
+    // Add assistant message with tool calls
+    const assistantMsg = { role: 'assistant', content: content || null, tool_calls: toolCalls };
+    messages.push(assistantMsg);
+
+    // Execute tool calls
+    for (const toolCall of toolCalls) {
+      let args = {};
+      try {
+        args = typeof toolCall.function.arguments === 'string'
+          ? JSON.parse(toolCall.function.arguments)
+          : toolCall.function.arguments || {};
+      } catch { args = {}; }
+
+      let result;
+      try {
+        result = await executeTool(userId, toolCall.function.name, args);
+      } catch (err) {
+        result = { error: `Tool execution failed: ${err.message}` };
+      }
+
+      messages.push({
+        role: 'tool',
+        tool_call_id: toolCall.id,
+        content: JSON.stringify(result)
+      });
+    }
+  }
+
+  // Final call without tools — stream directly to client
+  const finalResponse = await axios.post(DEEPSEEK_URL, {
+    model: 'deepseek-chat',
+    messages,
+    temperature: 0.7,
+    max_tokens: maxTokens,
+    stream: true
+  }, {
+    headers: {
+      'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    responseType: 'stream'
+  });
+
+  const { content } = await collectStreamResponse(finalResponse.data);
+  return content;
+}
+
 // Helper: get user personal records
 async function getUserRecords(userId) {
   const { data } = await supabase
@@ -436,7 +1041,7 @@ function buildPersonalityBlock(aiPrefs, lang = 'ru') {
 }
 
 // Helper: build chat system prompt
-function buildChatSystemPrompt(workoutsData, goals, currentPlan, userProfile, records, lang = 'ru', aiPrefs = null) {
+function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, records, lang = 'ru', aiPrefs = null) {
   const today = new Date();
   const dayNamesMap = {
     ru: ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'],
@@ -465,14 +1070,22 @@ function buildChatSystemPrompt(workoutsData, goals, currentPlan, userProfile, re
       ageNote: 'Учитывай возраст при рекомендациях по пульсовым зонам и восстановлению.',
       genderNote: 'Учитывай пол пользователя при рекомендациях по нагрузке, восстановлению и физиологии.',
       weightNote: 'Учитывай вес при рекомендациях по нагрузке и темпу.',
-      workoutHistory: 'История тренировок за последние 3 месяца',
+      monthlySummary: 'СВОДКА ЗА ПОСЛЕДНИЕ 30 ДНЕЙ',
       goals: 'Цели',
       records: 'Личные рекорды',
       recordsNote: 'Используй рекорды для расчёта тренировочных темпов и зон.',
-      totalStats: (n) => `Общая статистика: ${n} тренировок за 3 месяца.`,
       planUpdate: `ВОЗМОЖНОСТЬ ИЗМЕНЕНИЯ ПЛАНА:\nЕсли пользователь просит изменить план, уменьшить/увеличить нагрузку, поменять тренировки и т.п., ты МОЖЕШЬ изменить текущий план.\nДля этого в конце своего ответа добавь блок:\n===PLAN_UPDATE===\n[JSON массив из 7 дней в том же формате что и текущий план]\n===END_PLAN_UPDATE===`,
       formatExample: (day) => `Формат каждого дня:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": число, "description": "описание", "badge": "🏃|⚡|🏔️|💨|😴"}`,
-      rules: `ПРАВИЛА:\n- Изменяй план ТОЛЬКО если пользователь явно просит это сделать или соглашается на твоё предложение.\n- При изменении плана сначала объясни коротко что и почему ты меняешь, а потом добавь блок PLAN_UPDATE.\n- Если пользователь просто спрашивает о плане — расскажи СВОИМИ СЛОВАМИ кратко: какой общий объём, что за ключевые тренировки, сколько дней отдыха. НЕ копируй план таблицей или списком.\n- Если пользователь говорит что ему тяжело — посочувствуй, предложи изменения и спроси подтверждение.\n- Математическая точность: дистанция × темп = время. Всегда проверяй цифры.\n- НЕ выдумывай даты — если не уверен в дате, не упоминай её.`
+      rules: `ПРАВИЛА:\n- Изменяй план ТОЛЬКО если пользователь явно просит это сделать или соглашается на твоё предложение.\n- При изменении плана сначала объясни коротко что и почему ты меняешь, а потом добавь блок PLAN_UPDATE.\n- Если пользователь просто спрашивает о плане — расскажи СВОИМИ СЛОВАМИ кратко: какой общий объём, что за ключевые тренировки, сколько дней отдыха. НЕ копируй план таблицей или списком.\n- Если пользователь говорит что ему тяжело — посочувствуй, предложи изменения и спроси подтверждение.\n- Математическая точность: дистанция × темп = время. Всегда проверяй цифры.\n- НЕ выдумывай даты — если не уверен в дате, не упоминай её.`,
+      toolsSection: `ДОСТУПНЫЕ ИНСТРУМЕНТЫ:
+У тебя есть инструменты для доступа к данным пользователя. Используй их когда:
+- Пользователь спрашивает о тренировках за конкретный период (get_workouts_by_date_range или get_period_stats)
+- Пользователь хочет детали конкретной тренировки (get_workout_details)
+- Пользователь ищет самые быстрые/длинные/определённого типа тренировки (search_workouts)
+- Пользователь спрашивает о личных рекордах (get_personal_records_history)
+
+НЕ вызывай инструменты если данных в сводке выше достаточно для ответа.
+НЕ вызывай инструменты для приветствий, общих вопросов о беге или советов.`
     },
     uk: {
       today: 'СЬОГОДНІ',
@@ -481,14 +1094,22 @@ function buildChatSystemPrompt(workoutsData, goals, currentPlan, userProfile, re
       ageNote: 'Враховуй вік при рекомендаціях щодо пульсових зон та відновлення.',
       genderNote: 'Враховуй стать користувача при рекомендаціях щодо навантаження, відновлення та фізіології.',
       weightNote: 'Враховуй вагу при рекомендаціях щодо навантаження та темпу.',
-      workoutHistory: 'Історія тренувань за останні 3 місяці',
+      monthlySummary: 'ЗВЕДЕННЯ ЗА ОСТАННІ 30 ДНІВ',
       goals: 'Цілі',
       records: 'Особисті рекорди',
       recordsNote: 'Використовуй рекорди для розрахунку тренувальних темпів і зон.',
-      totalStats: (n) => `Загальна статистика: ${n} тренувань за 3 місяці.`,
       planUpdate: `МОЖЛИВІСТЬ ЗМІНИ ПЛАНУ:\nЯкщо користувач просить змінити план, зменшити/збільшити навантаження, замінити тренування тощо, ти МОЖЕШ змінити поточний план.\nДля цього в кінці своєї відповіді додай блок:\n===PLAN_UPDATE===\n[JSON масив з 7 днів у тому ж форматі що й поточний план]\n===END_PLAN_UPDATE===`,
       formatExample: (day) => `Формат кожного дня:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": число, "description": "опис", "badge": "🏃|⚡|🏔️|💨|😴"}`,
-      rules: `ПРАВИЛА:\n- Змінюй план ТІЛЬКИ якщо користувач явно просить це зробити або погоджується на твою пропозицію.\n- При зміні плану спочатку поясни коротко що і чому ти змінюєш, а потім додай блок PLAN_UPDATE.\n- Якщо користувач просто запитує про план — розкажи СВОЇМИ СЛОВАМИ коротко: який загальний об'єм, що за ключові тренування, скільки днів відпочинку. НЕ копіюй план таблицею чи списком.\n- Якщо користувач каже що йому важко — поспівчувай, запропонуй зміни і запитай підтвердження.\n- Математична точність: дистанція × темп = час. Завжди перевіряй цифри.\n- НЕ вигадуй дати — якщо не впевнений у даті, не згадуй її.`
+      rules: `ПРАВИЛА:\n- Змінюй план ТІЛЬКИ якщо користувач явно просить це зробити або погоджується на твою пропозицію.\n- При зміні плану спочатку поясни коротко що і чому ти змінюєш, а потім додай блок PLAN_UPDATE.\n- Якщо користувач просто запитує про план — розкажи СВОЇМИ СЛОВАМИ коротко: який загальний об'єм, що за ключові тренування, скільки днів відпочинку. НЕ копіюй план таблицею чи списком.\n- Якщо користувач каже що йому важко — поспівчувай, запропонуй зміни і запитай підтвердження.\n- Математична точність: дистанція × темп = час. Завжди перевіряй цифри.\n- НЕ вигадуй дати — якщо не впевнений у даті, не згадуй її.`,
+      toolsSection: `ДОСТУПНІ ІНСТРУМЕНТИ:
+У тебе є інструменти для доступу до даних користувача. Використовуй їх коли:
+- Користувач запитує про тренування за конкретний період (get_workouts_by_date_range або get_period_stats)
+- Користувач хоче деталі конкретного тренування (get_workout_details)
+- Користувач шукає найшвидші/найдовші/певного типу тренування (search_workouts)
+- Користувач запитує про особисті рекорди (get_personal_records_history)
+
+НЕ викликай інструменти якщо даних у зведенні вище достатньо для відповіді.
+НЕ викликай інструменти для привітань, загальних питань про біг або порад.`
     },
     en: {
       today: 'TODAY',
@@ -497,14 +1118,22 @@ function buildChatSystemPrompt(workoutsData, goals, currentPlan, userProfile, re
       ageNote: 'Consider age when recommending heart rate zones and recovery.',
       genderNote: 'Consider user\'s gender when recommending load, recovery and physiology.',
       weightNote: 'Consider weight when recommending load and pace.',
-      workoutHistory: 'Workout history for the last 3 months',
+      monthlySummary: 'SUMMARY FOR THE LAST 30 DAYS',
       goals: 'Goals',
       records: 'Personal records',
       recordsNote: 'Use records to calculate training paces and zones.',
-      totalStats: (n) => `Overall stats: ${n} workouts in 3 months.`,
       planUpdate: `PLAN MODIFICATION CAPABILITY:\nIf the user asks to change the plan, reduce/increase load, swap workouts, etc., you CAN modify the current plan.\nTo do this, add a block at the end of your response:\n===PLAN_UPDATE===\n[JSON array of 7 days in the same format as the current plan]\n===END_PLAN_UPDATE===`,
       formatExample: (day) => `Format for each day:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": number, "description": "description", "badge": "🏃|⚡|🏔️|💨|😴"}`,
-      rules: `RULES:\n- Only modify the plan if the user explicitly asks or agrees to your suggestion.\n- When modifying the plan, briefly explain what and why you're changing, then add the PLAN_UPDATE block.\n- If the user just asks about the plan — summarize IN YOUR OWN WORDS: total volume, key workouts, rest days. Do NOT copy the plan as a table or list.\n- If the user says it's hard — empathize, suggest changes and ask for confirmation.\n- Math accuracy: distance × pace = time. Always verify numbers.\n- Do NOT make up dates — if unsure about a date, don't mention it.`
+      rules: `RULES:\n- Only modify the plan if the user explicitly asks or agrees to your suggestion.\n- When modifying the plan, briefly explain what and why you're changing, then add the PLAN_UPDATE block.\n- If the user just asks about the plan — summarize IN YOUR OWN WORDS: total volume, key workouts, rest days. Do NOT copy the plan as a table or list.\n- If the user says it's hard — empathize, suggest changes and ask for confirmation.\n- Math accuracy: distance × pace = time. Always verify numbers.\n- Do NOT make up dates — if unsure about a date, don't mention it.`,
+      toolsSection: `AVAILABLE TOOLS:
+You have tools to access user workout data. Use them when:
+- User asks about workouts for a specific period (get_workouts_by_date_range or get_period_stats)
+- User wants details of a specific workout (get_workout_details)
+- User is looking for fastest/longest/specific type workouts (search_workouts)
+- User asks about personal records (get_personal_records_history)
+
+Do NOT call tools if the summary above has enough data to answer.
+Do NOT call tools for greetings, general running questions or advice.`
     }
   };
 
@@ -522,8 +1151,8 @@ ${userProfile?.age ? p.ageNote : ''}
 ${userProfile?.gender ? p.genderNote : ''}
 ${userProfile?.weight_kg ? p.weightNote : ''}
 
-${p.workoutHistory}:
-${JSON.stringify(workoutsData, null, 2)}
+${p.monthlySummary}:
+${JSON.stringify(monthlySummary, null, 2)}
 
 ${p.goals}:
 ${formatGoalsForAI(goals, lang)}
@@ -534,7 +1163,7 @@ ${p.recordsNote}
 
 ${formatPlanForAI(currentPlan, lang)}
 
-${p.totalStats(workoutsData.length)}
+${p.toolsSection}
 
 ${p.planUpdate}
 
@@ -622,8 +1251,8 @@ async function loadChatContext(userId, lang = 'ru') {
     content: m.content
   }));
 
-  const [workoutsData, goals, currentPlan, userProfile, records] = await Promise.all([
-    getWorkoutsContext(userId),
+  const [monthlySummary, goals, currentPlan, userProfile, records] = await Promise.all([
+    getMonthlySummaryContext(userId),
     getUserGoals(userId),
     getCurrentPlan(userId),
     getUserProfile(userId),
@@ -631,12 +1260,12 @@ async function loadChatContext(userId, lang = 'ru') {
   ]);
 
   const aiPrefs = getAiPrefs(userProfile);
-  const systemPrompt = buildChatSystemPrompt(workoutsData, goals, currentPlan, userProfile, records, lang, aiPrefs);
+  const systemPrompt = buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, records, lang, aiPrefs);
 
   return { chatHistory, systemPrompt, currentPlan };
 }
 
-// POST /api/ai/chat — AI chat with plan awareness
+// POST /api/ai/chat — AI chat with tool use support
 router.post('/chat', authMiddleware, async (req, res) => {
   try {
     const { message, lang } = req.body;
@@ -645,7 +1274,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     }
 
     const { chatHistory, systemPrompt, currentPlan } = await loadChatContext(req.user.id, lang || 'ru');
-    const reply = await callDeepSeek(systemPrompt, message, 2500, chatHistory);
+    const reply = await callDeepSeekWithTools(systemPrompt, message, req.user.id, 2500, chatHistory);
     const { textReply, planUpdated } = await processPlanUpdate(reply, req.user.id, currentPlan);
 
     await supabase.from('chat_messages').insert([
@@ -660,7 +1289,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
   }
 });
 
-// POST /api/ai/chat/stream — SSE streaming AI chat
+// POST /api/ai/chat/stream — SSE streaming AI chat with tool use
 router.post('/chat/stream', authMiddleware, async (req, res) => {
   try {
     const { message, lang } = req.body;
@@ -676,83 +1305,38 @@ router.post('/chat/stream', authMiddleware, async (req, res) => {
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
 
-    const stream = await callDeepSeekStream(systemPrompt, message, 2500, chatHistory);
+    // Use tool-aware streaming: tool call rounds are buffered, final response is streamed
+    const fullReply = await callDeepSeekStreamWithTools(systemPrompt, message, req.user.id, res, 2500, chatHistory);
 
-    let fullReply = '';
-    let buffer = '';
+    // Process plan updates
+    const { textReply, planUpdated } = await processPlanUpdate(fullReply, req.user.id, currentPlan);
 
-    stream.on('data', (chunk) => {
-      buffer += chunk.toString();
+    // Stream the final text content to client chunk by chunk
+    // Since we collected the response (tool calls consumed the stream), send it as SSE chunks
+    const chunkSize = 20;
+    for (let i = 0; i < textReply.length; i += chunkSize) {
+      const chunk = textReply.slice(i, i + chunkSize);
+      const sseData = { choices: [{ delta: { content: chunk } }] };
+      res.write(`data: ${JSON.stringify(sseData)}\n\n`);
+    }
 
-      // Process complete lines
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || ''; // Keep incomplete line in buffer
+    // Save messages to history
+    await supabase.from('chat_messages').insert([
+      { user_id: req.user.id, role: 'user', content: message },
+      { user_id: req.user.id, role: 'ai', content: textReply }
+    ]);
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed === 'data: [DONE]') {
-          if (trimmed === 'data: [DONE]') {
-            // Don't forward [DONE] yet — we send our own after processing
-          } else {
-            // Forward empty lines for SSE format
-            res.write('\n');
-          }
-          continue;
-        }
-
-        if (trimmed.startsWith('data: ')) {
-          try {
-            const json = JSON.parse(trimmed.slice(6));
-            const content = json.choices?.[0]?.delta?.content;
-            if (content) {
-              fullReply += content;
-            }
-          } catch {
-            // Not JSON, ignore
-          }
-          // Forward the chunk as-is
-          res.write(trimmed + '\n\n');
-        }
-      }
-    });
-
-    stream.on('end', async () => {
-      try {
-        const { textReply, planUpdated } = await processPlanUpdate(fullReply, req.user.id, currentPlan);
-
-        // Save messages to history
-        await supabase.from('chat_messages').insert([
-          { user_id: req.user.id, role: 'user', content: message },
-          { user_id: req.user.id, role: 'ai', content: textReply }
-        ]);
-
-        // Send meta event and close
-        res.write(`data: [DONE]\n\n`);
-        res.write(`data: ${JSON.stringify({ meta: { planUpdated } })}\n\n`);
-        res.end();
-      } catch (err) {
-        console.error('Stream end processing error:', err.message);
-        res.write(`data: [DONE]\n\n`);
-        res.write(`data: ${JSON.stringify({ meta: { planUpdated: false } })}\n\n`);
-        res.end();
-      }
-    });
-
-    stream.on('error', (err) => {
-      console.error('DeepSeek stream error:', err.message);
-      res.write(`data: ${JSON.stringify({ error: 'Stream failed' })}\n\n`);
-      res.end();
-    });
-
-    // Handle client disconnect
-    req.on('close', () => {
-      stream.destroy();
-    });
+    // Send meta event and close
+    res.write(`data: [DONE]\n\n`);
+    res.write(`data: ${JSON.stringify({ meta: { planUpdated } })}\n\n`);
+    res.end();
   } catch (err) {
     console.error('AI chat stream error:', err.response?.data || err.message);
     if (!res.headersSent) {
       res.status(500).json({ error: 'AI request failed' });
     } else {
+      res.write(`data: [DONE]\n\n`);
+      res.write(`data: ${JSON.stringify({ meta: { planUpdated: false } })}\n\n`);
       res.end();
     }
   }

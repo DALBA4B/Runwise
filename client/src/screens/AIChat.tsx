@@ -44,6 +44,7 @@ const AIChat: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [updatingPlan, setUpdatingPlan] = useState(false);
+  const [thinking, setThinking] = useState(false);
   const [showAiSettings, setShowAiSettings] = useState(false);
   const [aiSettingsClosing, setAiSettingsClosing] = useState(false);
   const [aiPrefs, setAiPrefs] = useState<AiPreferences>(AI_DEFAULTS);
@@ -184,6 +185,7 @@ const AIChat: React.FC = () => {
           if (firstChunk) {
             firstChunk = false;
             setLoading(false);
+            setThinking(false);
           }
           fullContent += chunk;
           const displayContent = stripPlanBlock(fullContent);
@@ -199,6 +201,7 @@ const AIChat: React.FC = () => {
         },
         (meta: { planUpdated: boolean }) => {
           setUpdatingPlan(false);
+          setThinking(false);
           // Final cleanup: strip plan block from displayed message
           const cleanContent = stripPlanBlock(fullContent);
           setMessages(prev =>
@@ -215,6 +218,9 @@ const AIChat: React.FC = () => {
             };
             setMessages(prev => [...prev, systemMsg]);
           }
+        },
+        () => {
+          setThinking(true);
         }
       );
     } catch (err) {
@@ -229,6 +235,7 @@ const AIChat: React.FC = () => {
     } finally {
       setLoading(false);
       setUpdatingPlan(false);
+      setThinking(false);
     }
   };
 
@@ -275,13 +282,23 @@ const AIChat: React.FC = () => {
           {messages.map(message => (
             <ChatMessage key={message.id} message={message} />
           ))}
-          {loading && (
+          {loading && !thinking && (
             <div className="message ai-message">
               <div className="message-content">
                 <div className="typing-indicator">
                   <span></span>
                   <span></span>
                   <span></span>
+                </div>
+              </div>
+            </div>
+          )}
+          {thinking && (
+            <div className="message ai-message">
+              <div className="message-content">
+                <div className="thinking-indicator">
+                  <span className="thinking-spinner"></span>
+                  {t('chat.analyzing')}
                 </div>
               </div>
             </div>

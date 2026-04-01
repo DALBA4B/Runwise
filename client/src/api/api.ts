@@ -126,7 +126,8 @@ export const ai = {
   chatStream: async (
     message: string,
     onChunk: (text: string) => void,
-    onDone: (meta: { planUpdated: boolean }) => void
+    onDone: (meta: { planUpdated: boolean }) => void,
+    onThinking?: () => void
   ): Promise<void> => {
     const token = getToken();
     const response = await fetch(`${API_URL}/api/ai/chat/stream`, {
@@ -175,6 +176,10 @@ export const ai = {
             const json = JSON.parse(payload);
             if (json.meta) {
               onDone(json.meta);
+              continue;
+            }
+            if (json.thinking && onThinking) {
+              onThinking();
               continue;
             }
             const content = json.choices?.[0]?.delta?.content;
