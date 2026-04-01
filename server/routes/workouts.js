@@ -70,10 +70,11 @@ router.get('/stats', authMiddleware, async (req, res) => {
       dateFilter = monthAgo.toISOString();
     }
 
-    // Try with elevation column, fallback without if column doesn't exist yet
+    // Try with elevation + anomaly columns, fallback without if columns don't exist yet
+    const anomalyFields = hasAnomalyColumns ? ', is_suspicious, user_verified, manual_distance, manual_moving_time' : '';
     let query = supabase
       .from('workouts')
-      .select('distance, moving_time, average_pace, average_heartrate, total_elevation_gain, date')
+      .select('distance, moving_time, average_pace, average_heartrate, total_elevation_gain, date' + anomalyFields)
       .eq('user_id', req.user.id);
 
     if (dateFilter) {
@@ -82,8 +83,9 @@ router.get('/stats', authMiddleware, async (req, res) => {
 
     let { data, error } = await query;
 
-    // Fallback: if total_elevation_gain column doesn't exist yet
-    if (error && error.message && error.message.includes('total_elevation_gain')) {
+    // Fallback: if total_elevation_gain or anomaly columns don't exist yet
+    if (error && error.message && (error.message.includes('total_elevation_gain') || error.message.includes('is_suspicious') || error.message.includes('manual_'))) {
+      hasAnomalyColumns = false;
       let fallbackQuery = supabase
         .from('workouts')
         .select('distance, moving_time, average_pace, average_heartrate, date')
@@ -98,18 +100,25 @@ router.get('/stats', authMiddleware, async (req, res) => {
       throw error;
     }
 
-    const totalDistance = data.reduce((sum, w) => sum + (w.distance || 0), 0);
-    const totalTime = data.reduce((sum, w) => sum + (w.moving_time || 0), 0);
-    const avgPace = data.length > 0
-      ? Math.round(data.reduce((sum, w) => sum + (w.average_pace || 0), 0) / data.length)
+    // Filter out suspicious unverified workouts, use manual overrides
+    const isSuspiciousUnverified = (w) => hasAnomalyColumns && w.is_suspicious && !w.user_verified;
+    const getEffectiveDist = (w) => (hasAnomalyColumns && w.manual_distance) ? w.manual_distance : (w.distance || 0);
+    const getEffectiveTime = (w) => (hasAnomalyColumns && w.manual_moving_time) ? w.manual_moving_time : (w.moving_time || 0);
+
+    const filtered = data.filter(w => !isSuspiciousUnverified(w));
+
+    const totalDistance = filtered.reduce((sum, w) => sum + getEffectiveDist(w), 0);
+    const totalTime = filtered.reduce((sum, w) => sum + getEffectiveTime(w), 0);
+    const avgPace = filtered.length > 0
+      ? Math.round(filtered.reduce((sum, w) => sum + (w.average_pace || 0), 0) / filtered.length)
       : 0;
-    const avgHr = data.filter(w => w.average_heartrate).length > 0
-      ? Math.round(data.filter(w => w.average_heartrate).reduce((sum, w) => sum + w.average_heartrate, 0) / data.filter(w => w.average_heartrate).length)
+    const avgHr = filtered.filter(w => w.average_heartrate).length > 0
+      ? Math.round(filtered.filter(w => w.average_heartrate).reduce((sum, w) => sum + w.average_heartrate, 0) / filtered.filter(w => w.average_heartrate).length)
       : 0;
-    const bestPace = data.length > 0
-      ? Math.min(...data.filter(w => w.average_pace > 0).map(w => w.average_pace))
+    const bestPace = filtered.length > 0
+      ? Math.min(...filtered.filter(w => w.average_pace > 0).map(w => w.average_pace))
       : 0;
-    const totalElevation = data.reduce((sum, w) => sum + (w.total_elevation_gain || 0), 0);
+    const totalElevation = filtered.reduce((sum, w) => sum + (w.total_elevation_gain || 0), 0);
 
     res.json({
       totalDistance,
@@ -118,7 +127,7 @@ router.get('/stats', authMiddleware, async (req, res) => {
       avgHeartrate: avgHr,
       bestPace: bestPace === Infinity ? 0 : bestPace,
       totalElevation: Math.round(totalElevation),
-      workoutCount: data.length
+      workoutCount: filtered.length
     });
   } catch (err) {
     console.error('Stats error:', err.message);
@@ -151,25 +160,43 @@ router.get('/weekly', authMiddleware, async (req, res) => {
     sunday.setUTCDate(sunday.getUTCDate() + 6);
     const sundayStr = sunday.toISOString().split('T')[0];
 
-    const { data, error } = await supabase
+    const anomalyFields = hasAnomalyColumns ? ', is_suspicious, user_verified, manual_distance' : '';
+    let { data, error } = await supabase
       .from('workouts')
-      .select('distance, date')
+      .select('distance, date' + anomalyFields)
       .eq('user_id', req.user.id)
       .gte('date', mondayStr)
       .lte('date', sundayStr + 'T23:59:59')
       .order('date', { ascending: true });
 
-    if (error) throw error;
+    // Fallback if anomaly columns missing
+    if (error && error.message && (error.message.includes('is_suspicious') || error.message.includes('manual_'))) {
+      hasAnomalyColumns = false;
+      const fb = await supabase
+        .from('workouts')
+        .select('distance, date')
+        .eq('user_id', req.user.id)
+        .gte('date', mondayStr)
+        .lte('date', sundayStr + 'T23:59:59')
+        .order('date', { ascending: true });
+      if (fb.error) throw fb.error;
+      data = fb.data;
+    } else if (error) {
+      throw error;
+    }
 
-    // Group by day (Mon-Sun)
+    const isSuspiciousUnverified = (w) => hasAnomalyColumns && w.is_suspicious && !w.user_verified;
+    const getEffectiveDist = (w) => (hasAnomalyColumns && w.manual_distance) ? w.manual_distance : (w.distance || 0);
+
+    // Group by day (Mon-Sun), exclude unverified anomalies, use manual distance
     const dayNames = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
     const days = [];
     for (let i = 0; i < 7; i++) {
       const d = new Date(monday);
       d.setUTCDate(d.getUTCDate() + i);
       const dayStr = d.toISOString().split('T')[0];
-      const dayWorkouts = data.filter(w => w.date && w.date.startsWith(dayStr));
-      const totalKm = dayWorkouts.reduce((sum, w) => sum + (w.distance || 0), 0) / 1000;
+      const dayWorkouts = data.filter(w => w.date && w.date.startsWith(dayStr) && !isSuspiciousUnverified(w));
+      const totalKm = dayWorkouts.reduce((sum, w) => sum + getEffectiveDist(w), 0) / 1000;
 
       days.push({
         date: dayStr,
@@ -201,18 +228,35 @@ router.get('/comparison', authMiddleware, async (req, res) => {
     const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
     const prevEnd = new Date(now.getFullYear(), now.getMonth() - 1, prevDay, 23, 59, 59).toISOString();
 
-    const [curRes, prevRes] = await Promise.all([
-      supabase.from('workouts').select('distance, moving_time, average_pace').eq('user_id', req.user.id).gte('date', curStart).lte('date', curEnd),
-      supabase.from('workouts').select('distance, moving_time, average_pace').eq('user_id', req.user.id).gte('date', prevStart).lte('date', prevEnd)
+    const anomalyFields = hasAnomalyColumns ? ', is_suspicious, user_verified, manual_distance, manual_moving_time' : '';
+    const selectFields = 'distance, moving_time, average_pace' + anomalyFields;
+
+    let [curRes, prevRes] = await Promise.all([
+      supabase.from('workouts').select(selectFields).eq('user_id', req.user.id).gte('date', curStart).lte('date', curEnd),
+      supabase.from('workouts').select(selectFields).eq('user_id', req.user.id).gte('date', prevStart).lte('date', prevEnd)
     ]);
+
+    // Fallback if anomaly columns missing
+    const hasColError = (e) => e && e.message && (e.message.includes('is_suspicious') || e.message.includes('manual_'));
+    if (hasColError(curRes.error) || hasColError(prevRes.error)) {
+      hasAnomalyColumns = false;
+      [curRes, prevRes] = await Promise.all([
+        supabase.from('workouts').select('distance, moving_time, average_pace').eq('user_id', req.user.id).gte('date', curStart).lte('date', curEnd),
+        supabase.from('workouts').select('distance, moving_time, average_pace').eq('user_id', req.user.id).gte('date', prevStart).lte('date', prevEnd)
+      ]);
+    }
 
     if (curRes.error) throw curRes.error;
     if (prevRes.error) throw prevRes.error;
 
+    const isSuspiciousUnverified = (w) => hasAnomalyColumns && w.is_suspicious && !w.user_verified;
+    const getEffectiveDist = (w) => (hasAnomalyColumns && w.manual_distance) ? w.manual_distance : (w.distance || 0);
+
     const calcStats = (data) => {
-      const distance = data.reduce((s, w) => s + (w.distance || 0), 0);
-      const workoutCount = data.length;
-      const paces = data.filter(w => w.average_pace > 0).map(w => w.average_pace);
+      const filtered = data.filter(w => !isSuspiciousUnverified(w));
+      const distance = filtered.reduce((s, w) => s + getEffectiveDist(w), 0);
+      const workoutCount = filtered.length;
+      const paces = filtered.filter(w => w.average_pace > 0).map(w => w.average_pace);
       const avgPace = paces.length > 0 ? Math.round(paces.reduce((a, b) => a + b, 0) / paces.length) : 0;
       return { distance, workoutCount, avgPace };
     };
@@ -503,8 +547,9 @@ router.get('/goals/predictions', authMiddleware, async (req, res) => {
     const isSuspiciousUnverified = (w) => hasAnomalyColumns && w.is_suspicious && !w.user_verified;
 
     // Pre-filter workouts for current month and current week
-    const monthWorkouts = workoutsArr.filter(w => new Date(w.date) >= monthStart);
-    const weekWorkouts = workoutsArr.filter(w => new Date(w.date) >= weekStart);
+    // Exclude suspicious unverified workouts from ALL goal calculations
+    const monthWorkouts = workoutsArr.filter(w => new Date(w.date) >= monthStart && !isSuspiciousUnverified(w));
+    const weekWorkouts = workoutsArr.filter(w => new Date(w.date) >= weekStart && !isSuspiciousUnverified(w));
 
     const fmtTime = (s) => {
       const h = Math.floor(s / 3600);
@@ -642,9 +687,11 @@ router.get('/goals/predictions', authMiddleware, async (req, res) => {
         }
 
         // --- Step 2: Best efforts from Strava (clean split) with sanity check ---
+        // Exclude suspicious unverified workouts from best efforts too
         let bestEffort = null;
         for (const w of recentWorkouts) {
           if (!w.best_efforts) continue;
+          if (isSuspiciousUnverified(w)) continue;
           const efforts = typeof w.best_efforts === 'string' ? JSON.parse(w.best_efforts) : w.best_efforts;
           for (const e of efforts) {
             if (e.name === targetBEName && e.moving_time > 0) {
