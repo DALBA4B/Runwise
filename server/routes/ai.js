@@ -1114,9 +1114,9 @@ function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, 
       goals: 'Цели',
       records: 'Личные рекорды',
       recordsNote: 'Используй рекорды для расчёта тренировочных темпов и зон.',
-      planUpdate: `ВОЗМОЖНОСТЬ ИЗМЕНЕНИЯ ПЛАНА:\nЕсли пользователь просит изменить план, уменьшить/увеличить нагрузку, поменять тренировки и т.п., ты МОЖЕШЬ изменить текущий план.\nДля этого в конце своего ответа добавь блок:\n===PLAN_UPDATE===\n[JSON массив из 7 дней в том же формате что и текущий план]\n===END_PLAN_UPDATE===`,
-      formatExample: (day) => `Формат каждого дня:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": число, "description": "описание", "badge": "🏃|⚡|🏔️|💨|😴"}`,
-      rules: `ПРАВИЛА:\n- Изменяй план ТОЛЬКО если пользователь явно просит это сделать или соглашается на твоё предложение.\n- При изменении плана сначала объясни коротко что и почему ты меняешь, а потом добавь блок PLAN_UPDATE.\n- Если пользователь просто спрашивает о плане — расскажи СВОИМИ СЛОВАМИ кратко: какой общий объём, что за ключевые тренировки, сколько дней отдыха. НЕ копируй план таблицей или списком.\n- Если пользователь говорит что ему тяжело — посочувствуй, предложи изменения и спроси подтверждение.\n- Математическая точность: дистанция × темп = время. Всегда проверяй цифры.\n- НЕ выдумывай даты — если не уверен в дате, не упоминай её.`,
+      planUpdate: `ВОЗМОЖНОСТЬ ИЗМЕНЕНИЯ ПЛАНА:\nЕсли пользователь просит изменить план, уменьшить/увеличить нагрузку, поменять тренировки и т.п., ты МОЖЕШЬ изменить текущий план.\nВАЖНО: блок PLAN_UPDATE ставь САМЫМ ПЕРВЫМ в ответе, ДО текста объяснения:\n===PLAN_UPDATE===\n[JSON массив из 7 дней в том же формате что и текущий план — компактно, в одну строку на день]\n===END_PLAN_UPDATE===\nА после блока напиши объяснение пользователю.`,
+      formatExample: (day) => `Формат каждого дня:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": число, "description": "описание", "badge": "🏃|⚡|🏔️|💨|😴"}\nВАЖНО: JSON должен быть компактным (без лишних пробелов и переносов), чтобы уместиться в ответ.`,
+      rules: `ПРАВИЛА:\n- Изменяй план ТОЛЬКО если пользователь явно просит это сделать или соглашается на твоё предложение.\n- При изменении плана СНАЧАЛА поставь блок PLAN_UPDATE с JSON, а ПОСЛЕ него напиши объяснение что и почему ты изменил.\n- Если пользователь просто спрашивает о плане — расскажи СВОИМИ СЛОВАМИ кратко: какой общий объём, что за ключевые тренировки, сколько дней отдыха. НЕ копируй план таблицей или списком.\n- Если пользователь говорит что ему тяжело — посочувствуй, предложи изменения и спроси подтверждение.\n- Математическая точность: дистанция × темп = время. Всегда проверяй цифры.\n- НЕ выдумывай даты — если не уверен в дате, не упоминай её.`,
       toolsSection: `ДОСТУПНЫЕ ИНСТРУМЕНТЫ:
 У тебя есть инструменты для доступа к данным пользователя. Используй их когда:
 - Пользователь спрашивает о тренировках за конкретный период (get_workouts_by_date_range или get_period_stats)
@@ -1138,9 +1138,9 @@ function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, 
       goals: 'Цілі',
       records: 'Особисті рекорди',
       recordsNote: 'Використовуй рекорди для розрахунку тренувальних темпів і зон.',
-      planUpdate: `МОЖЛИВІСТЬ ЗМІНИ ПЛАНУ:\nЯкщо користувач просить змінити план, зменшити/збільшити навантаження, замінити тренування тощо, ти МОЖЕШ змінити поточний план.\nДля цього в кінці своєї відповіді додай блок:\n===PLAN_UPDATE===\n[JSON масив з 7 днів у тому ж форматі що й поточний план]\n===END_PLAN_UPDATE===`,
-      formatExample: (day) => `Формат кожного дня:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": число, "description": "опис", "badge": "🏃|⚡|🏔️|💨|😴"}`,
-      rules: `ПРАВИЛА:\n- Змінюй план ТІЛЬКИ якщо користувач явно просить це зробити або погоджується на твою пропозицію.\n- При зміні плану спочатку поясни коротко що і чому ти змінюєш, а потім додай блок PLAN_UPDATE.\n- Якщо користувач просто запитує про план — розкажи СВОЇМИ СЛОВАМИ коротко: який загальний об'єм, що за ключові тренування, скільки днів відпочинку. НЕ копіюй план таблицею чи списком.\n- Якщо користувач каже що йому важко — поспівчувай, запропонуй зміни і запитай підтвердження.\n- Математична точність: дистанція × темп = час. Завжди перевіряй цифри.\n- НЕ вигадуй дати — якщо не впевнений у даті, не згадуй її.`,
+      planUpdate: `МОЖЛИВІСТЬ ЗМІНИ ПЛАНУ:\nЯкщо користувач просить змінити план, зменшити/збільшити навантаження, замінити тренування тощо, ти МОЖЕШ змінити поточний план.\nВАЖЛИВО: блок PLAN_UPDATE став ПЕРШИМ у відповіді, ДО тексту пояснення:\n===PLAN_UPDATE===\n[JSON масив з 7 днів у тому ж форматі що й поточний план — компактно, в один рядок на день]\n===END_PLAN_UPDATE===\nА після блоку напиши пояснення користувачу.`,
+      formatExample: (day) => `Формат кожного дня:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": число, "description": "опис", "badge": "🏃|⚡|🏔️|💨|😴"}\nВАЖЛИВО: JSON має бути компактним (без зайвих пробілів і переносів), щоб вміститися у відповідь.`,
+      rules: `ПРАВИЛА:\n- Змінюй план ТІЛЬКИ якщо користувач явно просить це зробити або погоджується на твою пропозицію.\n- При зміні плану СПОЧАТКУ постав блок PLAN_UPDATE з JSON, а ПІСЛЯ нього напиши пояснення що і чому ти змінив.\n- Якщо користувач просто запитує про план — розкажи СВОЇМИ СЛОВАМИ коротко: який загальний об'єм, що за ключові тренування, скільки днів відпочинку. НЕ копіюй план таблицею чи списком.\n- Якщо користувач каже що йому важко — поспівчувай, запропонуй зміни і запитай підтвердження.\n- Математична точність: дистанція × темп = час. Завжди перевіряй цифри.\n- НЕ вигадуй дати — якщо не впевнений у даті, не згадуй її.`,
       toolsSection: `ДОСТУПНІ ІНСТРУМЕНТИ:
 У тебе є інструменти для доступу до даних користувача. Використовуй їх коли:
 - Користувач запитує про тренування за конкретний період (get_workouts_by_date_range або get_period_stats)
@@ -1162,9 +1162,9 @@ function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, 
       goals: 'Goals',
       records: 'Personal records',
       recordsNote: 'Use records to calculate training paces and zones.',
-      planUpdate: `PLAN MODIFICATION CAPABILITY:\nIf the user asks to change the plan, reduce/increase load, swap workouts, etc., you CAN modify the current plan.\nTo do this, add a block at the end of your response:\n===PLAN_UPDATE===\n[JSON array of 7 days in the same format as the current plan]\n===END_PLAN_UPDATE===`,
-      formatExample: (day) => `Format for each day:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": number, "description": "description", "badge": "🏃|⚡|🏔️|💨|😴"}`,
-      rules: `RULES:\n- Only modify the plan if the user explicitly asks or agrees to your suggestion.\n- When modifying the plan, briefly explain what and why you're changing, then add the PLAN_UPDATE block.\n- If the user just asks about the plan — summarize IN YOUR OWN WORDS: total volume, key workouts, rest days. Do NOT copy the plan as a table or list.\n- If the user says it's hard — empathize, suggest changes and ask for confirmation.\n- Math accuracy: distance × pace = time. Always verify numbers.\n- Do NOT make up dates — if unsure about a date, don't mention it.`,
+      planUpdate: `PLAN MODIFICATION CAPABILITY:\nIf the user asks to change the plan, reduce/increase load, swap workouts, etc., you CAN modify the current plan.\nIMPORTANT: place the PLAN_UPDATE block FIRST in your response, BEFORE any explanation text:\n===PLAN_UPDATE===\n[JSON array of 7 days in the same format as the current plan — compact, one line per day]\n===END_PLAN_UPDATE===\nThen write your explanation after the block.`,
+      formatExample: (day) => `Format for each day:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": number, "description": "description", "badge": "🏃|⚡|🏔️|💨|😴"}\nIMPORTANT: JSON must be compact (no extra whitespace or newlines) to fit in the response.`,
+      rules: `RULES:\n- Only modify the plan if the user explicitly asks or agrees to your suggestion.\n- When modifying the plan, put the PLAN_UPDATE block with JSON FIRST, then write your explanation of what and why you changed.\n- If the user just asks about the plan — summarize IN YOUR OWN WORDS: total volume, key workouts, rest days. Do NOT copy the plan as a table or list.\n- If the user says it's hard — empathize, suggest changes and ask for confirmation.\n- Math accuracy: distance × pace = time. Always verify numbers.\n- Do NOT make up dates — if unsure about a date, don't mention it.`,
       toolsSection: `AVAILABLE TOOLS:
 You have tools to access user workout data. Use them when:
 - User asks about workouts for a specific period (get_workouts_by_date_range or get_period_stats)
@@ -1220,7 +1220,33 @@ async function processPlanUpdate(reply, userId, currentPlan) {
   let textReply = reply;
   let planUpdated = false;
 
-  if (reply.includes('===PLAN_UPDATE===') && reply.includes('===END_PLAN_UPDATE===') && currentPlan) {
+  const hasPlanStart = reply.includes('===PLAN_UPDATE===');
+  const hasPlanEnd = reply.includes('===END_PLAN_UPDATE===');
+
+  if (hasPlanStart && !hasPlanEnd) {
+    console.warn('[PlanUpdate] Found ===PLAN_UPDATE=== but missing ===END_PLAN_UPDATE=== — AI did not close the block');
+    // Try to extract JSON anyway — the AI may have just forgotten the closing tag
+    const partialMatch = reply.match(/===PLAN_UPDATE===\s*([\s\S]*)/);
+    if (partialMatch && currentPlan) {
+      try {
+        let planJson = partialMatch[1].trim();
+        const jsonArrayMatch = planJson.match(/\[[\s\S]*\]/);
+        if (jsonArrayMatch) {
+          const newPlan = JSON.parse(jsonArrayMatch[0]);
+          if (Array.isArray(newPlan) && newPlan.length === 7) {
+            await savePlanUpdate(userId, currentPlan.id, newPlan);
+            planUpdated = true;
+            console.log('[PlanUpdate] Saved plan from incomplete block (missing END tag)');
+          } else {
+            console.warn('[PlanUpdate] Parsed array but length =', newPlan.length, '(expected 7)');
+          }
+        }
+      } catch (parseErr) {
+        console.error('[PlanUpdate] Failed to parse incomplete plan block:', parseErr.message);
+      }
+      textReply = reply.replace(/===PLAN_UPDATE===[\s\S]*/, '').trim();
+    }
+  } else if (hasPlanStart && hasPlanEnd && currentPlan) {
     const planMatch = reply.match(/===PLAN_UPDATE===\s*([\s\S]*?)\s*===END_PLAN_UPDATE===/);
     if (planMatch) {
       try {
@@ -1234,13 +1260,19 @@ async function processPlanUpdate(reply, userId, currentPlan) {
         if (Array.isArray(newPlan) && newPlan.length === 7) {
           await savePlanUpdate(userId, currentPlan.id, newPlan);
           planUpdated = true;
+          console.log('[PlanUpdate] Plan saved successfully');
+        } else {
+          console.warn('[PlanUpdate] Parsed array but length =', newPlan.length, '(expected 7)');
         }
       } catch (parseErr) {
-        console.error('Failed to parse plan update:', parseErr.message);
+        console.error('[PlanUpdate] Failed to parse plan update:', parseErr.message);
       }
 
       textReply = reply.replace(/===PLAN_UPDATE===[\s\S]*?===END_PLAN_UPDATE===/, '').trim();
     }
+  } else if (hasPlanStart && !currentPlan) {
+    console.warn('[PlanUpdate] AI sent PLAN_UPDATE but there is no current plan to update');
+    textReply = reply.replace(/===PLAN_UPDATE===[\s\S]*?(===END_PLAN_UPDATE===)?/, '').trim();
   }
 
   return { textReply, planUpdated };
@@ -1314,7 +1346,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     }
 
     const { chatHistory, systemPrompt, currentPlan } = await loadChatContext(req.user.id, lang || 'ru');
-    const reply = await callDeepSeekWithTools(systemPrompt, message, req.user.id, 2500, chatHistory);
+    const reply = await callDeepSeekWithTools(systemPrompt, message, req.user.id, 4000, chatHistory);
     const { textReply, planUpdated } = await processPlanUpdate(reply, req.user.id, currentPlan);
 
     await supabase.from('chat_messages').insert([
@@ -1346,7 +1378,7 @@ router.post('/chat/stream', authMiddleware, async (req, res) => {
     res.flushHeaders();
 
     // Use tool-aware streaming: tool call rounds are buffered, final response is streamed
-    const fullReply = await callDeepSeekStreamWithTools(systemPrompt, message, req.user.id, res, 2500, chatHistory);
+    const fullReply = await callDeepSeekStreamWithTools(systemPrompt, message, req.user.id, res, 4000, chatHistory);
 
     // Process plan updates
     const { textReply, planUpdated } = await processPlanUpdate(fullReply, req.user.id, currentPlan);
