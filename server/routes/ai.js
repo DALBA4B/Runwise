@@ -7,6 +7,14 @@ const router = express.Router();
 
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
 
+// Helper: format date as YYYY-MM-DD in local timezone (avoids UTC shift from toISOString)
+function toLocalDateStr(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 // Helper: format pace from sec/km to mm:ss
 function formatPace(secPerKm) {
   if (!secPerKm) return '—';
@@ -93,7 +101,7 @@ async function getMonthlySummaryContext(userId) {
     const d = new Date(w.date);
     const weekStart = new Date(d);
     weekStart.setDate(d.getDate() - d.getDay() + (d.getDay() === 0 ? -6 : 1)); // Monday
-    const key = weekStart.toISOString().split('T')[0];
+    const key = toLocalDateStr(weekStart);
     if (!weeks[key]) weeks[key] = { week_start: key, km: 0, count: 0 };
     weeks[key].km += effectiveDistance(w) / 1000;
     weeks[key].count++;
@@ -261,7 +269,7 @@ function formatPlanForAI(plan, lang = 'ru') {
   const days = workoutsList.map((d, i) => {
     const dayDate = new Date(weekStart);
     dayDate.setDate(dayDate.getDate() + i);
-    const dateStr = dayDate.toISOString().split('T')[0];
+    const dateStr = toLocalDateStr(dayDate);
     return `- ${d.day} (${dateStr}): ${d.type === 'rest' ? (restI18n[lang] || restI18n.ru) : `${d.type}, ${d.distance_km} ${kmI18n[lang] || kmI18n.ru} — ${d.description}`}`;
   }).join('\n');
 
@@ -1081,7 +1089,7 @@ function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, 
     en: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
   };
   const dayNames = dayNamesMap[lang] || dayNamesMap.ru;
-  const todayStr = `${today.toISOString().split('T')[0]} (${dayNames[today.getDay()]})`;
+  const todayStr = `${toLocalDateStr(today)} (${dayNames[today.getDay()]})`;
   const langInstruction = getLangInstruction(lang);
 
   const DAY_NAMES_FULL = {
@@ -1621,7 +1629,7 @@ ${gp.generate}`;
       .from('plans')
       .upsert({
         user_id: req.user.id,
-        week_start: targetMonday.toISOString().split('T')[0],
+        week_start: toLocalDateStr(targetMonday),
         workouts: JSON.stringify(plan)
       }, {
         onConflict: 'user_id,week_start'
@@ -1635,7 +1643,7 @@ ${gp.generate}`;
         .from('plans')
         .insert({
           user_id: req.user.id,
-          week_start: targetMonday.toISOString().split('T')[0],
+          week_start: toLocalDateStr(targetMonday),
           workouts: JSON.stringify(plan)
         })
         .select()
