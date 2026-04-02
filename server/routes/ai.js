@@ -743,8 +743,9 @@ async function callDeepSeekWithTools(systemPrompt, userMessage, userId, maxToken
   return finalResponse.data.choices[0].message.content;
 }
 
-// Helper: collect a full streamed response into a message object (tool_calls or content)
-async function collectStreamResponse(stream) {
+// Helper: stream a DeepSeek response to client via SSE while collecting full content
+// Returns { content, toolCalls }. If streaming to client, sends each content chunk as SSE.
+function collectAndStreamResponse(stream, res) {
   return new Promise((resolve, reject) => {
     let buffer = '';
     let content = '';
@@ -766,6 +767,11 @@ async function collectStreamResponse(stream) {
 
           if (delta.content) {
             content += delta.content;
+            // Stream content chunk to client in real time
+            if (res) {
+              const sseData = { choices: [{ delta: { content: delta.content } }] };
+              res.write(`data: ${JSON.stringify(sseData)}\n\n`);
+            }
           }
 
           if (delta.tool_calls) {
@@ -800,7 +806,7 @@ async function collectStreamResponse(stream) {
   });
 }
 
-// Streaming tool call loop: buffers tool rounds, streams final text response
+// Streaming tool call loop: buffers tool rounds, streams final text response in real time
 async function callDeepSeekStreamWithTools(systemPrompt, userMessage, userId, res, maxTokens = 2500, chatHistory = []) {
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -809,6 +815,7 @@ async function callDeepSeekStreamWithTools(systemPrompt, userMessage, userId, re
   ];
 
   const MAX_ROUNDS = 5;
+
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const requestBody = {
       model: 'deepseek-chat',
@@ -830,11 +837,12 @@ async function callDeepSeekStreamWithTools(systemPrompt, userMessage, userId, re
       responseType: 'stream'
     });
 
-    const { content, toolCalls } = await collectStreamResponse(response.data);
+    // Always stream to client in real time — if tool calls arrive, content is usually empty
+    // and we'll send a thinking indicator after
+    const { content, toolCalls } = await collectAndStreamResponse(response.data, res);
 
-    // No tool calls — this is the final round, we need to re-stream it
+    // No tool calls — this is the final response (already streamed to client)
     if (toolCalls.length === 0) {
-      // We already consumed the stream, so return collected content
       return content;
     }
 
@@ -884,7 +892,7 @@ async function callDeepSeekStreamWithTools(systemPrompt, userMessage, userId, re
     responseType: 'stream'
   });
 
-  const { content } = await collectStreamResponse(finalResponse.data);
+  const { content } = await collectAndStreamResponse(finalResponse.data, res);
   return content;
 }
 
@@ -1377,22 +1385,13 @@ router.post('/chat/stream', authMiddleware, async (req, res) => {
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
 
-    // Use tool-aware streaming: tool call rounds are buffered, final response is streamed
+    // Use tool-aware streaming: tool call rounds are buffered, final response is streamed in real time
     const fullReply = await callDeepSeekStreamWithTools(systemPrompt, message, req.user.id, res, 4000, chatHistory);
 
-    // Process plan updates
+    // Process plan updates (fullReply already streamed to client, client strips PLAN_UPDATE blocks)
     const { textReply, planUpdated } = await processPlanUpdate(fullReply, req.user.id, currentPlan);
 
-    // Stream the final text content to client chunk by chunk
-    // Since we collected the response (tool calls consumed the stream), send it as SSE chunks
-    const chunkSize = 20;
-    for (let i = 0; i < textReply.length; i += chunkSize) {
-      const chunk = textReply.slice(i, i + chunkSize);
-      const sseData = { choices: [{ delta: { content: chunk } }] };
-      res.write(`data: ${JSON.stringify(sseData)}\n\n`);
-    }
-
-    // Save messages to history
+    // Save clean messages (without PLAN_UPDATE block) to history
     await supabase.from('chat_messages').insert([
       { user_id: req.user.id, role: 'user', content: message },
       { user_id: req.user.id, role: 'ai', content: textReply }
