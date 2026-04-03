@@ -642,14 +642,46 @@ router.get('/goals/predictions', authMiddleware, async (req, res) => {
         // --- Step 1: Riegel baseline from last 4 weeks ---
         // Exclude suspicious unverified workouts from Riegel calculations
         const recentWorkouts = workoutsArr.filter(w => new Date(w.date) >= fourWeeksAgo);
+
+        // Step 1a: Riegel from best_efforts (clean splits — most accurate)
+        // Use shorter-distance best efforts to extrapolate target time
+        const bestEffortDistances = {
+          '1K': 1000, '1 Mile': 1609, '2 Mile': 3219, '5K': 5000,
+          '10K': 10000, 'Half-Marathon': 21097, 'Marathon': 42195
+        };
+        const riegelFromBE = [];
+        for (const w of recentWorkouts) {
+          if (!w.best_efforts || isSuspiciousUnverified(w)) continue;
+          const efforts = typeof w.best_efforts === 'string' ? JSON.parse(w.best_efforts) : w.best_efforts;
+          for (const e of efforts) {
+            const eDist = bestEffortDistances[e.name];
+            // Use efforts from shorter distances (at least 1 km, up to 95% of target) for extrapolation
+            if (eDist && eDist >= 1000 && eDist < targetDistM * 0.95 && e.moving_time > 0) {
+              const rTime = e.moving_time * Math.pow(targetDistM / eDist, 1.06);
+              riegelFromBE.push({
+                time: rTime,
+                timeFormatted: fmtTime(Math.round(rTime)),
+                distKm: Math.round(eDist / 100) / 10,
+                effortName: e.name,
+                date: w.date,
+                dateFormatted: fmtDate(w.date),
+                movingTime: e.moving_time,
+                movingTimeFormatted: fmtTime(e.moving_time),
+                source: 'best_effort_riegel',
+              });
+            }
+          }
+        }
+        riegelFromBE.sort((a, b) => a.time - b.time);
+
+        // Step 1b: Riegel from full workout moving_time (fallback, less accurate for easy runs)
         const relevantForRiegel = recentWorkouts.filter(w => {
           if (isSuspiciousUnverified(w)) return false;
           const km = w.distance / 1000;
           return km >= targetDist * 0.3 && km <= targetDist * 2.0 && w.moving_time > 0 && w.distance > 0;
         });
 
-        // Calculate Riegel for each workout, keep source info
-        const riegelResults = relevantForRiegel.map(w => {
+        const riegelFromWorkouts = relevantForRiegel.map(w => {
           const rTime = w.moving_time * Math.pow(targetDistM / w.distance, 1.06);
           return {
             time: rTime,
@@ -659,12 +691,16 @@ router.get('/goals/predictions', authMiddleware, async (req, res) => {
             dateFormatted: fmtDate(w.date),
             movingTime: w.moving_time,
             movingTimeFormatted: fmtTime(w.moving_time),
+            source: 'workout_riegel',
           };
         }).sort((a, b) => a.time - b.time);
 
+        // Combine: prefer best_effort-based Riegel, fallback to workout-based
+        const riegelResults = riegelFromBE.length > 0 ? riegelFromBE : riegelFromWorkouts;
+
         breakdown.riegelWorkouts = riegelResults.map(r => ({
           date: r.dateFormatted,
-          dist: r.distKm + ' км',
+          dist: (r.effortName || r.distKm + ' км'),
           actualTime: r.movingTimeFormatted,
           riegelTime: r.timeFormatted,
         }));

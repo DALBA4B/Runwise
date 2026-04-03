@@ -161,11 +161,18 @@ const AIChat: React.FC = () => {
     let firstChunk = true;
     let fullContent = '';
 
-    // Strip ===PLAN_UPDATE===...===END_PLAN_UPDATE=== and everything after ===PLAN_UPDATE===
+    // Strip ===PLAN_UPDATE===...===END_PLAN_UPDATE=== block from displayed text
     const stripPlanBlock = (text: string) => {
       const planStart = text.indexOf('===PLAN_UPDATE===');
       if (planStart === -1) return text;
-      // Hide everything from ===PLAN_UPDATE=== onwards (it may not be complete yet)
+      const planEnd = text.indexOf('===END_PLAN_UPDATE===');
+      if (planEnd !== -1) {
+        // Full block found — remove it and keep text before + after
+        const before = text.substring(0, planStart);
+        const after = text.substring(planEnd + '===END_PLAN_UPDATE==='.length);
+        return (before + after).trim();
+      }
+      // Block started but not closed yet — hide from ===PLAN_UPDATE=== onwards
       return text.substring(0, planStart).trim();
     };
 
@@ -210,6 +217,8 @@ const AIChat: React.FC = () => {
             )
           );
           if (meta.planUpdated) {
+            // Clear cached plan so Plan screen fetches fresh data
+            try { localStorage.removeItem('rw_plan_cache'); } catch {}
             const systemMsg: Message = {
               id: (Date.now() + 2).toString(),
               role: 'system',
