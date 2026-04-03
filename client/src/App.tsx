@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from './hooks/useAuth';
 import Login from './screens/Login';
+import ConsentScreen from './screens/ConsentScreen';
+import PrivacyPolicy from './screens/PrivacyPolicy';
 import Home from './screens/Home';
 import History from './screens/History';
 import Plan from './screens/Plan';
@@ -25,6 +27,8 @@ const App: React.FC = () => {
   const { t } = useTranslation();
   const { isAuthenticated, loading, loginWithStrava, handleCallback, logout } = useAuth();
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
+  const [showConsent, setShowConsent] = useState(false);
+  const [showPrivacy, setShowPrivacy] = useState(false);
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null);
   const [animating, setAnimating] = useState(false);
   const [animClass, setAnimClass] = useState('screen-enter');
@@ -61,7 +65,22 @@ const App: React.FC = () => {
   }
 
   if (!isAuthenticated) {
-    return <Login onLogin={loginWithStrava} />;
+    if (showPrivacy) {
+      return <PrivacyPolicy onBack={() => setShowPrivacy(false)} />;
+    }
+    if (showConsent) {
+      return (
+        <ConsentScreen
+          onAccept={() => {
+            setShowConsent(false);
+            loginWithStrava();
+          }}
+          onCancel={() => setShowConsent(false)}
+          onPrivacyPolicy={() => setShowPrivacy(true)}
+        />
+      );
+    }
+    return <Login onLogin={() => setShowConsent(true)} />;
   }
 
   const handleWorkoutClick = (id: string) => {
