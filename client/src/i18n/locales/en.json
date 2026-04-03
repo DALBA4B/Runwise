@@ -31,8 +31,7 @@
     "sec": "sec",
     "years": "y.o.",
     "cm": "cm",
-    "kg": "kg",
-    "days": "d."
+    "kg": "kg"
   },
   "metrics": {
     "distance": "Kilometers",
