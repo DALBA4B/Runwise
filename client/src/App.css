@@ -2080,11 +2080,42 @@ input[type="number"] {
   }
 }
 
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  margin-bottom: var(--spacing-lg);
+}
+
+.modal-close-btn {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
+  line-height: 1;
+  transition: color 0.2s ease;
+}
+
+.modal-close-btn:active {
+  color: var(--color-text);
+}
+
 .modal-title {
   font-size: 18px;
   font-weight: 700;
-  margin-bottom: var(--spacing-lg);
   text-align: center;
+  margin: 0;
+}
+
+.modal-content > .modal-title {
+  margin-bottom: var(--spacing-lg);
 }
 
 .modal-field {

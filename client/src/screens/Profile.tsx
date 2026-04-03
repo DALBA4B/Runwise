@@ -784,7 +784,10 @@ const Profile: React.FC<ProfileProps> = ({ onLogout, isActive }) => {
       {showSettingsModal && ReactDOM.createPortal(
         <div className={`modal-overlay${settingsModalClosing ? ' modal-closing' : ''}`} onClick={closeSettingsModal}>
           <div className={`modal-content${settingsModalClosing ? ' modal-content-closing' : ''}`} onClick={e => e.stopPropagation()}>
-            <h3 className="modal-title">{t('profile.settings')}</h3>
+            <div className="modal-header">
+              <h3 className="modal-title">{t('profile.settings')}</h3>
+              <button className="modal-close-btn" onClick={closeSettingsModal}>✕</button>
+            </div>
 
             <div className="settings-section">
               <div className="settings-section-title">🌐 {t('profile.language')}</div>
