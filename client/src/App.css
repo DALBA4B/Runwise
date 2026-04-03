@@ -2775,6 +2775,22 @@ input[type="number"] {
   background: linear-gradient(135deg, #0f1419 0%, #1a2235 100%);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  animation: consentFadeIn 0.4s ease both;
+}
+
+@keyframes consentFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes consentSlideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes consentScaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 .consent-content {
@@ -2793,6 +2809,7 @@ input[type="number"] {
   color: var(--color-text);
   text-align: center;
   margin: 0;
+  animation: consentSlideUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 .consent-sections {
@@ -2808,7 +2825,12 @@ input[type="number"] {
   background: rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
+  animation: consentScaleIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
+
+.consent-section:nth-child(1) { animation-delay: 0.15s; }
+.consent-section:nth-child(2) { animation-delay: 0.3s; }
+.consent-section:nth-child(3) { animation-delay: 0.45s; }
 
 .consent-section-icon {
   font-size: 28px;
@@ -2841,6 +2863,7 @@ input[type="number"] {
   border: 1px solid var(--color-border);
   transition: var(--transition);
   -webkit-tap-highlight-color: transparent;
+  animation: consentSlideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1) 0.6s both;
 }
 
 .consent-checkbox-label:has(.consent-checkbox:checked) {
@@ -2861,7 +2884,7 @@ input[type="number"] {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: var(--transition);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   margin-top: 1px;
   position: relative;
 }
@@ -2869,6 +2892,13 @@ input[type="number"] {
 .consent-checkbox:checked + .consent-checkbox-custom {
   background: var(--color-accent);
   border-color: var(--color-accent);
+  animation: consentCheckPop 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes consentCheckPop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.25); }
+  100% { transform: scale(1); }
 }
 
 .consent-checkbox:checked + .consent-checkbox-custom::after {
@@ -2898,12 +2928,14 @@ input[type="number"] {
   text-align: center;
   font-family: inherit;
   padding: 0;
+  animation: consentSlideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1) 0.7s both;
 }
 
 .consent-buttons {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
+  animation: consentSlideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1) 0.8s both;
 }
 
 .consent-btn-next {
@@ -2915,17 +2947,22 @@ input[type="number"] {
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
-  transition: var(--transition);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   font-family: inherit;
 }
 
 .consent-btn-next:active {
   background-color: var(--color-accent-hover);
+  transform: scale(0.97);
 }
 
 .consent-btn-next:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.consent-btn-next:not(:disabled):active {
+  transform: scale(0.97);
 }
 
 .consent-btn-cancel {
@@ -2936,20 +2973,32 @@ input[type="number"] {
   border-radius: var(--radius-lg);
   font-size: 15px;
   cursor: pointer;
-  transition: var(--transition);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   font-family: inherit;
 }
 
 .consent-btn-cancel:active {
   color: var(--color-text);
+  transform: scale(0.97);
 }
 
 /* ============ PRIVACY POLICY ============ */
+@keyframes privacySlideIn {
+  from { opacity: 0; transform: translateX(30px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes privacySectionFade {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .privacy-screen {
   display: flex;
   flex-direction: column;
   height: 100vh;
   background: var(--color-bg);
+  animation: privacySlideIn 0.35s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 .privacy-header {
@@ -2969,6 +3018,11 @@ input[type="number"] {
   cursor: pointer;
   font-family: inherit;
   padding: 0;
+  transition: all 0.2s ease;
+}
+
+.privacy-back-btn:active {
+  transform: translateX(-3px);
 }
 
 .privacy-title {
@@ -2989,11 +3043,21 @@ input[type="number"] {
   font-size: 13px;
   color: var(--color-text-secondary);
   margin: 0 0 var(--spacing-lg) 0;
+  animation: privacySectionFade 0.4s ease 0.1s both;
 }
 
 .privacy-section {
   margin-bottom: var(--spacing-lg);
+  animation: privacySectionFade 0.4s ease both;
 }
+
+.privacy-section:nth-child(1) { animation-delay: 0.15s; }
+.privacy-section:nth-child(2) { animation-delay: 0.2s; }
+.privacy-section:nth-child(3) { animation-delay: 0.25s; }
+.privacy-section:nth-child(4) { animation-delay: 0.3s; }
+.privacy-section:nth-child(5) { animation-delay: 0.35s; }
+.privacy-section:nth-child(6) { animation-delay: 0.4s; }
+.privacy-section:nth-child(7) { animation-delay: 0.45s; }
 
 .privacy-section h2 {
   font-size: 16px;
