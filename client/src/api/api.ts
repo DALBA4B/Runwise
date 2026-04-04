@@ -116,6 +116,33 @@ export const profile = {
     request(`/api/profile/records/${type}`, { method: 'DELETE' }),
 };
 
+// ============ PROMO ============
+
+export const promo = {
+  activate: (code: string) => request('/api/promo/activate', {
+    method: 'POST',
+    body: JSON.stringify({ code })
+  }),
+  status: () => request('/api/promo/status'),
+  adminList: (secret: string) => request('/api/promo/admin/codes', {
+    headers: { 'X-Admin-Secret': secret } as any
+  }),
+  adminCreate: (secret: string, data: { code: string; duration_days?: number | null; max_uses?: number }) =>
+    request('/api/promo/admin/codes', {
+      method: 'POST',
+      headers: { 'X-Admin-Secret': secret } as any,
+      body: JSON.stringify(data)
+    }),
+  adminDelete: (secret: string, id: string) =>
+    request(`/api/promo/admin/codes/${id}`, {
+      method: 'DELETE',
+      headers: { 'X-Admin-Secret': secret } as any
+    }),
+  adminActivations: (secret: string) => request('/api/promo/admin/activations', {
+    headers: { 'X-Admin-Secret': secret } as any
+  })
+};
+
 // ============ AI ============
 
 export const ai = {

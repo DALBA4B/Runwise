@@ -7,6 +7,7 @@ const stravaRoutes = require('./routes/strava');
 const workoutsRoutes = require('./routes/workouts');
 const aiRoutes = require('./routes/ai');
 const profileRoutes = require('./routes/profile');
+const promoRoutes = require('./routes/promo');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -24,6 +25,7 @@ app.use('/api/strava', stravaRoutes);
 app.use('/api/workouts', workoutsRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/profile', profileRoutes);
+app.use('/api/promo', promoRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

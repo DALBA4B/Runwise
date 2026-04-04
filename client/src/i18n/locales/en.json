@@ -207,7 +207,18 @@
     "breakdownDiscarded": "Discarded split",
     "breakdownRiegel": "Riegel calculations (last {{period}})",
     "breakdownNoData": "No data for calculation",
-    "breakdownTop3": "Top 3 highlighted — median is taken from them"
+    "breakdownTop3": "Top 3 highlighted — median is taken from them",
+    "promoCode": "Promo code",
+    "applyPromo": "Apply",
+    "promoPlaceholder": "Enter promo code",
+    "promoActive": "Premium until {{date}}",
+    "promoLifetime": "Unlimited forever",
+    "promoSuccess": "Promo code activated! +{{days}} days",
+    "promoSuccessLifetime": "Promo code activated! Unlimited forever",
+    "promoInvalid": "Invalid promo code",
+    "promoAlreadyUsed": "You already used this promo code",
+    "promoUsedUp": "Promo code is used up",
+    "premium": "Premium"
   },
   "goalTypes": {
     "monthly_distance": "Monthly volume",

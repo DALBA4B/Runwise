@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import MetricCard from '../components/MetricCard';
-import { workouts, strava, profile as profileApi } from '../api/api';
+import { workouts, strava, profile as profileApi, promo as promoApi } from '../api/api';
 import { formatPace, formatDistance } from '../utils';
 import { ALL_METRICS, getProfileWidgets, saveProfileWidgets } from '../config/metrics';
 import i18n from '../i18n';
@@ -87,6 +87,12 @@ const Profile: React.FC<ProfileProps> = ({ onLogout, isActive }) => {
   const [removingRecord, setRemovingRecord] = useState<string | null>(null);
   const [breakdownData, setBreakdownData] = useState<any>(null);
   const [breakdownClosing, setBreakdownClosing] = useState(false);
+
+  // Promo code state
+  const [promoCode, setPromoCode] = useState('');
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoMessage, setPromoMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [premiumStatus, setPremiumStatus] = useState<{ isPremium: boolean; isLifetime: boolean; premiumUntil: string | null } | null>(null);
 
   // Widget edit state
   const [selectedWidgets, setSelectedWidgets] = useState<string[]>(getProfileWidgets);
@@ -249,13 +255,14 @@ const Profile: React.FC<ProfileProps> = ({ onLogout, isActive }) => {
 
   const loadProfileData = async () => {
     try {
-      const [statsData, goalsData, syncData, predsData, profileData, recordsData] = await Promise.allSettled([
+      const [statsData, goalsData, syncData, predsData, profileData, recordsData, promoData] = await Promise.allSettled([
         workouts.stats('all'),
         workouts.getGoals(),
         strava.syncStatus(),
         workouts.goalPredictions(),
         profileApi.get(),
-        profileApi.getRecords()
+        profileApi.getRecords(),
+        promoApi.status()
       ]);
 
       const cacheObj: any = {};
@@ -285,6 +292,9 @@ const Profile: React.FC<ProfileProps> = ({ onLogout, isActive }) => {
       if (recordsData.status === 'fulfilled') {
         setRecords(recordsData.value);
         cacheObj.records = recordsData.value;
+      }
+      if (promoData.status === 'fulfilled') {
+        setPremiumStatus(promoData.value);
       }
       writeCache('rw_profile_cache', cacheObj);
     } catch (err) {
@@ -515,6 +525,37 @@ const Profile: React.FC<ProfileProps> = ({ onLogout, isActive }) => {
       }, 450);
     } catch (err) {
       console.error('Failed to delete record:', err);
+    }
+  };
+
+  const handleActivatePromo = async () => {
+    if (!promoCode.trim()) return;
+    setPromoLoading(true);
+    setPromoMessage(null);
+    try {
+      const res = await promoApi.activate(promoCode.trim());
+      if (res.is_lifetime) {
+        setPromoMessage({ type: 'success', text: t('profile.promoSuccessLifetime') });
+      } else {
+        setPromoMessage({ type: 'success', text: t('profile.promoSuccess', { days: res.duration_days }) });
+      }
+      setPremiumStatus({
+        isPremium: true,
+        isLifetime: res.is_lifetime,
+        premiumUntil: res.premium_until || null
+      });
+      setPromoCode('');
+    } catch (err: any) {
+      const code = err.message;
+      if (code === 'ALREADY_USED') {
+        setPromoMessage({ type: 'error', text: t('profile.promoAlreadyUsed') });
+      } else if (code === 'USED_UP') {
+        setPromoMessage({ type: 'error', text: t('profile.promoUsedUp') });
+      } else {
+        setPromoMessage({ type: 'error', text: t('profile.promoInvalid') });
+      }
+    } finally {
+      setPromoLoading(false);
     }
   };
 
@@ -843,6 +884,43 @@ const Profile: React.FC<ProfileProps> = ({ onLogout, isActive }) => {
                 🔍 Перепроверить GPS-аномалии
               </button>
 
+            </div>
+
+            <div className="settings-section">
+              <div className="settings-section-title">⭐ {t('profile.promoCode')}</div>
+
+              {premiumStatus?.isPremium && (
+                <div className="promo-status">
+                  {premiumStatus.isLifetime
+                    ? t('profile.promoLifetime')
+                    : t('profile.promoActive', { date: new Date(premiumStatus.premiumUntil!).toLocaleDateString() })
+                  }
+                </div>
+              )}
+
+              <div className="promo-input-row">
+                <input
+                  type="text"
+                  className="promo-input"
+                  placeholder={t('profile.promoPlaceholder')}
+                  value={promoCode}
+                  onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                  disabled={promoLoading}
+                />
+                <button
+                  className="btn btn-accent promo-btn"
+                  onClick={handleActivatePromo}
+                  disabled={promoLoading || !promoCode.trim()}
+                >
+                  {promoLoading ? '...' : t('profile.applyPromo')}
+                </button>
+              </div>
+
+              {promoMessage && (
+                <div className={`promo-message promo-message-${promoMessage.type}`}>
+                  {promoMessage.text}
+                </div>
+              )}
             </div>
 
             <button

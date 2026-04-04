@@ -10,6 +10,7 @@ import Plan from './screens/Plan';
 import AIChat from './screens/AIChat';
 import Profile from './screens/Profile';
 import WorkoutDetail from './screens/WorkoutDetail';
+import AdminPanel from './screens/AdminPanel';
 import './App.css';
 
 type Screen = 'home' | 'history' | 'plan' | 'ai' | 'profile' | 'workout-detail';
@@ -54,6 +55,11 @@ const App: React.FC = () => {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, [handleCallback]);
+
+  // Admin panel — accessible via /admin path, no auth required
+  if (window.location.pathname === '/admin') {
+    return <AdminPanel />;
+  }
 
   if (loading) {
     return (

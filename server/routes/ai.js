@@ -9,6 +9,20 @@ const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
 
 const DAILY_MESSAGE_LIMIT = 15;
 
+// Helper: check if user has active premium
+async function checkPremium(userId) {
+  const { data: user } = await supabase
+    .from('users')
+    .select('premium_until, is_lifetime_premium')
+    .eq('id', userId)
+    .single();
+
+  if (!user) return false;
+  if (user.is_lifetime_premium) return true;
+  if (user.premium_until && new Date(user.premium_until) > new Date()) return true;
+  return false;
+}
+
 // Helper: count user messages sent today
 async function getDailyMessageCount(userId) {
   const todayStart = new Date();
@@ -1307,8 +1321,12 @@ async function processPlanUpdate(reply, userId, currentPlan) {
 // GET /api/ai/chat/limit — check daily message limit
 router.get('/chat/limit', authMiddleware, async (req, res) => {
   try {
+    const isPremium = await checkPremium(req.user.id);
+    if (isPremium) {
+      return res.json({ limit: DAILY_MESSAGE_LIMIT, used: 0, remaining: DAILY_MESSAGE_LIMIT, isPremium: true });
+    }
     const used = await getDailyMessageCount(req.user.id);
-    res.json({ limit: DAILY_MESSAGE_LIMIT, used, remaining: Math.max(0, DAILY_MESSAGE_LIMIT - used) });
+    res.json({ limit: DAILY_MESSAGE_LIMIT, used, remaining: Math.max(0, DAILY_MESSAGE_LIMIT - used), isPremium: false });
   } catch (err) {
     console.error('Limit check error:', err.message);
     res.status(500).json({ error: 'Failed to check limit' });
@@ -1382,10 +1400,13 @@ router.post('/chat', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    // Check daily limit
-    const used = await getDailyMessageCount(req.user.id);
-    if (used >= DAILY_MESSAGE_LIMIT) {
-      return res.status(429).json({ error: 'Daily message limit reached', limit: DAILY_MESSAGE_LIMIT, used, remaining: 0 });
+    // Check daily limit (skip for premium users)
+    const isPremium = await checkPremium(req.user.id);
+    if (!isPremium) {
+      const used = await getDailyMessageCount(req.user.id);
+      if (used >= DAILY_MESSAGE_LIMIT) {
+        return res.status(429).json({ error: 'Daily message limit reached', limit: DAILY_MESSAGE_LIMIT, used, remaining: 0 });
+      }
     }
 
     const { chatHistory, systemPrompt, currentPlan } = await loadChatContext(req.user.id, lang || 'ru');
@@ -1412,10 +1433,13 @@ router.post('/chat/stream', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    // Check daily limit
-    const used = await getDailyMessageCount(req.user.id);
-    if (used >= DAILY_MESSAGE_LIMIT) {
-      return res.status(429).json({ error: 'Daily message limit reached', limit: DAILY_MESSAGE_LIMIT, used, remaining: 0 });
+    // Check daily limit (skip for premium users)
+    const isPremiumUser = await checkPremium(req.user.id);
+    if (!isPremiumUser) {
+      const used = await getDailyMessageCount(req.user.id);
+      if (used >= DAILY_MESSAGE_LIMIT) {
+        return res.status(429).json({ error: 'Daily message limit reached', limit: DAILY_MESSAGE_LIMIT, used, remaining: 0 });
+      }
     }
 
     const { chatHistory, systemPrompt, currentPlan } = await loadChatContext(req.user.id, lang || 'ru');

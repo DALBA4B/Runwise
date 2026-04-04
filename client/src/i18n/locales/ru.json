@@ -207,7 +207,18 @@
     "breakdownDiscarded": "Отсечённый сплит",
     "breakdownRiegel": "Расчёты Ригеля (последние {{period}})",
     "breakdownNoData": "Нет данных для расчёта",
-    "breakdownTop3": "Топ-3 выделены — из них берётся медиана"
+    "breakdownTop3": "Топ-3 выделены — из них берётся медиана",
+    "promoCode": "Промокод",
+    "applyPromo": "Применить",
+    "promoPlaceholder": "Введите промокод",
+    "promoActive": "Премиум до {{date}}",
+    "promoLifetime": "Безлимит навсегда",
+    "promoSuccess": "Промокод активирован! +{{days}} дн.",
+    "promoSuccessLifetime": "Промокод активирован! Безлимит навсегда",
+    "promoInvalid": "Неверный промокод",
+    "promoAlreadyUsed": "Вы уже использовали этот промокод",
+    "promoUsedUp": "Промокод исчерпан",
+    "premium": "Премиум"
   },
   "goalTypes": {
     "monthly_distance": "Месячный объём",

@@ -91,6 +91,33 @@ ALTER TABLE workouts ADD COLUMN IF NOT EXISTS user_verified BOOLEAN DEFAULT fals
 ALTER TABLE workouts ADD COLUMN IF NOT EXISTS manual_distance INTEGER;
 ALTER TABLE workouts ADD COLUMN IF NOT EXISTS manual_moving_time INTEGER;
 
+-- Premium fields for users
+ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_until TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_lifetime_premium BOOLEAN DEFAULT false;
+
+-- Promo codes table
+CREATE TABLE IF NOT EXISTS promo_codes (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  code TEXT UNIQUE NOT NULL,
+  duration_days INTEGER, -- NULL = lifetime
+  max_uses INTEGER DEFAULT 1,
+  uses_count INTEGER DEFAULT 0,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Promo activations table
+CREATE TABLE IF NOT EXISTS promo_activations (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  promo_code_id UUID REFERENCES promo_codes(id) ON DELETE CASCADE,
+  activated_at TIMESTAMPTZ DEFAULT NOW(),
+  expires_at TIMESTAMPTZ, -- NULL = lifetime
+  UNIQUE(user_id, promo_code_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_promo_activations_user ON promo_activations(user_id);
+
 -- Enable Row Level Security (optional, since we use service key on backend)
 -- ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 -- ALTER TABLE workouts ENABLE ROW LEVEL SECURITY;
