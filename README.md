@@ -7,8 +7,9 @@
 | Фронтенд | Бэкенд | Сервисы |
 |----------|--------|---------|
 | React 18 + TypeScript | Node.js + Express | Supabase (PostgreSQL) |
-| Recharts (графики) | JWT авторизация | Strava API (OAuth) |
-| PWA | SSE стриминг | DeepSeek API (AI) |
+| React-i18next (RU/EN/UK) | JWT авторизация | Strava API (OAuth) |
+| Recharts (графики) | SSE стриминг | DeepSeek API (AI) |
+| PWA | Промокоды + Админка | |
 
 ## Возможности
 
@@ -16,8 +17,14 @@
 - **AI тренер** — персональный чат со стриминг-ответами, учитывает историю тренировок, цели, физические параметры
 - **Планы тренировок** — AI генерирует недельный план, можно менять прямо в чате
 - **Цели** — установка целей (объём, личные рекорды) с дедлайнами и прогнозами
-- **Аналитика** — статистика за неделю (пн-вс) / месяц / всё время, сравнение периодов
-- **Профиль** — возраст, рост, вес для персонализации AI-рекомендаций
+- **Личные рекорды** — ручные и из Strava (1км, 3км, 5км, 10км, полумарафон, марафон)
+- **Аналитика** — статистика за неделю/месяц/всё время, сравнение периодов, настраиваемые виджеты
+- **GPS-аномалии** — автоматическое обнаружение подозрительных данных тренировок
+- **Промокоды** — система премиум-доступа: безлимитный AI-чат, суммирование сроков, одноразовые/многоразовые коды
+- **Админ-панель** — создание/управление промокодами, история активаций (доступ по `/admin`)
+- **Локализация** — русский, английский, украинский (автовыбор по языку браузера)
+- **AI-персонализация** — пол тренера, длина ответов, характер, юмор, эмодзи
+- **Профиль** — возраст, рост, вес, пол для персонализации AI-рекомендаций
 - **PWA** — можно установить на телефон как приложение
 
 ## Структура проекта
@@ -38,14 +45,25 @@
 │   │   ├── hooks/           # React хуки
 │   │   │   ├── useAuth.ts
 │   │   │   └── useWorkouts.ts
+│   │   ├── config/
+│   │   │   └── metrics.ts   # Конфиг виджетов метрик
 │   │   ├── screens/         # Экраны приложения
 │   │   │   ├── Home.tsx         # Главная — метрики, график, AI-анализ
 │   │   │   ├── History.tsx      # История тренировок по месяцам
-│   │   │   ├── WorkoutDetail.tsx # Детали тренировки
+│   │   │   ├── WorkoutDetail.tsx # Детали тренировки + сплиты
 │   │   │   ├── Plan.tsx         # Недельный план от AI
 │   │   │   ├── AIChat.tsx       # Чат с AI тренером
-│   │   │   ├── Profile.tsx      # Профиль, цели, настройки
-│   │   │   └── Login.tsx        # Вход через Strava
+│   │   │   ├── Profile.tsx      # Профиль, цели, рекорды, настройки, промокод
+│   │   │   ├── AdminPanel.tsx   # Админ-панель промокодов
+│   │   │   ├── Login.tsx        # Вход через Strava
+│   │   │   ├── ConsentScreen.tsx # Согласие на обработку данных
+│   │   │   └── PrivacyPolicy.tsx # Политика конфиденциальности
+│   │   ├── i18n/            # Локализация
+│   │   │   ├── index.ts
+│   │   │   └── locales/
+│   │   │       ├── ru.json
+│   │   │       ├── en.json
+│   │   │       └── uk.json
 │   │   ├── App.tsx          # Роутинг и навигация
 │   │   ├── App.css          # Все стили
 │   │   └── utils.ts         # Форматирование (темп, дистанция)
@@ -55,8 +73,9 @@
 │   │   ├── auth.js          # Strava OAuth + JWT
 │   │   ├── strava.js        # Синхронизация тренировок
 │   │   ├── workouts.js      # Тренировки, статистика, цели
-│   │   ├── ai.js            # AI чат, планы, анализ
-│   │   └── profile.js       # Профиль (возраст, рост, вес)
+│   │   ├── ai.js            # AI чат, планы, анализ (лимит 15 сообщ/день)
+│   │   ├── profile.js       # Профиль и личные рекорды
+│   │   └── promo.js         # Промокоды и админ-эндпоинты
 │   ├── middleware/
 │   │   └── authMiddleware.js
 │   ├── index.js             # Точка входа сервера
@@ -99,6 +118,9 @@ DEEPSEEK_API_KEY=your-api-key
 
 # JWT секрет (сгенерируй: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
 JWT_SECRET=your-secret
+
+# Админ-панель промокодов (любой пароль)
+ADMIN_SECRET=your-admin-secret
 ```
 
 **Клиент** — скопируй `client/.env.example` → `client/.env`:
@@ -110,17 +132,7 @@ REACT_APP_API_URL=http://localhost:3001
 ### 3. База данных
 
 1. Создай проект на [supabase.com](https://supabase.com)
-2. Выполни `supabase_schema.sql` в SQL Editor
-3. Дополнительные миграции:
-
-```sql
-ALTER TABLE users ADD COLUMN IF NOT EXISTS age INTEGER;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS height_cm REAL;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS weight_kg REAL;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS last_sync_status TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS last_sync_count INTEGER;
-ALTER TABLE goals ADD COLUMN IF NOT EXISTS deadline DATE;
-```
+2. Выполни `supabase_schema.sql` в SQL Editor — создаст все таблицы, индексы и колонки
 
 ### 4. Strava OAuth
 
@@ -141,7 +153,9 @@ cd client
 npm start
 ```
 
-Приложение откроется на http://localhost:3000
+Приложение откроется на http://localhost:3000 либо же можно самому его там открыть
+
+Чтобы запустить админ панель нужно открыть http://localhost:3000/admin 
 
 ## API
 
@@ -157,11 +171,14 @@ npm start
 |-------|------|----------|
 | GET | `/api/workouts` | Список (фильтр: month, year, limit) |
 | GET | `/api/workouts/:id` | Детали тренировки |
+| PATCH | `/api/workouts/:id` | Подтвердить/исправить данные |
+| POST | `/api/workouts/reanalyze` | Перепроверка GPS-аномалий |
 | GET | `/api/workouts/stats?period=week\|month\|all` | Статистика |
 | GET | `/api/workouts/weekly` | Км по дням (пн-вс) |
-| GET | `/api/workouts/comparison` | Сравнение этой и прошлой недели |
+| GET | `/api/workouts/comparison` | Сравнение текущего и прошлого месяца |
 | GET | `/api/workouts/goals/list` | Цели |
 | POST | `/api/workouts/goals` | Создать цель |
+| PUT | `/api/workouts/goals/:id` | Обновить цель |
 | DELETE | `/api/workouts/goals/:id` | Удалить цель |
 | GET | `/api/workouts/goals/predictions` | Прогнозы целей |
 
@@ -170,13 +187,15 @@ npm start
 |-------|------|----------|
 | POST | `/api/strava/sync` | Импорт последних 50 тренировок |
 | POST | `/api/strava/sync-all` | Импорт всей истории (фон) |
-| POST | `/api/strava/sync-splits` | Загрузка сплитов по км |
+| POST | `/api/strava/sync-splits-500/:id` | Загрузка 500м сплитов |
 | GET | `/api/strava/sync-status` | Статус синхронизации |
 
 ### AI
 | Метод | Путь | Описание |
 |-------|------|----------|
+| POST | `/api/ai/chat` | Чат (обычный) |
 | POST | `/api/ai/chat/stream` | Стриминг чат (SSE) |
+| GET | `/api/ai/chat/limit` | Лимит сообщений (isPremium) |
 | GET | `/api/ai/chat/history` | История чата |
 | DELETE | `/api/ai/chat/history` | Очистить историю |
 | POST | `/api/ai/analyze-workout` | Анализ тренировки |
@@ -188,7 +207,31 @@ npm start
 | Метод | Путь | Описание |
 |-------|------|----------|
 | GET | `/api/profile` | Получить профиль |
-| PUT | `/api/profile` | Обновить (age, height_cm, weight_kg) |
+| PUT | `/api/profile` | Обновить (age, height_cm, weight_kg, gender, ai_preferences) |
+| GET | `/api/profile/records` | Личные рекорды |
+| PUT | `/api/profile/records` | Добавить/обновить рекорд |
+| DELETE | `/api/profile/records/:type` | Удалить рекорд |
+
+### Промокоды
+| Метод | Путь | Описание |
+|-------|------|----------|
+| POST | `/api/promo/activate` | Активировать промокод |
+| GET | `/api/promo/status` | Статус премиума |
+| GET | `/api/promo/admin/codes` | Список кодов (admin) |
+| POST | `/api/promo/admin/codes` | Создать код (admin) |
+| DELETE | `/api/promo/admin/codes/:id` | Удалить код (admin) |
+| GET | `/api/promo/admin/activations` | История активаций (admin) |
+
+> Админские эндпоинты требуют заголовок `X-Admin-Secret` с значением из env `ADMIN_SECRET`.
+
+## Система промокодов
+
+- **Промокод** даёт безлимитный AI-чат на определённый срок (1-360 дней) или навсегда
+- Коды бывают **одноразовые** (1 активация) и **многоразовые** (N активаций)
+- При активации нескольких кодов **время суммируется**
+- Один код можно активировать только один раз на юзера
+- Премиум-пользователи не ограничены лимитом 15 сообщений/день
+- **Админ-панель**: `http://localhost:3000/admin` — создание/удаление кодов, просмотр активаций
 
 ## Деплой
 
@@ -202,7 +245,7 @@ npm start
 
 1. Подключи GitHub репозиторий
 2. Root Directory: `server`
-3. Добавь все переменные из `server/.env`
+3. Добавь все переменные из `server/.env` (включая `ADMIN_SECRET`)
 4. Обнови:
    - `CLIENT_URL` → URL фронтенда на Netlify
    - `STRAVA_REDIRECT_URI` → URL фронтенда + `/callback`
@@ -211,6 +254,7 @@ npm start
 
 - Обнови Authorization Callback Domain в настройках Strava API
 - Убедись что CORS работает между фронтом и бэком
+- Админ-панель будет на `https://твой-фронтенд.netlify.app/admin`
 
 ## Дизайн
 
@@ -218,7 +262,21 @@ npm start
 - Тёмная тема (синяя палитра)
 - Нижняя навигация (5 вкладок)
 - CSS Custom Properties для кастомизации
+- Анимации переходов между экранами
+
+## База данных
+
+| Таблица | Описание |
+|---------|----------|
+| `users` | Пользователи, Strava токены, физические параметры, AI настройки, премиум-статус |
+| `workouts` | Тренировки из Strava, сплиты, GPS-аномалии |
+| `plans` | Недельные тренировочные планы от AI |
+| `goals` | Цели пользователей с дедлайнами |
+| `personal_records` | Личные рекорды по дистанциям |
+| `chat_messages` | История чата с AI тренером |
+| `promo_codes` | Промокоды (код, длительность, лимит использований) |
+| `promo_activations` | Активации промокодов пользователями |
 
 ---
 
-**Runwise v1.0**
+**Runwise v1.1**
