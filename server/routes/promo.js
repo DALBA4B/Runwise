@@ -41,16 +41,50 @@ router.post('/activate', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'USED_UP' });
     }
 
-    // Check if user already activated this code
-    const { data: existing } = await supabase
+    // Try to insert activation — UNIQUE(user_id, promo_code_id) prevents duplicates atomically
+    const { error: activationErr } = await supabase
       .from('promo_activations')
-      .select('id')
-      .eq('user_id', req.user.id)
-      .eq('promo_code_id', promo.id)
-      .single();
+      .insert({
+        user_id: req.user.id,
+        promo_code_id: promo.id,
+        expires_at: null // will be updated below
+      });
 
-    if (existing) {
-      return res.status(400).json({ error: 'ALREADY_USED' });
+    if (activationErr) {
+      // Unique constraint violation = already used
+      if (activationErr.code === '23505') {
+        return res.status(400).json({ error: 'ALREADY_USED' });
+      }
+      return res.status(500).json({ error: 'Activation failed' });
+    }
+
+    // Atomic increment uses_count with a condition check to prevent race condition
+    // uses_count < max_uses ensures we never exceed the limit
+    const { data: updated, error: updateErr } = await supabase
+      .rpc('increment_promo_uses', { promo_id: promo.id, max: promo.max_uses });
+
+    // If RPC doesn't exist yet, fall back to regular update
+    if (updateErr) {
+      const { data: freshPromo } = await supabase
+        .from('promo_codes')
+        .select('uses_count, max_uses')
+        .eq('id', promo.id)
+        .single();
+
+      if (freshPromo && freshPromo.uses_count >= freshPromo.max_uses) {
+        // Rollback: delete the activation we just inserted
+        await supabase
+          .from('promo_activations')
+          .delete()
+          .eq('user_id', req.user.id)
+          .eq('promo_code_id', promo.id);
+        return res.status(400).json({ error: 'USED_UP' });
+      }
+
+      await supabase
+        .from('promo_codes')
+        .update({ uses_count: (freshPromo?.uses_count || 0) + 1 })
+        .eq('id', promo.id);
     }
 
     // Get current user premium status
@@ -65,10 +99,8 @@ router.post('/activate', authMiddleware, async (req, res) => {
     let isLifetime = user?.is_lifetime_premium || false;
 
     if (promo.duration_days === null) {
-      // Lifetime premium
       isLifetime = true;
     } else {
-      // Calculate expiration: stack on top of existing premium
       const now = new Date();
       const currentEnd = user?.premium_until && new Date(user.premium_until) > now
         ? new Date(user.premium_until)
@@ -76,29 +108,13 @@ router.post('/activate', authMiddleware, async (req, res) => {
       newPremiumUntil = new Date(currentEnd.getTime() + promo.duration_days * 24 * 60 * 60 * 1000);
     }
 
-    // Calculate activation expires_at
-    const expiresAt = promo.duration_days === null
-      ? null
-      : newPremiumUntil.toISOString();
-
-    // Create activation record
-    const { error: activationErr } = await supabase
-      .from('promo_activations')
-      .insert({
-        user_id: req.user.id,
-        promo_code_id: promo.id,
-        expires_at: expiresAt
-      });
-
-    if (activationErr) {
-      return res.status(500).json({ error: 'Activation failed' });
-    }
-
-    // Increment uses_count
+    // Update activation expires_at
+    const expiresAt = promo.duration_days === null ? null : newPremiumUntil.toISOString();
     await supabase
-      .from('promo_codes')
-      .update({ uses_count: promo.uses_count + 1 })
-      .eq('id', promo.id);
+      .from('promo_activations')
+      .update({ expires_at: expiresAt })
+      .eq('user_id', req.user.id)
+      .eq('promo_code_id', promo.id);
 
     // Update user premium status
     const updateData = {};
@@ -179,12 +195,25 @@ router.post('/admin/codes', adminAuth, async (req, res) => {
       return res.status(400).json({ error: 'Code is required' });
     }
 
+    // Validate numeric fields
+    const days = duration_days === '' || duration_days === undefined || duration_days === null
+      ? null
+      : Number(duration_days);
+    const uses = Number(max_uses) || 1;
+
+    if (days !== null && (!Number.isInteger(days) || days < 1 || days > 3650)) {
+      return res.status(400).json({ error: 'duration_days must be 1-3650 or empty for lifetime' });
+    }
+    if (!Number.isInteger(uses) || uses < 1 || uses > 100000) {
+      return res.status(400).json({ error: 'max_uses must be 1-100000' });
+    }
+
     const { data, error } = await supabase
       .from('promo_codes')
       .insert({
         code: code.trim().toUpperCase(),
-        duration_days: duration_days === '' || duration_days === undefined ? null : Number(duration_days),
-        max_uses: max_uses ? Number(max_uses) : 1
+        duration_days: days,
+        max_uses: uses
       })
       .select()
       .single();
