@@ -146,6 +146,9 @@ export const ai = {
     }
 
     if (!response.ok) {
+      if (response.status === 429) {
+        throw new Error('Daily message limit reached');
+      }
       throw new Error('Stream request failed');
     }
 
@@ -193,6 +196,7 @@ export const ai = {
       }
     }
   },
+  chatLimit: () => request('/api/ai/chat/limit'),
   chatHistory: () => request('/api/ai/chat/history'),
   clearChatHistory: () => request('/api/ai/chat/history', { method: 'DELETE' }),
   analyzeWorkout: (workoutId: string) => request('/api/ai/analyze-workout', {

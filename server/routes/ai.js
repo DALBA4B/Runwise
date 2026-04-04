@@ -7,6 +7,24 @@ const router = express.Router();
 
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
 
+const DAILY_MESSAGE_LIMIT = 15;
+
+// Helper: count user messages sent today
+async function getDailyMessageCount(userId) {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const { count, error } = await supabase
+    .from('chat_messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('role', 'user')
+    .gte('created_at', todayStart.toISOString());
+
+  if (error) throw error;
+  return count || 0;
+}
+
 // Helper: format date as YYYY-MM-DD in local timezone (avoids UTC shift from toISOString)
 function toLocalDateStr(date) {
   const y = date.getFullYear();
@@ -1286,6 +1304,17 @@ async function processPlanUpdate(reply, userId, currentPlan) {
   return { textReply, planUpdated };
 }
 
+// GET /api/ai/chat/limit — check daily message limit
+router.get('/chat/limit', authMiddleware, async (req, res) => {
+  try {
+    const used = await getDailyMessageCount(req.user.id);
+    res.json({ limit: DAILY_MESSAGE_LIMIT, used, remaining: Math.max(0, DAILY_MESSAGE_LIMIT - used) });
+  } catch (err) {
+    console.error('Limit check error:', err.message);
+    res.status(500).json({ error: 'Failed to check limit' });
+  }
+});
+
 // GET /api/ai/chat/history — get chat history
 router.get('/chat/history', authMiddleware, async (req, res) => {
   try {
@@ -1353,6 +1382,12 @@ router.post('/chat', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Message is required' });
     }
 
+    // Check daily limit
+    const used = await getDailyMessageCount(req.user.id);
+    if (used >= DAILY_MESSAGE_LIMIT) {
+      return res.status(429).json({ error: 'Daily message limit reached', limit: DAILY_MESSAGE_LIMIT, used, remaining: 0 });
+    }
+
     const { chatHistory, systemPrompt, currentPlan } = await loadChatContext(req.user.id, lang || 'ru');
     const reply = await callDeepSeekWithTools(systemPrompt, message, req.user.id, 4000, chatHistory);
     const { textReply, planUpdated } = await processPlanUpdate(reply, req.user.id, currentPlan);
@@ -1375,6 +1410,12 @@ router.post('/chat/stream', authMiddleware, async (req, res) => {
     const { message, lang } = req.body;
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
+    }
+
+    // Check daily limit
+    const used = await getDailyMessageCount(req.user.id);
+    if (used >= DAILY_MESSAGE_LIMIT) {
+      return res.status(429).json({ error: 'Daily message limit reached', limit: DAILY_MESSAGE_LIMIT, used, remaining: 0 });
     }
 
     const { chatHistory, systemPrompt, currentPlan } = await loadChatContext(req.user.id, lang || 'ru');

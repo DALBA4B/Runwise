@@ -158,7 +158,10 @@
     "humor": "Humor",
     "emojiLevel": "Emojis",
     "emojiFew": "Few",
-    "emojiMany": "Many"
+    "emojiMany": "Many",
+    "limitReached": "Daily message limit reached. Come back tomorrow!",
+    "messagesLeft": "{{count}} of {{limit}} messages",
+    "dailyLimit": "Daily limit"
   },
   "profile": {
     "title": "Profile",

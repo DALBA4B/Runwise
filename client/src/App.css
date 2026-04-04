@@ -1159,6 +1159,16 @@ input[type="number"] {
   align-items: center;
 }
 
+.chat-limit-banner {
+  text-align: center;
+  font-size: 13px;
+  color: #f59e0b;
+  padding: 6px 12px;
+  background: rgba(245, 158, 11, 0.1);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
 .clear-chat-btn {
   background: none;
   border: 1px solid var(--color-border);
@@ -2754,6 +2764,49 @@ input[type="number"] {
   border-color: var(--color-accent);
   background: rgba(59, 130, 246, 0.15);
   color: var(--color-text);
+}
+
+/* ============ AI LIMIT IN SETTINGS ============ */
+
+.ai-limit-section {
+  border-top: 1px solid var(--color-border);
+  padding-top: 14px;
+  margin-top: 6px;
+}
+
+.ai-limit-bar-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ai-limit-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--color-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.ai-limit-bar-fill {
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.ai-limit-bar-fill.low {
+  background: #f59e0b;
+}
+
+.ai-limit-text {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.ai-limit-text.low {
+  color: #f59e0b;
 }
 
 .personality-grid {

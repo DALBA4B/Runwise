@@ -158,7 +158,10 @@
     "humor": "Гумор",
     "emojiLevel": "Емодзі",
     "emojiFew": "Мало",
-    "emojiMany": "Багато"
+    "emojiMany": "Багато",
+    "limitReached": "Ліміт повідомлень на сьогодні вичерпано. Повертайся завтра!",
+    "messagesLeft": "{{count}} з {{limit}} повідомлень",
+    "dailyLimit": "Денний ліміт"
   },
   "profile": {
     "title": "Профіль",

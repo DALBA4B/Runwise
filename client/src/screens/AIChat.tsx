@@ -49,6 +49,7 @@ const AIChat: React.FC = () => {
   const [aiSettingsClosing, setAiSettingsClosing] = useState(false);
   const [aiPrefs, setAiPrefs] = useState<AiPreferences>(AI_DEFAULTS);
   const [savingPrefs, setSavingPrefs] = useState(false);
+  const [messageLimit, setMessageLimit] = useState<{ limit: number; used: number; remaining: number } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const userScrolledUp = useRef(false);
@@ -118,6 +119,11 @@ const AIChat: React.FC = () => {
     };
     loadHistory();
 
+    // Load message limit
+    ai.chatLimit().then((data: any) => {
+      if (data) setMessageLimit(data);
+    }).catch(() => {});
+
     // Load AI preferences
     const cached = localStorage.getItem('runwise_ai_prefs');
     if (cached) {
@@ -144,6 +150,7 @@ const AIChat: React.FC = () => {
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim()) return;
+    if (messageLimit && messageLimit.remaining <= 0) return;
 
     // Add user message
     const userMessage: Message = {
@@ -232,15 +239,23 @@ const AIChat: React.FC = () => {
           setThinking(true);
         }
       );
-    } catch (err) {
+      // Update limit after successful send
+      ai.chatLimit().then((data: any) => {
+        if (data) setMessageLimit(data);
+      }).catch(() => {});
+    } catch (err: any) {
       console.error('Chat error:', err);
+      const isLimitError = err?.message?.includes('limit') || err?.message?.includes('429');
       setMessages(prev =>
         prev.map(m =>
           m.id === aiMessageId
-            ? { ...m, content: t('chat.error') }
+            ? { ...m, content: isLimitError ? t('chat.limitReached') : t('chat.error') }
             : m
         )
       );
+      if (isLimitError) {
+        setMessageLimit(prev => prev ? { ...prev, remaining: 0 } : null);
+      }
     } finally {
       setLoading(false);
       setUpdatingPlan(false);
@@ -331,7 +346,7 @@ const AIChat: React.FC = () => {
                 key={index}
                 className="quick-btn"
                 onClick={() => handleSendMessage(question)}
-                disabled={loading}
+                disabled={loading || (messageLimit !== null && messageLimit.remaining <= 0)}
               >
                 {question}
               </button>
@@ -340,24 +355,27 @@ const AIChat: React.FC = () => {
         </div>
 
         <div className="chat-input-area">
+          {messageLimit && messageLimit.remaining <= 0 && (
+            <div className="chat-limit-banner">{t('chat.limitReached')}</div>
+          )}
           <div className="chat-input-wrapper">
             <input
               type="text"
               className="chat-input"
-              placeholder={t('chat.placeholder')}
+              placeholder={messageLimit && messageLimit.remaining <= 0 ? t('chat.limitReached') : t('chat.placeholder')}
               value={inputValue}
               onChange={e => setInputValue(e.target.value)}
               onKeyDown={e => {
-                if (e.key === 'Enter' && !loading) {
+                if (e.key === 'Enter' && !loading && !(messageLimit && messageLimit.remaining <= 0)) {
                   handleSendMessage(inputValue);
                 }
               }}
-              disabled={loading}
+              disabled={loading || (messageLimit !== null && messageLimit.remaining <= 0)}
             />
             <button
               className="chat-send-btn"
               onClick={() => handleSendMessage(inputValue)}
-              disabled={loading}
+              disabled={loading || (messageLimit !== null && messageLimit.remaining <= 0)}
             >
               ➤
             </button>
@@ -435,6 +453,23 @@ const AIChat: React.FC = () => {
                 </button>
               </div>
             </div>
+
+            {messageLimit && (
+              <div className="ai-settings-section ai-limit-section">
+                <div className="ai-settings-title">{t('chat.dailyLimit')}</div>
+                <div className="ai-limit-bar-wrapper">
+                  <div className="ai-limit-bar">
+                    <div
+                      className={`ai-limit-bar-fill${messageLimit.remaining <= 3 ? ' low' : ''}`}
+                      style={{ width: `${(messageLimit.remaining / messageLimit.limit) * 100}%` }}
+                    />
+                  </div>
+                  <span className={`ai-limit-text${messageLimit.remaining <= 3 ? ' low' : ''}`}>
+                    {t('chat.messagesLeft', { count: messageLimit.remaining, limit: messageLimit.limit })}
+                  </span>
+                </div>
+              </div>
+            )}
 
             <button
               className="btn btn-accent btn-full"
