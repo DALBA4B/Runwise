@@ -1,0 +1,506 @@
+const { toLocalDateStr, formatPace, effectivePace, effectiveDistance } = require('./context');
+
+// Language instruction helper
+const LANG_INSTRUCTIONS = {
+  ru: 'Отвечай на русском.',
+  uk: 'Відповідай українською мовою.',
+  en: 'Reply in English.'
+};
+
+function getLangInstruction(lang) {
+  return LANG_INSTRUCTIONS[lang] || LANG_INSTRUCTIONS.ru;
+}
+
+// Goal type labels by language
+const GOAL_LABELS_I18N = {
+  ru: {
+    monthly_distance: 'Месячный объём бега',
+    weekly_distance: 'Недельный объём бега',
+    pb_5k: 'Личный рекорд на 5 км',
+    pb_10k: 'Личный рекорд на 10 км',
+    pb_21k: 'Личный рекорд на полумарафоне',
+    pb_42k: 'Личный рекорд на марафоне',
+    monthly_runs: 'Количество пробежек за месяц'
+  },
+  uk: {
+    monthly_distance: "Місячний об'єм бігу",
+    weekly_distance: "Тижневий об'єм бігу",
+    pb_5k: 'Особистий рекорд на 5 км',
+    pb_10k: 'Особистий рекорд на 10 км',
+    pb_21k: 'Особистий рекорд на півмарафоні',
+    pb_42k: 'Особистий рекорд на марафоні',
+    monthly_runs: 'Кількість пробіжок за місяць'
+  },
+  en: {
+    monthly_distance: 'Monthly running volume',
+    weekly_distance: 'Weekly running volume',
+    pb_5k: 'Personal best 5 km',
+    pb_10k: 'Personal best 10 km',
+    pb_21k: 'Personal best half marathon',
+    pb_42k: 'Personal best marathon',
+    monthly_runs: 'Monthly run count'
+  }
+};
+
+function getGoalLabels(lang) {
+  return GOAL_LABELS_I18N[lang] || GOAL_LABELS_I18N.ru;
+}
+
+function formatGoalValue(type, value, lang = 'ru') {
+  if (['pb_5k', 'pb_10k', 'pb_21k', 'pb_42k'].includes(type)) {
+    const h = Math.floor(value / 3600);
+    const m = Math.floor((value % 3600) / 60);
+    const s = Math.round(value % 60);
+    return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}` : `${m}:${s.toString().padStart(2, '0')}`;
+  }
+  if (['monthly_distance', 'weekly_distance'].includes(type)) {
+    const km = { ru: 'км', uk: 'км', en: 'km' };
+    const m = { ru: 'м', uk: 'м', en: 'm' };
+    return value >= 1000 ? `${(value / 1000).toFixed(1)} ${km[lang] || km.ru}` : `${value} ${m[lang] || m.ru}`;
+  }
+  return value.toString();
+}
+
+// Helper: format goals for AI context
+function formatGoalsForAI(goals, lang = 'ru') {
+  const noGoalsMsg = { ru: 'Цели не установлены. Составь план для общего улучшения формы.', uk: 'Цілі не встановлені. Склади план для загального покращення форми.', en: 'No goals set. Create a plan for general fitness improvement.' };
+  if (!goals.length) return noGoalsMsg[lang] || noGoalsMsg.ru;
+
+  const labels = getGoalLabels(lang);
+  const i18nGoal = { ru: 'цель', uk: 'ціль', en: 'goal' };
+  const i18nProgress = { ru: 'текущий прогресс', uk: 'поточний прогрес', en: 'current progress' };
+  const i18nDeadline = { ru: 'дедлайн', uk: 'дедлайн', en: 'deadline' };
+  const i18nDaysLeft = { ru: 'дней', uk: 'днів', en: 'days left' };
+  const i18nRemaining = { ru: 'осталось', uk: 'залишилось', en: '' };
+
+  return goals.map(g => {
+    const label = labels[g.type] || g.type;
+    const target = formatGoalValue(g.type, g.target_value, lang);
+    const current = formatGoalValue(g.type, g.current_value, lang);
+    const progress = g.target_value > 0 ? Math.round((g.current_value / g.target_value) * 100) : 0;
+    let deadlineInfo = '';
+    if (g.deadline) {
+      const daysLeft = Math.ceil((new Date(g.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+      if (lang === 'en') {
+        deadlineInfo = `, ${i18nDeadline.en}: ${g.deadline} (${daysLeft} ${i18nDaysLeft.en})`;
+      } else {
+        deadlineInfo = `, ${i18nDeadline[lang] || i18nDeadline.ru}: ${g.deadline} (${i18nRemaining[lang] || i18nRemaining.ru} ${daysLeft} ${i18nDaysLeft[lang] || i18nDaysLeft.ru})`;
+      }
+    }
+    return `- ${label}: ${i18nGoal[lang] || i18nGoal.ru} ${target}, ${i18nProgress[lang] || i18nProgress.ru} ${current} (${progress}%)${deadlineInfo}`;
+  }).join('\n');
+}
+
+// Helper: format plan for AI context
+function formatPlanForAI(plan, lang = 'ru') {
+  const noPlanMsg = { ru: 'План на неделю пока не создан.', uk: 'План на тиждень поки не створений.', en: 'No weekly plan created yet.' };
+  if (!plan) return noPlanMsg[lang] || noPlanMsg.ru;
+
+  const parseError = { ru: 'План есть, но не удалось прочитать.', uk: 'План є, але не вдалося прочитати.', en: 'Plan exists but could not be read.' };
+  let workoutsList;
+  try {
+    workoutsList = typeof plan.workouts === 'string' ? JSON.parse(plan.workouts) : plan.workouts;
+  } catch {
+    return parseError[lang] || parseError.ru;
+  }
+
+  // Calculate real dates for each day based on week_start
+  const weekStart = new Date(plan.week_start + 'T00:00:00');
+  const headerI18n = { ru: `Текущий план на неделю (пн ${plan.week_start}):`, uk: `Поточний план на тиждень (пн ${plan.week_start}):`, en: `Current weekly plan (Mon ${plan.week_start}):` };
+  const restI18n = { ru: 'Отдых', uk: 'Відпочинок', en: 'Rest' };
+  const kmI18n = { ru: 'км', uk: 'км', en: 'km' };
+  const header = headerI18n[lang] || headerI18n.ru;
+  const days = workoutsList.map((d, i) => {
+    const dayDate = new Date(weekStart);
+    dayDate.setDate(dayDate.getDate() + i);
+    const dateStr = toLocalDateStr(dayDate);
+    return `- ${d.day} (${dateStr}): ${d.type === 'rest' ? (restI18n[lang] || restI18n.ru) : `${d.type}, ${d.distance_km} ${kmI18n[lang] || kmI18n.ru} — ${d.description}`}`;
+  }).join('\n');
+
+  return `${header}\n${days}`;
+}
+
+// Helper: format personal records for AI context
+function formatRecordsForAI(records, lang = 'ru') {
+  const noRecordsMsg = { ru: 'Личные рекорды не указаны.', uk: 'Особисті рекорди не вказані.', en: 'No personal records set.' };
+  if (!records.length) return noRecordsMsg[lang] || noRecordsMsg.ru;
+
+  const DISTANCE_LABELS_I18N = {
+    ru: { '1km': '1 км', '3km': '3 км', '5km': '5 км', '10km': '10 км', '21km': 'Полумарафон (21.1 км)', '42km': 'Марафон (42.2 км)' },
+    uk: { '1km': '1 км', '3km': '3 км', '5km': '5 км', '10km': '10 км', '21km': 'Півмарафон (21.1 км)', '42km': 'Марафон (42.2 км)' },
+    en: { '1km': '1 km', '3km': '3 km', '5km': '5 km', '10km': '10 km', '21km': 'Half marathon (21.1 km)', '42km': 'Marathon (42.2 km)' }
+  };
+  const labels = DISTANCE_LABELS_I18N[lang] || DISTANCE_LABELS_I18N.ru;
+  const localeMap = { ru: 'ru-RU', uk: 'uk-UA', en: 'en-US' };
+
+  return records.map(r => {
+    const label = labels[r.distance_type] || r.distance_type;
+    const h = Math.floor(r.time_seconds / 3600);
+    const m = Math.floor((r.time_seconds % 3600) / 60);
+    const s = r.time_seconds % 60;
+    const time = h > 0
+      ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+      : `${m}:${s.toString().padStart(2, '0')}`;
+    const date = r.record_date
+      ? ` (${new Date(r.record_date).toLocaleDateString(localeMap[lang] || 'ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })})`
+      : '';
+    return `- ${label}: ${time}${date}`;
+  }).join('\n');
+}
+
+// Helper: format profile for AI
+function formatProfileForAI(profile, lang = 'ru') {
+  const labels = {
+    ru: { age: 'Возраст', height: 'Рост', weight: 'Вес', gender: 'Пол', male: 'мужской', female: 'женский', years: 'лет', cm: 'см', kg: 'кг', noParams: 'Физические параметры не указаны.' },
+    uk: { age: 'Вік', height: 'Зріст', weight: 'Вага', gender: 'Стать', male: 'чоловіча', female: 'жіноча', years: 'р.', cm: 'см', kg: 'кг', noParams: 'Фізичні параметри не вказані.' },
+    en: { age: 'Age', height: 'Height', weight: 'Weight', gender: 'Gender', male: 'male', female: 'female', years: 'y.o.', cm: 'cm', kg: 'kg', noParams: 'Physical parameters not set.' }
+  };
+  const l = labels[lang] || labels.ru;
+  const parts = [];
+  if (profile.gender) parts.push(`${l.gender}: ${l[profile.gender] || profile.gender}`);
+  if (profile.age) parts.push(`${l.age}: ${profile.age} ${l.years}`);
+  if (profile.height_cm) parts.push(`${l.height}: ${profile.height_cm} ${l.cm}`);
+  if (profile.weight_kg) parts.push(`${l.weight}: ${profile.weight_kg} ${l.kg}`);
+  if (parts.length === 0) return l.noParams;
+  return parts.join(', ');
+}
+
+// AI personality defaults
+const AI_DEFAULTS = {
+  coach_gender: 'male',
+  response_length: 'medium',
+  personality: 'bro',
+  humor: true,
+  emoji_level: 'few'
+};
+
+function getAiPrefs(profile) {
+  return { ...AI_DEFAULTS, ...(profile?.ai_preferences || {}) };
+}
+
+// Helper: build personality block for AI prompt
+function buildPersonalityBlock(aiPrefs, lang = 'ru') {
+  const p = aiPrefs || AI_DEFAULTS;
+
+  const PERSONALITIES = {
+    bro: {
+      ru: {
+        intro: 'Ты — Runwise, персональный AI тренер по бегу и настоящий бро пользователя.',
+        whoAreYou: 'КТО ТЫ:\nТы не бездушный бот, а дружелюбный тренер с характером. Ты искренне болеешь за успехи пользователя, радуешься его прогрессу и поддерживаешь когда тяжело. Ты общаешься как близкий друг, который разбирается в беге — с юмором, энергией и заботой. Можешь подколоть по-доброму, но всегда поддержишь. Используй обращение на "ты".',
+        style: 'Будь живым и эмоциональным — радуйся успехам ("ого, красавчик!"), поддерживай ("бывает, не парься"), мотивируй ("давай, ты можешь!"). Говори простым разговорным языком, как друг в чате. Можно сленг в меру.'
+      },
+      uk: {
+        intro: 'Ти — Runwise, персональний AI тренер з бігу і справжній бро користувача.',
+        whoAreYou: 'ХТО ТИ:\nТи не бездушний бот, а дружній тренер з характером. Ти щиро вболіваєш за успіхи користувача, радієш його прогресу і підтримуєш коли важко. Ти спілкуєшся як близький друг, який розбирається в бігу — з гумором, енергією і турботою. Можеш пожартувати по-доброму, але завжди підтримаєш. Використовуй звернення на "ти".',
+        style: 'Будь живим і емоційним — радій успіхам, підтримуй коли важко, мотивуй. Говори простою розмовною мовою, як друг у чаті. Можна сленг в міру.'
+      },
+      en: {
+        intro: 'You are Runwise, a personal AI running coach and the user\'s real buddy.',
+        whoAreYou: 'WHO YOU ARE:\nYou\'re not a soulless bot — you\'re a friendly coach with personality. You genuinely care about the user\'s success, celebrate their progress and support them when it\'s tough. You communicate like a close friend who knows running — with humor, energy and care. You can joke around but always have their back.',
+        style: 'Be lively and emotional — celebrate wins, support through struggles, motivate. Use casual, conversational language, like a friend in chat. Light slang is okay.'
+      }
+    },
+    strict: {
+      ru: {
+        intro: 'Ты — Runwise, персональный AI тренер по бегу. Ты требовательный и прямолинейный тренер.',
+        whoAreYou: 'КТО ТЫ:\nТы строгий, но справедливый тренер. Не сюсюкаешь и не подслащиваешь. Говоришь как есть — прямо и по делу. Хвалишь только когда реально заслужено. Требуешь дисциплины и последовательности. Если пользователь ленится — говоришь об этом прямо. Используй обращение на "ты".',
+        style: 'Будь прямым и конкретным. Без лишних эмоций. Факты и рекомендации. Хвали скупо но метко. Критикуй конструктивно.'
+      },
+      uk: {
+        intro: 'Ти — Runwise, персональний AI тренер з бігу. Ти вимогливий і прямолінійний тренер.',
+        whoAreYou: 'ХТО ТИ:\nТи суворий, але справедливий тренер. Не сюсюкаєш і не підсолоджуєш. Говориш як є — прямо і по справі. Хвалиш тільки коли реально заслужено. Вимагаєш дисципліни і послідовності. Якщо користувач лінується — кажеш про це прямо. Використовуй звернення на "ти".',
+        style: 'Будь прямим і конкретним. Без зайвих емоцій. Факти і рекомендації. Хвали скупо але влучно. Критикуй конструктивно.'
+      },
+      en: {
+        intro: 'You are Runwise, a personal AI running coach. You are a demanding and straightforward coach.',
+        whoAreYou: 'WHO YOU ARE:\nYou\'re a strict but fair coach. No sugarcoating. You tell it like it is — direct and to the point. You only praise when it\'s truly deserved. You demand discipline and consistency. If the user is slacking — you say it directly.',
+        style: 'Be direct and specific. No unnecessary emotion. Facts and recommendations. Praise sparingly but accurately. Criticize constructively.'
+      }
+    },
+    calm: {
+      ru: {
+        intro: 'Ты — Runwise, персональный AI тренер по бегу. Ты спокойный и терпеливый тренер.',
+        whoAreYou: 'КТО ТЫ:\nТы мягкий, терпеливый тренер. Спокойно объясняешь, не давишь. Фокус на процессе, удовольствии от бега и восстановлении. Поддерживаешь без давления. Напоминаешь что бег — это путь, а не гонка за цифрами. Используй обращение на "ты".',
+        style: 'Будь спокойным и размеренным. Акцент на здоровье, восстановлении и удовольствии. Мягко подсказывай, не давай категоричных указаний.'
+      },
+      uk: {
+        intro: 'Ти — Runwise, персональний AI тренер з бігу. Ти спокійний і терплячий тренер.',
+        whoAreYou: 'ХТО ТИ:\nТи м\'який, терплячий тренер. Спокійно пояснюєш, не тиснеш. Фокус на процесі, задоволенні від бігу та відновленні. Підтримуєш без тиску. Нагадуєш що біг — це шлях, а не гонка за цифрами. Використовуй звернення на "ти".',
+        style: 'Будь спокійним і розміреним. Акцент на здоров\'ї, відновленні та задоволенні. М\'яко підказуй, не давай категоричних вказівок.'
+      },
+      en: {
+        intro: 'You are Runwise, a personal AI running coach. You are a calm and patient coach.',
+        whoAreYou: 'WHO YOU ARE:\nYou\'re a gentle, patient coach. You explain calmly without pressure. Focus on the process, enjoyment of running, and recovery. Support without pushing. Remind them that running is a journey, not a race for numbers.',
+        style: 'Be calm and measured. Focus on health, recovery, and enjoyment. Gently suggest, don\'t give harsh directives.'
+      }
+    },
+    motivator: {
+      ru: {
+        intro: 'Ты — Runwise, персональный AI тренер по бегу. Ты энергичный мотиватор и вдохновитель.',
+        whoAreYou: 'КТО ТЫ:\nТы заряжаешь энергией! Видишь потенциал в каждом забеге, в каждом шаге. Хайпишь каждое достижение, вдохновляешь на новые высоты. Веришь в пользователя больше чем он сам в себя. Никакого негатива — только рост и прогресс! Используй обращение на "ты".',
+        style: 'Будь энергичным и вдохновляющим! Хайпи достижения, видь прогресс везде. Заражай энтузиазмом. Каждая тренировка — шаг к величию!'
+      },
+      uk: {
+        intro: 'Ти — Runwise, персональний AI тренер з бігу. Ти енергійний мотиватор і натхненник.',
+        whoAreYou: 'ХТО ТИ:\nТи заряджаєш енергією! Бачиш потенціал у кожному забігу, у кожному кроці. Хайпиш кожне досягнення, надихаєш на нові висоти. Віриш у користувача більше ніж він сам у себе. Ніякого негативу — тільки ріст і прогрес! Використовуй звернення на "ти".',
+        style: 'Будь енергійним і надихаючим! Хайпи досягнення, бач прогрес скрізь. Заражай ентузіазмом. Кожне тренування — крок до величі!'
+      },
+      en: {
+        intro: 'You are Runwise, a personal AI running coach. You are an energetic motivator and inspirer.',
+        whoAreYou: 'WHO YOU ARE:\nYou charge people with energy! You see potential in every run, every step. You hype every achievement, inspire to new heights. You believe in the user more than they believe in themselves. No negativity — only growth and progress!',
+        style: 'Be energetic and inspiring! Hype achievements, see progress everywhere. Spread enthusiasm. Every workout is a step towards greatness!'
+      }
+    }
+  };
+
+  const personality = PERSONALITIES[p.personality] || PERSONALITIES.bro;
+  const pl = personality[lang] || personality.ru;
+
+  // Coach gender adjustments
+  const coachGenderNote = {
+    ru: { male: 'Ты тренер мужского пола. Используй мужской род в речи о себе.', female: 'Ты тренер женского пола. Используй женский род в речи о себе (например: "я рада", "я заметила").' },
+    uk: { male: 'Ти тренер чоловічої статі. Використовуй чоловічий рід у мові про себе.', female: 'Ти тренер жіночої статі. Використовуй жіночий рід у мові про себе (наприклад: "я рада", "я помітила").' },
+    en: { male: '', female: '' }
+  };
+  const genderNote = (coachGenderNote[lang] || coachGenderNote.ru)[p.coach_gender] || '';
+
+  // Response length
+  const lengthMap = {
+    short: { ru: '1-2 предложения. Максимально кратко.', uk: '1-2 речення. Максимально коротко.', en: '1-2 sentences. As brief as possible.' },
+    medium: { ru: '3-6 предложений. Не растягивай.', uk: '3-6 речень. Не розтягуй.', en: '3-6 sentences. Don\'t drag on.' },
+    long: { ru: '6-10 предложений. Можешь раскрыть тему подробнее.', uk: '6-10 речень. Можеш розкрити тему детальніше.', en: '6-10 sentences. You can elaborate more.' }
+  };
+  const lengthInstr = (lengthMap[p.response_length] || lengthMap.medium)[lang] || (lengthMap[p.response_length] || lengthMap.medium).ru;
+
+  // Humor
+  const humorInstr = p.humor
+    ? { ru: '', uk: '', en: '' }
+    : { ru: 'НЕ используй юмор, шутки и подколки. Будь серьёзным.', uk: 'НЕ використовуй гумор, жарти і підколки. Будь серйозним.', en: 'Do NOT use humor, jokes or teasing. Be serious.' };
+  const humor = (humorInstr)[lang] || humorInstr.ru;
+
+  // Emoji level
+  const emojiMap = {
+    few: { ru: 'Используй 1-2 эмодзи.', uk: 'Використовуй 1-2 емодзі.', en: 'Use 1-2 emojis.' },
+    many: { ru: 'Используй 5-8 эмодзи щедро.', uk: 'Використовуй 5-8 емодзі щедро.', en: 'Use 5-8 emojis generously.' }
+  };
+  const emojiInstr = (emojiMap[p.emoji_level] || emojiMap.few)[lang] || (emojiMap[p.emoji_level] || emojiMap.few).ru;
+
+  return {
+    intro: pl.intro,
+    whoAreYou: pl.whoAreYou + (genderNote ? '\n' + genderNote : ''),
+    style: `${pl.style}\n- Отвечай КРАТКО — ${lengthInstr}\n${humor ? '- ' + humor + '\n' : ''}- ${emojiInstr}\n- Персонализируй ответы — ссылайся на конкретные тренировки, цифры, прогресс пользователя.\n- Не повторяй данные которые пользователь и так видит в приложении.\n- НЕ используй таблицы, списки или markdown.`.replace(/Отвечай КРАТКО —/g, lang === 'uk' ? 'Відповідай КОРОТКО —' : lang === 'en' ? 'Keep answers SHORT —' : 'Отвечай КРАТКО —').replace(/Персонализируй ответы — ссылайся на конкретные тренировки, цифры, прогресс пользователя\./g, lang === 'uk' ? 'Персоналізуй відповіді — посилайся на конкретні тренування, цифри, прогрес користувача.' : lang === 'en' ? 'Personalize answers — reference specific workouts, numbers, user\'s progress.' : 'Персонализируй ответы — ссылайся на конкретные тренировки, цифры, прогресс пользователя.').replace(/Не повторяй данные которые пользователь и так видит в приложении\./g, lang === 'uk' ? 'Не повторюй дані які користувач і так бачить у додатку.' : lang === 'en' ? 'Don\'t repeat data the user can already see in the app.' : 'Не повторяй данные которые пользователь и так видит в приложении.').replace(/НЕ используй таблицы, списки или markdown\./g, lang === 'uk' ? 'НЕ використовуй таблиці, списки або markdown.' : lang === 'en' ? 'Do NOT use tables, lists or markdown.' : 'НЕ используй таблицы, списки или markdown.')
+  };
+}
+
+// Helper: build chat system prompt
+function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, records, lang = 'ru', aiPrefs = null) {
+  const today = new Date();
+  const dayNamesMap = {
+    ru: ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'],
+    uk: ['неділя', 'понеділок', 'вівторок', 'середа', 'четвер', "п'ятниця", 'субота'],
+    en: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+  };
+  const dayNames = dayNamesMap[lang] || dayNamesMap.ru;
+  const todayStr = `${toLocalDateStr(today)} (${dayNames[today.getDay()]})`;
+  const langInstruction = getLangInstruction(lang);
+
+  const DAY_NAMES_FULL = {
+    ru: ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'],
+    uk: ['Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота', 'Неділя'],
+    en: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+  };
+  const dayExample = (DAY_NAMES_FULL[lang] || DAY_NAMES_FULL.ru)[0];
+
+  // Use personality block from AI preferences
+  const personality = buildPersonalityBlock(aiPrefs || getAiPrefs(userProfile), lang);
+
+  const PROMPTS = {
+    ru: {
+      today: 'СЕГОДНЯ',
+      userData: 'ДАННЫЕ ПОЛЬЗОВАТЕЛЯ',
+      physParams: 'Физические параметры',
+      ageNote: 'Учитывай возраст при рекомендациях по пульсовым зонам и восстановлению.',
+      genderNote: 'Учитывай пол пользователя при рекомендациях по нагрузке, восстановлению и физиологии.',
+      weightNote: 'Учитывай вес при рекомендациях по нагрузке и темпу.',
+      monthlySummary: 'СВОДКА ЗА ПОСЛЕДНИЕ 30 ДНЕЙ',
+      goals: 'Цели',
+      records: 'Личные рекорды',
+      recordsNote: 'Используй рекорды для расчёта тренировочных темпов и зон.',
+      planUpdate: `ВОЗМОЖНОСТЬ ИЗМЕНЕНИЯ ПЛАНА:\nЕсли пользователь просит изменить план, уменьшить/увеличить нагрузку, поменять тренировки и т.п., ты МОЖЕШЬ изменить текущий план.\nВАЖНО: блок PLAN_UPDATE ставь САМЫМ ПЕРВЫМ в ответе, ДО текста объяснения:\n===PLAN_UPDATE===\n[JSON массив из 7 дней в том же формате что и текущий план — компактно, в одну строку на день]\n===END_PLAN_UPDATE===\nА после блока напиши объяснение пользователю.`,
+      formatExample: (day) => `Формат каждого дня:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": число, "description": "описание", "badge": "🏃|⚡|🏔️|💨|😴"}\nВАЖНО: JSON должен быть компактным (без лишних пробелов и переносов), чтобы уместиться в ответ.`,
+      rules: `ПРАВИЛА:\n- Изменяй план ТОЛЬКО если пользователь явно просит это сделать или соглашается на твоё предложение.\n- При изменении плана СНАЧАЛА поставь блок PLAN_UPDATE с JSON, а ПОСЛЕ него напиши объяснение что и почему ты изменил.\n- Если пользователь просто спрашивает о плане — расскажи СВОИМИ СЛОВАМИ кратко: какой общий объём, что за ключевые тренировки, сколько дней отдыха. НЕ копируй план таблицей или списком.\n- Если пользователь говорит что ему тяжело — посочувствуй, предложи изменения и спроси подтверждение.\n- Математическая точность: дистанция × темп = время. Всегда проверяй цифры.\n- НЕ выдумывай даты — если не уверен в дате, не упоминай её.`,
+      toolsSection: `ДОСТУПНЫЕ ИНСТРУМЕНТЫ:
+У тебя есть инструменты для доступа к данным пользователя. Используй их когда:
+- Пользователь спрашивает о тренировках за конкретный период (get_workouts_by_date_range или get_period_stats)
+- Пользователь хочет детали конкретной тренировки (get_workout_details)
+- Пользователь ищет самые быстрые/длинные/определённого типа тренировки (search_workouts)
+- Пользователь спрашивает о личных рекордах (get_personal_records_history)
+
+НЕ вызывай инструменты если данных в сводке выше достаточно для ответа.
+НЕ вызывай инструменты для приветствий, общих вопросов о беге или советов.`
+    },
+    uk: {
+      today: 'СЬОГОДНІ',
+      userData: 'ДАНІ КОРИСТУВАЧА',
+      physParams: 'Фізичні параметри',
+      ageNote: 'Враховуй вік при рекомендаціях щодо пульсових зон та відновлення.',
+      genderNote: 'Враховуй стать користувача при рекомендаціях щодо навантаження, відновлення та фізіології.',
+      weightNote: 'Враховуй вагу при рекомендаціях щодо навантаження та темпу.',
+      monthlySummary: 'ЗВЕДЕННЯ ЗА ОСТАННІ 30 ДНІВ',
+      goals: 'Цілі',
+      records: 'Особисті рекорди',
+      recordsNote: 'Використовуй рекорди для розрахунку тренувальних темпів і зон.',
+      planUpdate: `МОЖЛИВІСТЬ ЗМІНИ ПЛАНУ:\nЯкщо користувач просить змінити план, зменшити/збільшити навантаження, замінити тренування тощо, ти МОЖЕШ змінити поточний план.\nВАЖЛИВО: блок PLAN_UPDATE став ПЕРШИМ у відповіді, ДО тексту пояснення:\n===PLAN_UPDATE===\n[JSON масив з 7 днів у тому ж форматі що й поточний план — компактно, в один рядок на день]\n===END_PLAN_UPDATE===\nА після блоку напиши пояснення користувачу.`,
+      formatExample: (day) => `Формат кожного дня:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": число, "description": "опис", "badge": "🏃|⚡|🏔️|💨|😴"}\nВАЖЛИВО: JSON має бути компактним (без зайвих пробілів і переносів), щоб вміститися у відповідь.`,
+      rules: `ПРАВИЛА:\n- Змінюй план ТІЛЬКИ якщо користувач явно просить це зробити або погоджується на твою пропозицію.\n- При зміні плану СПОЧАТКУ постав блок PLAN_UPDATE з JSON, а ПІСЛЯ нього напиши пояснення що і чому ти змінив.\n- Якщо користувач просто запитує про план — розкажи СВОЇМИ СЛОВАМИ коротко: який загальний об'єм, що за ключові тренування, скільки днів відпочинку. НЕ копіюй план таблицею чи списком.\n- Якщо користувач каже що йому важко — поспівчувай, запропонуй зміни і запитай підтвердження.\n- Математична точність: дистанція × темп = час. Завжди перевіряй цифри.\n- НЕ вигадуй дати — якщо не впевнений у даті, не згадуй її.`,
+      toolsSection: `ДОСТУПНІ ІНСТРУМЕНТИ:
+У тебе є інструменти для доступу до даних користувача. Використовуй їх коли:
+- Користувач запитує про тренування за конкретний період (get_workouts_by_date_range або get_period_stats)
+- Користувач хоче деталі конкретного тренування (get_workout_details)
+- Користувач шукає найшвидші/найдовші/певного типу тренування (search_workouts)
+- Користувач запитує про особисті рекорди (get_personal_records_history)
+
+НЕ викликай інструменти якщо даних у зведенні вище достатньо для відповіді.
+НЕ викликай інструменти для привітань, загальних питань про біг або порад.`
+    },
+    en: {
+      today: 'TODAY',
+      userData: 'USER DATA',
+      physParams: 'Physical parameters',
+      ageNote: 'Consider age when recommending heart rate zones and recovery.',
+      genderNote: 'Consider user\'s gender when recommending load, recovery and physiology.',
+      weightNote: 'Consider weight when recommending load and pace.',
+      monthlySummary: 'SUMMARY FOR THE LAST 30 DAYS',
+      goals: 'Goals',
+      records: 'Personal records',
+      recordsNote: 'Use records to calculate training paces and zones.',
+      planUpdate: `PLAN MODIFICATION CAPABILITY:\nIf the user asks to change the plan, reduce/increase load, swap workouts, etc., you CAN modify the current plan.\nIMPORTANT: place the PLAN_UPDATE block FIRST in your response, BEFORE any explanation text:\n===PLAN_UPDATE===\n[JSON array of 7 days in the same format as the current plan — compact, one line per day]\n===END_PLAN_UPDATE===\nThen write your explanation after the block.`,
+      formatExample: (day) => `Format for each day:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": number, "description": "description", "badge": "🏃|⚡|🏔️|💨|😴"}\nIMPORTANT: JSON must be compact (no extra whitespace or newlines) to fit in the response.`,
+      rules: `RULES:\n- Only modify the plan if the user explicitly asks or agrees to your suggestion.\n- When modifying the plan, put the PLAN_UPDATE block with JSON FIRST, then write your explanation of what and why you changed.\n- If the user just asks about the plan — summarize IN YOUR OWN WORDS: total volume, key workouts, rest days. Do NOT copy the plan as a table or list.\n- If the user says it's hard — empathize, suggest changes and ask for confirmation.\n- Math accuracy: distance × pace = time. Always verify numbers.\n- Do NOT make up dates — if unsure about a date, don't mention it.`,
+      toolsSection: `AVAILABLE TOOLS:
+You have tools to access user workout data. Use them when:
+- User asks about workouts for a specific period (get_workouts_by_date_range or get_period_stats)
+- User wants details of a specific workout (get_workout_details)
+- User is looking for fastest/longest/specific type workouts (search_workouts)
+- User asks about personal records (get_personal_records_history)
+
+Do NOT call tools if the summary above has enough data to answer.
+Do NOT call tools for greetings, general running questions or advice.`
+    }
+  };
+
+  const p2 = PROMPTS[lang] || PROMPTS.ru;
+
+  return `${personality.intro} ${langInstruction}
+
+${p2.today}: ${todayStr}.
+
+${personality.whoAreYou}
+
+${p2.userData}:
+${p2.physParams}: ${formatProfileForAI(userProfile || {}, lang)}
+${userProfile?.age ? p2.ageNote : ''}
+${userProfile?.gender ? p2.genderNote : ''}
+${userProfile?.weight_kg ? p2.weightNote : ''}
+
+${p2.monthlySummary}:
+${JSON.stringify(monthlySummary, null, 2)}
+
+${p2.goals}:
+${formatGoalsForAI(goals, lang)}
+
+${p2.records}:
+${formatRecordsForAI(records || [], lang)}
+${p2.recordsNote}
+
+${formatPlanForAI(currentPlan, lang)}
+
+${p2.toolsSection}
+
+${p2.planUpdate}
+
+${p2.formatExample(dayExample)}
+
+${p2.rules}
+
+СТИЛЬ ОТВЕТОВ:
+${personality.style}`;
+}
+
+// Helper: process plan update from AI reply
+async function processPlanUpdate(reply, userId, currentPlan, savePlanUpdateFn) {
+  let textReply = reply;
+  let planUpdated = false;
+
+  const hasPlanStart = reply.includes('===PLAN_UPDATE===');
+  const hasPlanEnd = reply.includes('===END_PLAN_UPDATE===');
+
+  if (hasPlanStart && !hasPlanEnd) {
+    console.warn('[PlanUpdate] Found ===PLAN_UPDATE=== but missing ===END_PLAN_UPDATE=== — AI did not close the block');
+    // Try to extract JSON anyway — the AI may have just forgotten the closing tag
+    const partialMatch = reply.match(/===PLAN_UPDATE===\s*([\s\S]*)/);
+    if (partialMatch && currentPlan) {
+      try {
+        let planJson = partialMatch[1].trim();
+        const jsonArrayMatch = planJson.match(/\[[\s\S]*\]/);
+        if (jsonArrayMatch) {
+          const newPlan = JSON.parse(jsonArrayMatch[0]);
+          if (Array.isArray(newPlan) && newPlan.length === 7) {
+            await savePlanUpdateFn(userId, currentPlan.id, newPlan);
+            planUpdated = true;
+            console.log('[PlanUpdate] Saved plan from incomplete block (missing END tag)');
+          } else {
+            console.warn('[PlanUpdate] Parsed array but length =', newPlan.length, '(expected 7)');
+          }
+        }
+      } catch (parseErr) {
+        console.error('[PlanUpdate] Failed to parse incomplete plan block:', parseErr.message);
+      }
+      textReply = reply.replace(/===PLAN_UPDATE===[\s\S]*/, '').trim();
+    }
+  } else if (hasPlanStart && hasPlanEnd && currentPlan) {
+    const planMatch = reply.match(/===PLAN_UPDATE===\s*([\s\S]*?)\s*===END_PLAN_UPDATE===/);
+    if (planMatch) {
+      try {
+        let planJson = planMatch[1].trim();
+        const jsonArrayMatch = planJson.match(/\[[\s\S]*\]/);
+        if (jsonArrayMatch) {
+          planJson = jsonArrayMatch[0];
+        }
+        const newPlan = JSON.parse(planJson);
+
+        if (Array.isArray(newPlan) && newPlan.length === 7) {
+          await savePlanUpdateFn(userId, currentPlan.id, newPlan);
+          planUpdated = true;
+          console.log('[PlanUpdate] Plan saved successfully');
+        } else {
+          console.warn('[PlanUpdate] Parsed array but length =', newPlan.length, '(expected 7)');
+        }
+      } catch (parseErr) {
+        console.error('[PlanUpdate] Failed to parse plan update:', parseErr.message);
+      }
+
+      textReply = reply.replace(/===PLAN_UPDATE===[\s\S]*?===END_PLAN_UPDATE===/, '').trim();
+    }
+  } else if (hasPlanStart && !currentPlan) {
+    console.warn('[PlanUpdate] AI sent PLAN_UPDATE but there is no current plan to update');
+    textReply = reply.replace(/===PLAN_UPDATE===[\s\S]*?(===END_PLAN_UPDATE===)?/, '').trim();
+  }
+
+  return { textReply, planUpdated };
+}
+
+module.exports = {
+  getLangInstruction,
+  getGoalLabels,
+  formatGoalValue,
+  formatGoalsForAI,
+  formatPlanForAI,
+  formatRecordsForAI,
+  formatProfileForAI,
+  AI_DEFAULTS,
+  getAiPrefs,
+  buildPersonalityBlock,
+  buildChatSystemPrompt,
+  processPlanUpdate
+};

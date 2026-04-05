@@ -1,0 +1,230 @@
+const supabase = require('../../supabase');
+
+// Helper: format date as YYYY-MM-DD in local timezone (avoids UTC shift from toISOString)
+function toLocalDateStr(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// Helper: format pace from sec/km to mm:ss
+function formatPace(secPerKm) {
+  if (!secPerKm) return '—';
+  const min = Math.floor(secPerKm / 60);
+  const sec = Math.round(secPerKm % 60);
+  return `${min}:${sec.toString().padStart(2, '0')}`;
+}
+
+// Helpers: use manual (user-corrected) values if available
+function effectiveDistance(w) {
+  return w.manual_distance || w.distance || 0;
+}
+function effectiveMovingTime(w) {
+  return w.manual_moving_time || w.moving_time || 0;
+}
+function effectivePace(w) {
+  const dist = effectiveDistance(w);
+  const time = effectiveMovingTime(w);
+  if (w.manual_distance || w.manual_moving_time) {
+    // Recalculate pace from corrected data
+    return dist > 0 ? time / (dist / 1000) : null;
+  }
+  return w.average_pace;
+}
+
+// Helper: check if user has active premium
+async function checkPremium(userId) {
+  const { data: user } = await supabase
+    .from('users')
+    .select('premium_until, is_lifetime_premium')
+    .eq('id', userId)
+    .single();
+
+  if (!user) return false;
+  if (user.is_lifetime_premium) return true;
+  if (user.premium_until && new Date(user.premium_until) > new Date()) return true;
+  return false;
+}
+
+// Helper: count user messages sent today
+async function getDailyMessageCount(userId) {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const { count, error } = await supabase
+    .from('chat_messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('role', 'user')
+    .gte('created_at', todayStart.toISOString());
+
+  if (error) throw error;
+  return count || 0;
+}
+
+// Helper: get last N months of workouts for AI context
+async function getWorkoutsContext(userId, months = 3) {
+  const since = new Date();
+  since.setMonth(since.getMonth() - months);
+
+  const { data } = await supabase
+    .from('workouts')
+    .select('name, distance, moving_time, average_pace, average_heartrate, date, type, manual_distance, manual_moving_time')
+    .eq('user_id', userId)
+    .gte('date', since.toISOString())
+    .order('date', { ascending: false });
+
+  return (data || []).map(w => ({
+    date: w.date?.split('T')[0],
+    name: w.name,
+    distance_km: (effectiveDistance(w) / 1000).toFixed(2),
+    pace: formatPace(effectivePace(w)),
+    heartrate: w.average_heartrate || '—',
+    type: w.type
+  }));
+}
+
+// Helper: get compact monthly summary for AI context (replaces raw 3-month dump)
+async function getMonthlySummaryContext(userId) {
+  const since = new Date();
+  since.setDate(since.getDate() - 30);
+
+  const { data } = await supabase
+    .from('workouts')
+    .select('name, distance, moving_time, average_pace, average_heartrate, date, type, total_elevation_gain, manual_distance, manual_moving_time')
+    .eq('user_id', userId)
+    .gte('date', since.toISOString())
+    .order('date', { ascending: false });
+
+  const workouts = data || [];
+  if (workouts.length === 0) {
+    return {
+      period: '30 days',
+      workouts_count: 0,
+      total_km: 0,
+      total_time_min: 0,
+      avg_pace: null,
+      avg_heartrate: null,
+      total_elevation: 0,
+      weekly_breakdown: [],
+      recent_workouts: []
+    };
+  }
+
+  const totalDist = workouts.reduce((s, w) => s + effectiveDistance(w), 0);
+  const totalTime = workouts.reduce((s, w) => s + effectiveMovingTime(w), 0);
+  const totalElev = workouts.reduce((s, w) => s + (w.total_elevation_gain || 0), 0);
+  const paces = workouts.map(w => effectivePace(w)).filter(Boolean);
+  const hrs = workouts.filter(w => w.average_heartrate).map(w => w.average_heartrate);
+
+  // Weekly breakdown
+  const weeks = {};
+  workouts.forEach(w => {
+    const d = new Date(w.date);
+    const weekStart = new Date(d);
+    weekStart.setDate(d.getDate() - d.getDay() + (d.getDay() === 0 ? -6 : 1)); // Monday
+    const key = toLocalDateStr(weekStart);
+    if (!weeks[key]) weeks[key] = { week_start: key, km: 0, count: 0 };
+    weeks[key].km += effectiveDistance(w) / 1000;
+    weeks[key].count++;
+  });
+  const weeklyBreakdown = Object.values(weeks)
+    .sort((a, b) => b.week_start.localeCompare(a.week_start))
+    .map(w => ({ ...w, km: +w.km.toFixed(2) }));
+
+  // Last 5 workouts
+  const recent = workouts.slice(0, 5).map(w => ({
+    date: w.date?.split('T')[0],
+    name: w.name,
+    distance_km: +(effectiveDistance(w) / 1000).toFixed(2),
+    pace: formatPace(effectivePace(w)),
+    type: w.type
+  }));
+
+  return {
+    period: '30 days',
+    workouts_count: workouts.length,
+    total_km: +(totalDist / 1000).toFixed(2),
+    total_time_min: Math.round(totalTime / 60),
+    avg_pace: paces.length ? formatPace(paces.reduce((s, p) => s + p, 0) / paces.length) : null,
+    avg_heartrate: hrs.length ? Math.round(hrs.reduce((s, h) => s + h, 0) / hrs.length) : null,
+    total_elevation: Math.round(totalElev),
+    weekly_breakdown: weeklyBreakdown,
+    recent_workouts: recent
+  };
+}
+
+// Helper: get user goals
+async function getUserGoals(userId) {
+  const { data } = await supabase
+    .from('goals')
+    .select('type, target_value, current_value, created_at, deadline')
+    .eq('user_id', userId);
+
+  return data || [];
+}
+
+// Helper: get current plan
+async function getCurrentPlan(userId) {
+  const { data } = await supabase
+    .from('plans')
+    .select('*')
+    .eq('user_id', userId)
+    .order('week_start', { ascending: false })
+    .limit(1)
+    .single();
+
+  return data || null;
+}
+
+// Helper: save updated plan to DB
+async function savePlanUpdate(userId, planId, newWorkouts) {
+  const { data, error } = await supabase
+    .from('plans')
+    .update({ workouts: JSON.stringify(newWorkouts) })
+    .eq('id', planId)
+    .eq('user_id', userId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+// Helper: get user personal records
+async function getUserRecords(userId) {
+  const { data } = await supabase
+    .from('personal_records')
+    .select('distance_type, time_seconds, record_date')
+    .eq('user_id', userId);
+
+  return data || [];
+}
+
+// Helper: get user physical params + gender + ai preferences
+async function getUserProfile(userId) {
+  const { data } = await supabase
+    .from('users')
+    .select('age, height_cm, weight_kg, gender, ai_preferences')
+    .eq('id', userId)
+    .single();
+  return data || {};
+}
+
+module.exports = {
+  toLocalDateStr,
+  formatPace,
+  effectiveDistance,
+  effectiveMovingTime,
+  effectivePace,
+  checkPremium,
+  getDailyMessageCount,
+  getWorkoutsContext,
+  getMonthlySummaryContext,
+  getUserGoals,
+  getCurrentPlan,
+  savePlanUpdate,
+  getUserRecords,
+  getUserProfile
+};
