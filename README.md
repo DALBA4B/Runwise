@@ -53,7 +53,11 @@
 │   │   │   ├── WorkoutDetail.tsx # Детали тренировки + сплиты
 │   │   │   ├── Plan.tsx         # Недельный план от AI
 │   │   │   ├── AIChat.tsx       # Чат с AI тренером
-│   │   │   ├── Profile.tsx      # Профиль, цели, рекорды, настройки, промокод
+│   │   │   ├── Profile.tsx      # Профиль: виджеты, физ. параметры, компоновка
+│   │   │   ├── profile/         # Подкомпоненты профиля
+│   │   │   │   ├── GoalsSection.tsx   # Цели: CRUD, прогресс, прогнозы
+│   │   │   │   ├── RecordsSection.tsx # Личные рекорды: CRUD
+│   │   │   │   └── SettingsModal.tsx  # Настройки, язык, промокод, logout
 │   │   │   ├── AdminPanel.tsx   # Админ-панель промокодов
 │   │   │   ├── Login.tsx        # Вход через Strava
 │   │   │   ├── ConsentScreen.tsx # Согласие на обработку данных
