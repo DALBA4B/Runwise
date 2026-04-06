@@ -91,7 +91,59 @@ function formatGoalsForAI(goals, lang = 'ru') {
   }).join('\n');
 }
 
-// Helper: format plan for AI context
+// Helper: compact monthly summary as one-liner (saves ~800 tokens vs JSON)
+function formatMonthlySummaryCompact(summary, lang = 'ru') {
+  if (!summary || summary.workouts_count === 0) {
+    const noData = { ru: 'Нет тренировок за последние 30 дней.', uk: 'Немає тренувань за останні 30 днів.', en: 'No workouts in the last 30 days.' };
+    return noData[lang] || noData.ru;
+  }
+  const km = { ru: 'км', uk: 'км', en: 'km' };
+  const min = { ru: 'мин', uk: 'хв', en: 'min' };
+  const elev = { ru: 'набор высоты', uk: 'набір висоти', en: 'elevation' };
+  const k = km[lang] || km.ru;
+
+  let line = `${summary.workouts_count} workouts, ${summary.total_km} ${k}, ${summary.total_time_min} ${min[lang] || min.ru}`;
+  if (summary.avg_pace) line += `, avg pace ${summary.avg_pace}/${k}`;
+  if (summary.avg_heartrate) line += `, avg HR ${summary.avg_heartrate}`;
+  if (summary.total_elevation) line += `, ${elev[lang] || elev.ru} ${summary.total_elevation}m`;
+
+  // Type breakdown
+  if (summary.type_breakdown) {
+    const types = Object.entries(summary.type_breakdown).map(([t, c]) => `${t}: ${c}`).join(', ');
+    line += ` (${types})`;
+  }
+
+  return line;
+}
+
+// Helper: brief plan summary (saves ~200 tokens vs full 7-day listing)
+function formatPlanBrief(plan, lang = 'ru') {
+  const noPlanMsg = { ru: 'План на неделю пока не создан.', uk: 'План на тиждень поки не створений.', en: 'No weekly plan created yet.' };
+  if (!plan) return noPlanMsg[lang] || noPlanMsg.ru;
+
+  let workoutsList;
+  try {
+    workoutsList = typeof plan.workouts === 'string' ? JSON.parse(plan.workouts) : plan.workouts;
+  } catch {
+    return noPlanMsg[lang] || noPlanMsg.ru;
+  }
+
+  const km = { ru: 'км', uk: 'км', en: 'km' };
+  const rest = { ru: 'отдых', uk: 'відпочинок', en: 'rest' };
+  const planLabel = { ru: 'Текущий план', uk: 'Поточний план', en: 'Current plan' };
+  const daysLabel = { ru: 'тренировок', uk: 'тренувань', en: 'workouts' };
+  const restLabel = { ru: 'отдыха', uk: 'відпочинку', en: 'rest' };
+  const k = km[lang] || km.ru;
+
+  const activeDays = workoutsList.filter(d => d.type !== 'rest');
+  const restDays = workoutsList.filter(d => d.type === 'rest');
+  const totalKm = activeDays.reduce((s, d) => s + (d.distance_km || 0), 0);
+  const types = activeDays.map(d => d.type).join(', ');
+
+  return `${planLabel[lang] || planLabel.ru} (${plan.week_start}): ${activeDays.length} ${daysLabel[lang] || daysLabel.ru}, ${restDays.length} ${restLabel[lang] || restLabel.ru}, ${totalKm.toFixed(1)} ${k} total. Types: ${types}. Use get_current_plan tool for full details.`;
+}
+
+// Helper: format plan for AI context (full version, used by get_current_plan tool)
 function formatPlanForAI(plan, lang = 'ru') {
   const noPlanMsg = { ru: 'План на неделю пока не создан.', uk: 'План на тиждень поки не створений.', en: 'No weekly plan created yet.' };
   if (!plan) return noPlanMsg[lang] || noPlanMsg.ru;
@@ -328,15 +380,17 @@ function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, 
       recordsNote: 'Используй рекорды для расчёта тренировочных темпов и зон.',
       planUpdate: `ВОЗМОЖНОСТЬ ИЗМЕНЕНИЯ ПЛАНА:\nЕсли пользователь просит изменить план, уменьшить/увеличить нагрузку, поменять тренировки и т.п., ты МОЖЕШЬ изменить текущий план.\nВАЖНО: блок PLAN_UPDATE ставь САМЫМ ПЕРВЫМ в ответе, ДО текста объяснения:\n===PLAN_UPDATE===\n[JSON массив из 7 дней в том же формате что и текущий план — компактно, в одну строку на день]\n===END_PLAN_UPDATE===\nА после блока напиши объяснение пользователю.`,
       formatExample: (day) => `Формат каждого дня:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": число, "description": "описание", "badge": "🏃|⚡|🏔️|💨|😴"}\nВАЖНО: JSON должен быть компактным (без лишних пробелов и переносов), чтобы уместиться в ответ.`,
-      rules: `ПРАВИЛА:\n- Изменяй план ТОЛЬКО если пользователь явно просит это сделать или соглашается на твоё предложение.\n- При изменении плана СНАЧАЛА поставь блок PLAN_UPDATE с JSON, а ПОСЛЕ него напиши объяснение что и почему ты изменил.\n- Если пользователь просто спрашивает о плане — расскажи СВОИМИ СЛОВАМИ кратко: какой общий объём, что за ключевые тренировки, сколько дней отдыха. НЕ копируй план таблицей или списком.\n- Если пользователь говорит что ему тяжело — посочувствуй, предложи изменения и спроси подтверждение.\n- Математическая точность: дистанция × темп = время. Всегда проверяй цифры.\n- НЕ выдумывай даты — если не уверен в дате, не упоминай её.`,
+      rules: `ПРАВИЛА:\n- Изменяй план ТОЛЬКО если пользователь явно просит это сделать или соглашается на твоё предложение.\n- При изменении плана СНАЧАЛА поставь блок PLAN_UPDATE с JSON, а ПОСЛЕ него напиши объяснение что и почему ты изменил.\n- Если пользователь просто спрашивает о плане — расскажи СВОИМИ СЛОВАМИ кратко: какой общий объём, что за ключевые тренировки, сколько дней отдыха. НЕ копируй план таблицей или списком.\n- Если пользователь говорит что ему тяжело — посочувствуй, предложи изменения и спроси подтверждение.\n- Математическая точность: дистанция × темп = время. Всегда проверяй цифры.\n- НЕ выдумывай даты — если не уверен в дате, не упоминай её.\n- ССЫЛКИ НА ТРЕНИРОВКИ: когда упоминаешь КОНКРЕТНУЮ тренировку (у которой есть id из данных инструментов), оформляй её как ссылку в формате [Название Xкм](workout:ID). Пример: [Темповая 12.3км](workout:abc-123-def). Используй ТОЛЬКО для конкретных тренировок с известным id. НЕ используй для общих упоминаний типа "твои длительные" или "последние тренировки".`,
       toolsSection: `ДОСТУПНЫЕ ИНСТРУМЕНТЫ:
-У тебя есть инструменты для доступа к данным пользователя. Используй их когда:
-- Пользователь спрашивает о тренировках за конкретный период (get_workouts_by_date_range или get_period_stats)
-- Пользователь хочет детали конкретной тренировки (get_workout_details)
-- Пользователь ищет самые быстрые/длинные/определённого типа тренировки (search_workouts)
-- Пользователь спрашивает о личных рекордах (get_personal_records_history)
+У тебя есть инструменты для доступа к данным пользователя. Используй их АКТИВНО когда нужны конкретные данные:
+- Тренировки за период (get_workouts_by_date_range) — последние тренировки, что было на прошлой неделе и т.д.
+- Детали тренировки (get_workout_details) — сплиты, лучшие отрезки, описание
+- Поиск тренировок (search_workouts) — самые быстрые/длинные/определённого типа
+- Статистика периода (get_period_stats) — объём, среднее за любой период
+- Личные рекорды (get_personal_records_history) — ЛР на стандартных дистанциях
+- Текущий план (get_current_plan) — полный план на неделю с описанием каждого дня
 
-НЕ вызывай инструменты если данных в сводке выше достаточно для ответа.
+В промпте только краткая сводка за 30 дней. Для конкретных данных о тренировках, рекордах и плане — используй инструменты.
 НЕ вызывай инструменты для приветствий, общих вопросов о беге или советов.`
     },
     uk: {
@@ -352,15 +406,17 @@ function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, 
       recordsNote: 'Використовуй рекорди для розрахунку тренувальних темпів і зон.',
       planUpdate: `МОЖЛИВІСТЬ ЗМІНИ ПЛАНУ:\nЯкщо користувач просить змінити план, зменшити/збільшити навантаження, замінити тренування тощо, ти МОЖЕШ змінити поточний план.\nВАЖЛИВО: блок PLAN_UPDATE став ПЕРШИМ у відповіді, ДО тексту пояснення:\n===PLAN_UPDATE===\n[JSON масив з 7 днів у тому ж форматі що й поточний план — компактно, в один рядок на день]\n===END_PLAN_UPDATE===\nА після блоку напиши пояснення користувачу.`,
       formatExample: (day) => `Формат кожного дня:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": число, "description": "опис", "badge": "🏃|⚡|🏔️|💨|😴"}\nВАЖЛИВО: JSON має бути компактним (без зайвих пробілів і переносів), щоб вміститися у відповідь.`,
-      rules: `ПРАВИЛА:\n- Змінюй план ТІЛЬКИ якщо користувач явно просить це зробити або погоджується на твою пропозицію.\n- При зміні плану СПОЧАТКУ постав блок PLAN_UPDATE з JSON, а ПІСЛЯ нього напиши пояснення що і чому ти змінив.\n- Якщо користувач просто запитує про план — розкажи СВОЇМИ СЛОВАМИ коротко: який загальний об'єм, що за ключові тренування, скільки днів відпочинку. НЕ копіюй план таблицею чи списком.\n- Якщо користувач каже що йому важко — поспівчувай, запропонуй зміни і запитай підтвердження.\n- Математична точність: дистанція × темп = час. Завжди перевіряй цифри.\n- НЕ вигадуй дати — якщо не впевнений у даті, не згадуй її.`,
+      rules: `ПРАВИЛА:\n- Змінюй план ТІЛЬКИ якщо користувач явно просить це зробити або погоджується на твою пропозицію.\n- При зміні плану СПОЧАТКУ постав блок PLAN_UPDATE з JSON, а ПІСЛЯ нього напиши пояснення що і чому ти змінив.\n- Якщо користувач просто запитує про план — розкажи СВОЇМИ СЛОВАМИ коротко: який загальний об'єм, що за ключові тренування, скільки днів відпочинку. НЕ копіюй план таблицею чи списком.\n- Якщо користувач каже що йому важко — поспівчувай, запропонуй зміни і запитай підтвердження.\n- Математична точність: дистанція × темп = час. Завжди перевіряй цифри.\n- НЕ вигадуй дати — якщо не впевнений у даті, не згадуй її.\n- ПОСИЛАННЯ НА ТРЕНУВАННЯ: коли згадуєш КОНКРЕТНЕ тренування (у якого є id з даних інструментів), оформлюй його як посилання у форматі [Назва Xкм](workout:ID). Приклад: [Темпова 12.3км](workout:abc-123-def). Використовуй ТІЛЬКИ для конкретних тренувань з відомим id. НЕ використовуй для загальних згадок типу "твої довгі" або "останні тренування".`,
       toolsSection: `ДОСТУПНІ ІНСТРУМЕНТИ:
-У тебе є інструменти для доступу до даних користувача. Використовуй їх коли:
-- Користувач запитує про тренування за конкретний період (get_workouts_by_date_range або get_period_stats)
-- Користувач хоче деталі конкретного тренування (get_workout_details)
-- Користувач шукає найшвидші/найдовші/певного типу тренування (search_workouts)
-- Користувач запитує про особисті рекорди (get_personal_records_history)
+У тебе є інструменти для доступу до даних користувача. Використовуй їх АКТИВНО коли потрібні конкретні дані:
+- Тренування за період (get_workouts_by_date_range) — останні тренування, що було минулого тижня тощо
+- Деталі тренування (get_workout_details) — спліти, кращі відрізки, опис
+- Пошук тренувань (search_workouts) — найшвидші/найдовші/певного типу
+- Статистика періоду (get_period_stats) — об'єм, середнє за будь-який період
+- Особисті рекорди (get_personal_records_history) — ОР на стандартних дистанціях
+- Поточний план (get_current_plan) — повний план на тиждень з описом кожного дня
 
-НЕ викликай інструменти якщо даних у зведенні вище достатньо для відповіді.
+У промпті лише коротке зведення за 30 днів. Для конкретних даних про тренування, рекорди і план — використовуй інструменти.
 НЕ викликай інструменти для привітань, загальних питань про біг або порад.`
     },
     en: {
@@ -376,15 +432,17 @@ function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, 
       recordsNote: 'Use records to calculate training paces and zones.',
       planUpdate: `PLAN MODIFICATION CAPABILITY:\nIf the user asks to change the plan, reduce/increase load, swap workouts, etc., you CAN modify the current plan.\nIMPORTANT: place the PLAN_UPDATE block FIRST in your response, BEFORE any explanation text:\n===PLAN_UPDATE===\n[JSON array of 7 days in the same format as the current plan — compact, one line per day]\n===END_PLAN_UPDATE===\nThen write your explanation after the block.`,
       formatExample: (day) => `Format for each day:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": number, "description": "description", "badge": "🏃|⚡|🏔️|💨|😴"}\nIMPORTANT: JSON must be compact (no extra whitespace or newlines) to fit in the response.`,
-      rules: `RULES:\n- Only modify the plan if the user explicitly asks or agrees to your suggestion.\n- When modifying the plan, put the PLAN_UPDATE block with JSON FIRST, then write your explanation of what and why you changed.\n- If the user just asks about the plan — summarize IN YOUR OWN WORDS: total volume, key workouts, rest days. Do NOT copy the plan as a table or list.\n- If the user says it's hard — empathize, suggest changes and ask for confirmation.\n- Math accuracy: distance × pace = time. Always verify numbers.\n- Do NOT make up dates — if unsure about a date, don't mention it.`,
+      rules: `RULES:\n- Only modify the plan if the user explicitly asks or agrees to your suggestion.\n- When modifying the plan, put the PLAN_UPDATE block with JSON FIRST, then write your explanation of what and why you changed.\n- If the user just asks about the plan — summarize IN YOUR OWN WORDS: total volume, key workouts, rest days. Do NOT copy the plan as a table or list.\n- If the user says it's hard — empathize, suggest changes and ask for confirmation.\n- Math accuracy: distance × pace = time. Always verify numbers.\n- Do NOT make up dates — if unsure about a date, don't mention it.\n- WORKOUT LINKS: when mentioning a SPECIFIC workout (that has an id from tool data), format it as a link: [Name Xkm](workout:ID). Example: [Tempo 12.3km](workout:abc-123-def). Use ONLY for specific workouts with a known id. Do NOT use for general mentions like "your long runs" or "recent workouts".`,
       toolsSection: `AVAILABLE TOOLS:
-You have tools to access user workout data. Use them when:
-- User asks about workouts for a specific period (get_workouts_by_date_range or get_period_stats)
-- User wants details of a specific workout (get_workout_details)
-- User is looking for fastest/longest/specific type workouts (search_workouts)
-- User asks about personal records (get_personal_records_history)
+You have tools to access user workout data. Use them ACTIVELY when specific data is needed:
+- Workouts by date range (get_workouts_by_date_range) — recent workouts, what happened last week, etc.
+- Workout details (get_workout_details) — splits, best efforts, description
+- Search workouts (search_workouts) — fastest/longest/specific type
+- Period stats (get_period_stats) — volume, averages for any period
+- Personal records (get_personal_records_history) — PRs for standard distances
+- Current plan (get_current_plan) — full weekly plan with each day's description
 
-Do NOT call tools if the summary above has enough data to answer.
+The prompt only contains a brief 30-day summary. For specific data about workouts, records and plan — use tools.
 Do NOT call tools for greetings, general running questions or advice.`
     }
   };
@@ -404,16 +462,12 @@ ${userProfile?.gender ? p2.genderNote : ''}
 ${userProfile?.weight_kg ? p2.weightNote : ''}
 
 ${p2.monthlySummary}:
-${JSON.stringify(monthlySummary, null, 2)}
+${formatMonthlySummaryCompact(monthlySummary, lang)}
 
 ${p2.goals}:
 ${formatGoalsForAI(goals, lang)}
 
-${p2.records}:
-${formatRecordsForAI(records || [], lang)}
-${p2.recordsNote}
-
-${formatPlanForAI(currentPlan, lang)}
+${formatPlanBrief(currentPlan, lang)}
 
 ${p2.toolsSection}
 

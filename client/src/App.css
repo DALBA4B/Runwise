@@ -1290,6 +1290,62 @@ input[type="number"] {
   animation: spin 0.8s linear infinite;
 }
 
+/* Workout link chips inside AI messages */
+.workout-link-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px 4px 8px;
+  margin: 2px 2px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(59, 130, 246, 0.08));
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 0.85em;
+  font-family: inherit;
+  color: #60a5fa;
+  transition: all 0.2s ease;
+  vertical-align: middle;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.workout-link-chip:hover {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.28), rgba(59, 130, 246, 0.15));
+  border-color: rgba(59, 130, 246, 0.6);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
+}
+
+.workout-link-chip:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.workout-link-icon {
+  font-size: 1em;
+  line-height: 1;
+}
+
+.workout-link-text {
+  font-weight: 500;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workout-link-arrow {
+  font-size: 1.1em;
+  font-weight: 600;
+  opacity: 0.6;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.workout-link-chip:hover .workout-link-arrow {
+  opacity: 1;
+  transform: translateX(2px);
+}
+
 .quick-questions {
   display: flex;
   flex-direction: column;

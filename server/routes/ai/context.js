@@ -92,7 +92,7 @@ async function getMonthlySummaryContext(userId) {
 
   const { data } = await supabase
     .from('workouts')
-    .select('name, distance, moving_time, average_pace, average_heartrate, date, type, total_elevation_gain, manual_distance, manual_moving_time')
+    .select('id, name, distance, moving_time, average_pace, average_heartrate, date, type, total_elevation_gain, manual_distance, manual_moving_time')
     .eq('user_id', userId)
     .gte('date', since.toISOString())
     .order('date', { ascending: false });
@@ -106,9 +106,7 @@ async function getMonthlySummaryContext(userId) {
       total_time_min: 0,
       avg_pace: null,
       avg_heartrate: null,
-      total_elevation: 0,
-      weekly_breakdown: [],
-      recent_workouts: []
+      total_elevation: 0
     };
   }
 
@@ -118,29 +116,11 @@ async function getMonthlySummaryContext(userId) {
   const paces = workouts.map(w => effectivePace(w)).filter(Boolean);
   const hrs = workouts.filter(w => w.average_heartrate).map(w => w.average_heartrate);
 
-  // Weekly breakdown
-  const weeks = {};
+  // Type breakdown: count per type
+  const types = {};
   workouts.forEach(w => {
-    const d = new Date(w.date);
-    const weekStart = new Date(d);
-    weekStart.setDate(d.getDate() - d.getDay() + (d.getDay() === 0 ? -6 : 1)); // Monday
-    const key = toLocalDateStr(weekStart);
-    if (!weeks[key]) weeks[key] = { week_start: key, km: 0, count: 0 };
-    weeks[key].km += effectiveDistance(w) / 1000;
-    weeks[key].count++;
+    types[w.type || 'other'] = (types[w.type || 'other'] || 0) + 1;
   });
-  const weeklyBreakdown = Object.values(weeks)
-    .sort((a, b) => b.week_start.localeCompare(a.week_start))
-    .map(w => ({ ...w, km: +w.km.toFixed(2) }));
-
-  // Last 5 workouts
-  const recent = workouts.slice(0, 5).map(w => ({
-    date: w.date?.split('T')[0],
-    name: w.name,
-    distance_km: +(effectiveDistance(w) / 1000).toFixed(2),
-    pace: formatPace(effectivePace(w)),
-    type: w.type
-  }));
 
   return {
     period: '30 days',
@@ -150,8 +130,7 @@ async function getMonthlySummaryContext(userId) {
     avg_pace: paces.length ? formatPace(paces.reduce((s, p) => s + p, 0) / paces.length) : null,
     avg_heartrate: hrs.length ? Math.round(hrs.reduce((s, h) => s + h, 0) / hrs.length) : null,
     total_elevation: Math.round(totalElev),
-    weekly_breakdown: weeklyBreakdown,
-    recent_workouts: recent
+    type_breakdown: types
   };
 }
 

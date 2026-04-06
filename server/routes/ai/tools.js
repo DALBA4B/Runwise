@@ -81,6 +81,17 @@ const AI_TOOLS = [
         properties: {}
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_current_plan',
+      description: 'Get the full current weekly training plan with all 7 days details. Use when user asks about their plan, specific training days, or when you need plan details to give advice.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
   }
 ];
 
@@ -95,7 +106,7 @@ async function toolGetWorkoutsByDateRange(userId, args) {
   const { start_date, end_date } = args;
   const { data } = await supabase
     .from('workouts')
-    .select('name, distance, moving_time, average_pace, average_heartrate, date, type, total_elevation_gain, manual_distance, manual_moving_time')
+    .select('id, name, distance, moving_time, average_pace, average_heartrate, date, type, total_elevation_gain, manual_distance, manual_moving_time')
     .eq('user_id', userId)
     .gte('date', start_date)
     .lte('date', end_date + 'T23:59:59')
@@ -103,6 +114,7 @@ async function toolGetWorkoutsByDateRange(userId, args) {
     .limit(50);
 
   return (data || []).map(w => ({
+    id: w.id,
     date: w.date?.split('T')[0],
     name: w.name,
     distance_km: (effectiveDistance(w) / 1000).toFixed(2),
@@ -119,7 +131,7 @@ async function toolGetWorkoutDetails(userId, args) {
   const { workout_date, workout_name } = args;
   let query = supabase
     .from('workouts')
-    .select('name, distance, moving_time, average_pace, average_heartrate, max_heartrate, date, type, total_elevation_gain, splits, splits_500m, best_efforts, description, manual_distance, manual_moving_time, is_suspicious')
+    .select('id, name, distance, moving_time, average_pace, average_heartrate, max_heartrate, date, type, total_elevation_gain, splits, splits_500m, best_efforts, description, manual_distance, manual_moving_time, is_suspicious')
     .eq('user_id', userId)
     .gte('date', workout_date)
     .lte('date', workout_date + 'T23:59:59');
@@ -133,6 +145,7 @@ async function toolGetWorkoutDetails(userId, args) {
   return (data || []).map(w => {
     const gpsAnomaly = !!w.is_suspicious;
     const result = {
+      id: w.id,
       date: w.date?.split('T')[0],
       name: w.name,
       distance_km: (effectiveDistance(w) / 1000).toFixed(2),
@@ -182,7 +195,7 @@ async function toolSearchWorkouts(userId, args) {
 
   let query = supabase
     .from('workouts')
-    .select('name, distance, moving_time, average_pace, average_heartrate, date, type, total_elevation_gain, manual_distance, manual_moving_time')
+    .select('id, name, distance, moving_time, average_pace, average_heartrate, date, type, total_elevation_gain, manual_distance, manual_moving_time')
     .eq('user_id', userId);
 
   if (min_heartrate) query = query.gte('average_heartrate', min_heartrate);
@@ -198,6 +211,7 @@ async function toolSearchWorkouts(userId, args) {
   const { data } = await query.limit(maxLimit * 3);
 
   let results = (data || []).map(w => ({
+    id: w.id,
     date: w.date?.split('T')[0],
     name: w.name,
     distance_km: +(effectiveDistance(w) / 1000).toFixed(2),
@@ -308,6 +322,34 @@ async function toolGetPersonalRecords(userId) {
   });
 }
 
+// Tool executor: get current weekly plan
+async function toolGetCurrentPlan(userId) {
+  const { data } = await supabase
+    .from('plans')
+    .select('*')
+    .eq('user_id', userId)
+    .order('week_start', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (!data) {
+    return { message: 'No weekly plan created yet' };
+  }
+
+  let workouts;
+  try {
+    workouts = typeof data.workouts === 'string' ? JSON.parse(data.workouts) : data.workouts;
+  } catch {
+    return { message: 'Plan exists but could not be read' };
+  }
+
+  return {
+    week_start: data.week_start,
+    plan_id: data.id,
+    days: workouts
+  };
+}
+
 // Central tool dispatcher
 async function executeTool(userId, toolName, args) {
   switch (toolName) {
@@ -321,6 +363,8 @@ async function executeTool(userId, toolName, args) {
       return await toolGetPeriodStats(userId, args);
     case 'get_personal_records_history':
       return await toolGetPersonalRecords(userId);
+    case 'get_current_plan':
+      return await toolGetCurrentPlan(userId);
     default:
       return { error: `Unknown tool: ${toolName}` };
   }

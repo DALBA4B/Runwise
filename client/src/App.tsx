@@ -31,6 +31,7 @@ const App: React.FC = () => {
   const [showConsent, setShowConsent] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null);
+  const [screenBeforeDetail, setScreenBeforeDetail] = useState<Screen>('history');
   const [animating, setAnimating] = useState(false);
   const [animClass, setAnimClass] = useState('screen-enter');
   const prevScreenRef = useRef<Screen>('home');
@@ -90,6 +91,7 @@ const App: React.FC = () => {
   }
 
   const handleWorkoutClick = (id: string) => {
+    setScreenBeforeDetail(currentScreen);
     setSelectedWorkoutId(id);
     navigateTo('workout-detail');
   };
@@ -122,7 +124,7 @@ const App: React.FC = () => {
 
   const handleBackFromDetail = () => {
     setSelectedWorkoutId(null);
-    navigateTo('history');
+    navigateTo(screenBeforeDetail);
   };
 
   return (
@@ -138,7 +140,7 @@ const App: React.FC = () => {
           <Plan isActive={currentScreen === 'plan'} />
         </div>
         <div style={{ display: currentScreen === 'ai' ? 'contents' : 'none' }}>
-          <AIChat />
+          <AIChat onWorkoutClick={handleWorkoutClick} />
         </div>
         <div style={{ display: currentScreen === 'profile' ? 'contents' : 'none' }}>
           <Profile onLogout={logout} isActive={currentScreen === 'profile'} />

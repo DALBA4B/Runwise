@@ -12,7 +12,11 @@ interface Message {
   timestamp: Date;
 }
 
-const AIChat: React.FC = () => {
+interface AIChatProps {
+  onWorkoutClick?: (id: string) => void;
+}
+
+const AIChat: React.FC<AIChatProps> = ({ onWorkoutClick }) => {
   const { t } = useTranslation();
 
   const QUICK_QUESTIONS = [
@@ -294,7 +298,7 @@ const AIChat: React.FC = () => {
       <div className="chat-container">
         <div className="messages" ref={messagesContainerRef} onScroll={handleScroll}>
           {messages.map(message => (
-            <ChatMessage key={message.id} message={message} />
+            <ChatMessage key={message.id} message={message} onWorkoutClick={onWorkoutClick} />
           ))}
           {loading && !thinking && (
             <div className="message ai-message">
