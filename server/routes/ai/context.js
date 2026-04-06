@@ -181,6 +181,61 @@ async function getUserRecords(userId) {
   return data || [];
 }
 
+// Helper: get weekly volume breakdown — find last month with activity, take 4 calendar weeks
+async function getWeeklyVolumes(userId) {
+  // Find last workout date
+  const { data: lastWorkout } = await supabase
+    .from('workouts')
+    .select('date')
+    .eq('user_id', userId)
+    .order('date', { ascending: false })
+    .limit(1);
+
+  if (!lastWorkout || lastWorkout.length === 0) {
+    return { weeks: [0, 0, 0, 0], avg: 0 };
+  }
+
+  // Find Monday of the week AFTER last workout (anchor point)
+  const lastDate = new Date(lastWorkout[0].date);
+  const dow = lastDate.getDay();
+  const daysUntilNextMonday = dow === 0 ? 1 : 8 - dow;
+  const anchor = new Date(lastDate);
+  anchor.setHours(0, 0, 0, 0);
+  anchor.setDate(anchor.getDate() + daysUntilNextMonday);
+
+  // Load 4 weeks of workouts before anchor
+  const since = new Date(anchor);
+  since.setDate(since.getDate() - 28);
+
+  const { data } = await supabase
+    .from('workouts')
+    .select('date, distance, manual_distance')
+    .eq('user_id', userId)
+    .gte('date', since.toISOString())
+    .lt('date', anchor.toISOString())
+    .order('date', { ascending: false });
+
+  const workouts = data || [];
+
+  const weeks = [];
+  for (let w = 0; w < 4; w++) {
+    const weekEnd = new Date(anchor);
+    weekEnd.setDate(weekEnd.getDate() - w * 7);
+    const weekStart = new Date(weekEnd);
+    weekStart.setDate(weekStart.getDate() - 7);
+
+    const totalKm = workouts
+      .filter(wr => { const d = new Date(wr.date); return d >= weekStart && d < weekEnd; })
+      .reduce((s, wr) => s + effectiveDistance(wr) / 1000, 0);
+    weeks.push(Math.round(totalKm * 10) / 10);
+  }
+
+  const avg = weeks.length > 0
+    ? Math.round(weeks.reduce((a, b) => a + b, 0) / weeks.length * 10) / 10
+    : 0;
+  return { weeks, avg };
+}
+
 // Helper: get user physical params + gender + ai preferences
 async function getUserProfile(userId) {
   const { data } = await supabase
@@ -205,5 +260,6 @@ module.exports = {
   getCurrentPlan,
   savePlanUpdate,
   getUserRecords,
-  getUserProfile
+  getUserProfile,
+  getWeeklyVolumes
 };

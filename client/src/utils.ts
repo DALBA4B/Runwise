@@ -56,9 +56,13 @@ export function formatDateFull(dateStr: string): string {
 export function getTypeBadge(type: string): string {
   switch (type) {
     case 'easy': return '🏃';
+    case 'recovery': return '🧘';
     case 'tempo': return '⚡';
     case 'long': return '🏔️';
     case 'interval': return '💨';
+    case 'fartlek': return '🎯';
+    case 'strength': return '💪';
+    case 'race': return '🏁';
     case 'rest': return '😴';
     default: return '🏃';
   }

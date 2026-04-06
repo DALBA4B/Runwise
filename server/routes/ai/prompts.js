@@ -344,8 +344,49 @@ function buildPersonalityBlock(aiPrefs, lang = 'ru') {
   };
 }
 
+// Helper: format weekly volume block for chat prompt
+function formatWeeklyVolumeBlock({ weeks, avg }, lang = 'ru') {
+  if (!weeks || weeks.length === 0) return '';
+  const lastWeek = weeks[0];
+  const prevNonZero = weeks.find(w => w > 0) || 0;
+  const base = lastWeek > 0 && lastWeek >= avg * 0.3 ? lastWeek : Math.round(prevNonZero * 0.6 * 10) / 10;
+  const maxPlan = Math.round(base * 1.15);
+  const isLowWeek = lastWeek === 0 || lastWeek < avg * 0.3;
+  const labels = {
+    ru: {
+      title: 'ТЕКУЩИЙ УРОВЕНЬ БЕГУНА (ЖЁСТКИЙ ОРИЕНТИР)',
+      volumes: 'Недельные объёмы (от свежей к старой)',
+      avg: 'Среднее',
+      last: 'последняя неделя',
+      km: 'км',
+      lowNote: isLowWeek ? `\n⚠️ Последняя неделя очень низкая (${lastWeek} км) — пропуск/отдых/болезнь. База для плана: 60% от последней нормальной недели = ${base} км.` : '',
+      rule: `ЖЁСТКОЕ ПРАВИЛО: при изменении/создании плана суммарный объём = база (${base} км) + max 10-15%. Это значит план НЕ БОЛЕЕ ${maxPlan} км.\nДаже если раньше были недели больше — ориентируйся на базу. Провалы (болезнь, отдых) сбрасывают форму. Возвращайся к прежним объёмам ПОСТЕПЕННО.`
+    },
+    uk: {
+      title: 'ПОТОЧНИЙ РІВЕНЬ БІГУНА (ЖОРСТКИЙ ОРІЄНТИР)',
+      volumes: "Тижневі об'єми (від свіжого до старого)",
+      avg: 'Середнє',
+      last: 'останній тиждень',
+      km: 'км',
+      lowNote: isLowWeek ? `\n⚠️ Останній тиждень дуже низький (${lastWeek} км) — пропуск/відпочинок/хвороба. База для плану: 60% від останнього нормального тижня = ${base} км.` : '',
+      rule: `ЖОРСТКЕ ПРАВИЛО: при зміні/створенні плану сумарний об'єм = база (${base} км) + max 10-15%. Це означає план НЕ БІЛЬШЕ ${maxPlan} км.\nНавіть якщо раніше були тижні більше — орієнтуйся на базу. Провали (хвороба, відпочинок) скидають форму. Повертайся до попередніх об'ємів ПОСТУПОВО.`
+    },
+    en: {
+      title: 'CURRENT RUNNER LEVEL (HARD CONSTRAINT)',
+      volumes: 'Weekly volumes (newest to oldest)',
+      avg: 'Average',
+      last: 'last week',
+      km: 'km',
+      lowNote: isLowWeek ? `\n⚠️ Last week was very low (${lastWeek} km) — skip/rest/illness. Plan base: 60% of last normal week = ${base} km. Soft return.` : '',
+      rule: `HARD RULE: when modifying/creating a plan, total volume = base (${base} km) + max 10-15%. This means the plan must be NO MORE than ${maxPlan} km.\nEven if previous weeks had more — use the base. Drops (illness, rest) reset fitness. Return to previous volumes GRADUALLY.`
+    }
+  };
+  const l = labels[lang] || labels.ru;
+  return `${l.title}:\n${l.volumes}: ${weeks.join(', ')} ${l.km}\n${l.avg}: ${avg} ${l.km}, ${l.last}: ${lastWeek} ${l.km}${l.lowNote}\n\n${l.rule}`;
+}
+
 // Helper: build chat system prompt
-function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, records, lang = 'ru', aiPrefs = null) {
+function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, records, lang = 'ru', aiPrefs = null, weeklyVolumes = null) {
   const today = new Date();
   const dayNamesMap = {
     ru: ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'],
@@ -379,7 +420,19 @@ function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, 
       records: 'Личные рекорды',
       recordsNote: 'Используй рекорды для расчёта тренировочных темпов и зон.',
       planUpdate: `ВОЗМОЖНОСТЬ ИЗМЕНЕНИЯ ПЛАНА:\nЕсли пользователь просит изменить план, уменьшить/увеличить нагрузку, поменять тренировки и т.п., ты МОЖЕШЬ изменить текущий план.\nВАЖНО: блок PLAN_UPDATE ставь САМЫМ ПЕРВЫМ в ответе, ДО текста объяснения:\n===PLAN_UPDATE===\n[JSON массив из 7 дней в том же формате что и текущий план — компактно, в одну строку на день]\n===END_PLAN_UPDATE===\nА после блока напиши объяснение пользователю.`,
-      formatExample: (day) => `Формат каждого дня:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": число, "description": "описание", "badge": "🏃|⚡|🏔️|💨|😴"}\nВАЖНО: JSON должен быть компактным (без лишних пробелов и переносов), чтобы уместиться в ответ.`,
+      formatExample: (day) => `Формат каждого дня:\n{"day": "${day}", "type": "recovery|easy|long|tempo|interval|fartlek|strength|race|rest", "distance_km": число, "description": "описание", "badge": "🧘|🏃|🏔️|⚡|💨|🎯|💪|🏁|😴"}\nВАЖНО: JSON должен быть компактным (без лишних пробелов и переносов), чтобы уместиться в ответ.`,
+      methodology: `МЕТОДОЛОГИЯ ТРЕНИРОВОК (при изменении/создании плана соблюдай эти правила):
+- Поляризованная модель 80/20: ~80% объёма в лёгких зонах (easy, recovery, long), ~20% интенсив (interval, tempo, fartlek).
+- После тяжёлой (interval, tempo, race, fartlek) — ОБЯЗАТЕЛЬНО recovery или rest. Никогда 2 тяжёлые подряд.
+- Ключевых (interval, tempo, long, fartlek, race) — max 2-3 в неделю.
+- Long run: 1 раз в неделю, 25-30% объёма, обычно выходные.
+- Strength: не в день тяжёлой беговой.
+- Race: не чаще 1 раза в 2-3 недели, перед ним rest/recovery, после — recovery.
+- Минимум 1 rest в неделю.
+- Личные рекорды — ИСТОРИЧЕСКИЕ данные, НЕ текущая форма. Текущий уровень определяй по свежим тренировкам (2-4 недели). Не говори "ты бежал X в прошлом году, значит сейчас легко побьёшь Y".
+- Темпы: easy на 60-90 сек/км медленнее текущего среднего, tempo на 10-20 сек/км быстрее easy, interval ≈ темп 3-5км.
+- ЦЕЛЬ — ЭТО МАЯК, направление движения, а НЕ задание на эту неделю. Цель влияет на ТИП тренировок (скоростные для PB, объёмные для дистанционных целей), но НЕ на потолок объёма или интенсивности. Каждая неделя должна делать бегуна чуть сильнее: немного больше объём, немного быстрее темп. НЕ пытайся приблизить к цели за одну неделю.
+- ОЦЕНКА ЦЕЛЕЙ: бегун улучшается ~1-3%/мес (новичок ~3-5%). Если цель требует >5% улучшения за оставшееся время — предупреди пользователя и предложи реалистичную промежуточную цель. НЕ строй опасный план ради невозможной цели. Безопасный объём: текущий + max 10-15%.`,
       rules: `ПРАВИЛА:\n- Изменяй план ТОЛЬКО если пользователь явно просит это сделать или соглашается на твоё предложение.\n- При изменении плана СНАЧАЛА поставь блок PLAN_UPDATE с JSON, а ПОСЛЕ него напиши объяснение что и почему ты изменил.\n- Если пользователь просто спрашивает о плане — расскажи СВОИМИ СЛОВАМИ кратко: какой общий объём, что за ключевые тренировки, сколько дней отдыха. НЕ копируй план таблицей или списком.\n- Если пользователь говорит что ему тяжело — посочувствуй, предложи изменения и спроси подтверждение.\n- Математическая точность: дистанция × темп = время. Всегда проверяй цифры.\n- НЕ выдумывай даты — если не уверен в дате, не упоминай её.\n- ССЫЛКИ НА ТРЕНИРОВКИ: когда упоминаешь КОНКРЕТНУЮ тренировку (у которой есть id из данных инструментов), оформляй её как ссылку в формате [Название Xкм](workout:ID). Пример: [Темповая 12.3км](workout:abc-123-def). Используй ТОЛЬКО для конкретных тренировок с известным id. НЕ используй для общих упоминаний типа "твои длительные" или "последние тренировки".`,
       toolsSection: `ДОСТУПНЫЕ ИНСТРУМЕНТЫ:
 У тебя есть инструменты для доступа к данным пользователя. Используй их АКТИВНО когда нужны конкретные данные:
@@ -405,7 +458,19 @@ function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, 
       records: 'Особисті рекорди',
       recordsNote: 'Використовуй рекорди для розрахунку тренувальних темпів і зон.',
       planUpdate: `МОЖЛИВІСТЬ ЗМІНИ ПЛАНУ:\nЯкщо користувач просить змінити план, зменшити/збільшити навантаження, замінити тренування тощо, ти МОЖЕШ змінити поточний план.\nВАЖЛИВО: блок PLAN_UPDATE став ПЕРШИМ у відповіді, ДО тексту пояснення:\n===PLAN_UPDATE===\n[JSON масив з 7 днів у тому ж форматі що й поточний план — компактно, в один рядок на день]\n===END_PLAN_UPDATE===\nА після блоку напиши пояснення користувачу.`,
-      formatExample: (day) => `Формат кожного дня:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": число, "description": "опис", "badge": "🏃|⚡|🏔️|💨|😴"}\nВАЖЛИВО: JSON має бути компактним (без зайвих пробілів і переносів), щоб вміститися у відповідь.`,
+      formatExample: (day) => `Формат кожного дня:\n{"day": "${day}", "type": "recovery|easy|long|tempo|interval|fartlek|strength|race|rest", "distance_km": число, "description": "опис", "badge": "🧘|🏃|🏔️|⚡|💨|🎯|💪|🏁|😴"}\nВАЖЛИВО: JSON має бути компактним (без зайвих пробілів і переносів), щоб вміститися у відповідь.`,
+      methodology: `МЕТОДОЛОГІЯ ТРЕНУВАНЬ (при зміні/створенні плану дотримуйся цих правил):
+- Поляризована модель 80/20: ~80% об'єму в легких зонах (easy, recovery, long), ~20% інтенсив (interval, tempo, fartlek).
+- Після важкої (interval, tempo, race, fartlek) — ОБОВ'ЯЗКОВО recovery або rest. Ніколи 2 важкі поспіль.
+- Ключових (interval, tempo, long, fartlek, race) — max 2-3 на тиждень.
+- Long run: 1 раз на тиждень, 25-30% об'єму, зазвичай вихідні.
+- Strength: не в день важкої бігової.
+- Race: не частіше 1 разу на 2-3 тижні, перед ним rest/recovery, після — recovery.
+- Мінімум 1 rest на тиждень.
+- Особисті рекорди — ІСТОРИЧНІ дані, НЕ поточна форма. Поточний рівень визначай за свіжими тренуваннями (2-4 тижні). Не кажи "ти біг X минулого року, значить зараз легко побіжиш Y".
+- Темпи: easy на 60-90 сек/км повільніше поточного середнього, tempo на 10-20 сек/км швидше easy, interval ≈ темп 3-5км.
+- ЦІЛЬ — ЦЕ МАЯК, напрямок руху, а НЕ завдання на цей тиждень. Ціль впливає на ТИП тренувань (швидкісні для PB, об'ємні для дистанційних цілей), але НЕ на стелю об'єму чи інтенсивності. Кожен тиждень має робити бігуна трохи сильнішим: трохи більше об'єм, трохи швидший темп. НЕ намагайся наблизити до цілі за один тиждень.
+- ОЦІНКА ЦІЛЕЙ: бігун покращується ~1-3%/міс (новачок ~3-5%). Якщо ціль потребує >5% покращення за час що залишився — попередь користувача і запропонуй реалістичну проміжну ціль. НЕ будуй небезпечний план заради неможливої цілі. Безпечний об'єм: поточний + max 10-15%.`,
       rules: `ПРАВИЛА:\n- Змінюй план ТІЛЬКИ якщо користувач явно просить це зробити або погоджується на твою пропозицію.\n- При зміні плану СПОЧАТКУ постав блок PLAN_UPDATE з JSON, а ПІСЛЯ нього напиши пояснення що і чому ти змінив.\n- Якщо користувач просто запитує про план — розкажи СВОЇМИ СЛОВАМИ коротко: який загальний об'єм, що за ключові тренування, скільки днів відпочинку. НЕ копіюй план таблицею чи списком.\n- Якщо користувач каже що йому важко — поспівчувай, запропонуй зміни і запитай підтвердження.\n- Математична точність: дистанція × темп = час. Завжди перевіряй цифри.\n- НЕ вигадуй дати — якщо не впевнений у даті, не згадуй її.\n- ПОСИЛАННЯ НА ТРЕНУВАННЯ: коли згадуєш КОНКРЕТНЕ тренування (у якого є id з даних інструментів), оформлюй його як посилання у форматі [Назва Xкм](workout:ID). Приклад: [Темпова 12.3км](workout:abc-123-def). Використовуй ТІЛЬКИ для конкретних тренувань з відомим id. НЕ використовуй для загальних згадок типу "твої довгі" або "останні тренування".`,
       toolsSection: `ДОСТУПНІ ІНСТРУМЕНТИ:
 У тебе є інструменти для доступу до даних користувача. Використовуй їх АКТИВНО коли потрібні конкретні дані:
@@ -431,7 +496,19 @@ function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, 
       records: 'Personal records',
       recordsNote: 'Use records to calculate training paces and zones.',
       planUpdate: `PLAN MODIFICATION CAPABILITY:\nIf the user asks to change the plan, reduce/increase load, swap workouts, etc., you CAN modify the current plan.\nIMPORTANT: place the PLAN_UPDATE block FIRST in your response, BEFORE any explanation text:\n===PLAN_UPDATE===\n[JSON array of 7 days in the same format as the current plan — compact, one line per day]\n===END_PLAN_UPDATE===\nThen write your explanation after the block.`,
-      formatExample: (day) => `Format for each day:\n{"day": "${day}", "type": "easy|tempo|long|interval|rest", "distance_km": number, "description": "description", "badge": "🏃|⚡|🏔️|💨|😴"}\nIMPORTANT: JSON must be compact (no extra whitespace or newlines) to fit in the response.`,
+      formatExample: (day) => `Format for each day:\n{"day": "${day}", "type": "recovery|easy|long|tempo|interval|fartlek|strength|race|rest", "distance_km": number, "description": "description", "badge": "🧘|🏃|🏔️|⚡|💨|🎯|💪|🏁|😴"}\nIMPORTANT: JSON must be compact (no extra whitespace or newlines) to fit in the response.`,
+      methodology: `TRAINING METHODOLOGY (follow these rules when modifying/creating plans):
+- Polarized model 80/20: ~80% volume in easy zones (easy, recovery, long), ~20% high intensity (interval, tempo, fartlek).
+- After hard workout (interval, tempo, race, fartlek) — MUST have recovery or rest next day. Never 2 hard workouts back to back.
+- Key workouts (interval, tempo, long, fartlek, race) — max 2-3 per week.
+- Long run: once per week, 25-30% of volume, usually weekends.
+- Strength: not on hard running days.
+- Race: no more than once every 2-3 weeks, rest/recovery before, recovery after.
+- Minimum 1 rest day per week.
+- Personal records are HISTORICAL data, NOT current fitness. Assess current level from recent workouts (2-4 weeks). Never say "you ran X last year so you can easily run Y now".
+- Paces: easy 60-90 sec/km slower than current average, tempo 10-20 sec/km faster than easy, interval ≈ 3-5k pace.
+- The GOAL is a BEACON, a direction of movement, NOT a task for this week. The goal influences the TYPE of workouts (speed work for PB goals, volume work for distance goals), but NOT the ceiling of volume or intensity. Each week should make the runner slightly stronger: a bit more volume, a bit faster tempo. Do NOT try to bring the runner closer to the goal in one week.
+- GOAL ASSESSMENT: runner improves ~1-3%/month (beginner ~3-5%). If goal requires >5% improvement in remaining time — warn user and suggest a realistic intermediate goal. Do NOT build a dangerous plan for an impossible goal. Safe volume: current + max 10-15%.`,
       rules: `RULES:\n- Only modify the plan if the user explicitly asks or agrees to your suggestion.\n- When modifying the plan, put the PLAN_UPDATE block with JSON FIRST, then write your explanation of what and why you changed.\n- If the user just asks about the plan — summarize IN YOUR OWN WORDS: total volume, key workouts, rest days. Do NOT copy the plan as a table or list.\n- If the user says it's hard — empathize, suggest changes and ask for confirmation.\n- Math accuracy: distance × pace = time. Always verify numbers.\n- Do NOT make up dates — if unsure about a date, don't mention it.\n- WORKOUT LINKS: when mentioning a SPECIFIC workout (that has an id from tool data), format it as a link: [Name Xkm](workout:ID). Example: [Tempo 12.3km](workout:abc-123-def). Use ONLY for specific workouts with a known id. Do NOT use for general mentions like "your long runs" or "recent workouts".`,
       toolsSection: `AVAILABLE TOOLS:
 You have tools to access user workout data. Use them ACTIVELY when specific data is needed:
@@ -473,7 +550,11 @@ ${p2.recordsNote}
 
 ${formatPlanBrief(currentPlan, lang)}
 
+${weeklyVolumes ? formatWeeklyVolumeBlock(weeklyVolumes, lang) : ''}
+
 ${p2.toolsSection}
+
+${p2.methodology}
 
 ${p2.planUpdate}
 
@@ -517,7 +598,9 @@ async function processPlanUpdate(reply, userId, currentPlan, savePlanUpdateFn) {
       textReply = reply.replace(/===PLAN_UPDATE===[\s\S]*/, '').trim();
     }
   } else if (hasPlanStart && hasPlanEnd && currentPlan) {
-    const planMatch = reply.match(/===PLAN_UPDATE===\s*([\s\S]*?)\s*===END_PLAN_UPDATE===/);
+    // Use the LAST PLAN_UPDATE block (AI may self-correct and send multiple)
+    const allMatches = [...reply.matchAll(/===PLAN_UPDATE===\s*([\s\S]*?)\s*===END_PLAN_UPDATE===/g)];
+    const planMatch = allMatches.length > 0 ? allMatches[allMatches.length - 1] : null;
     if (planMatch) {
       try {
         let planJson = planMatch[1].trim();
@@ -538,7 +621,7 @@ async function processPlanUpdate(reply, userId, currentPlan, savePlanUpdateFn) {
         console.error('[PlanUpdate] Failed to parse plan update:', parseErr.message);
       }
 
-      textReply = reply.replace(/===PLAN_UPDATE===[\s\S]*?===END_PLAN_UPDATE===/, '').trim();
+      textReply = reply.replace(/===PLAN_UPDATE===[\s\S]*?===END_PLAN_UPDATE===/g, '').trim();
     }
   } else if (hasPlanStart && !currentPlan) {
     console.warn('[PlanUpdate] AI sent PLAN_UPDATE but there is no current plan to update');

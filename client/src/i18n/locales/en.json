@@ -74,9 +74,13 @@
   },
   "workoutTypes": {
     "easy": "Easy",
+    "recovery": "Recovery",
     "tempo": "Tempo",
     "long": "Long",
     "interval": "Intervals",
+    "fartlek": "Fartlek",
+    "strength": "Strength/GPP",
+    "race": "Race/Time Trial",
     "rest": "Rest",
     "other": "Other"
   },
