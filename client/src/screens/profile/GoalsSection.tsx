@@ -383,6 +383,11 @@ const GoalsSection: React.FC<GoalsSectionProps> = ({ goals, setGoals, prediction
                   ))}
                 </div>
                 <div className="breakdown-note">{t('profile.breakdownTop3')}</div>
+                {breakdownData.riegelExponent && (
+                  <div className="breakdown-note" style={{marginTop: 4, opacity: 0.7}}>
+                    Ригель: {breakdownData.riegelExponent} (темп ~{breakdownData.avgPace})
+                  </div>
+                )}
               </div>
             )}
 

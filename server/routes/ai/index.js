@@ -17,7 +17,8 @@ const {
   savePlanUpdate,
   getUserRecords,
   getUserProfile,
-  getWeeklyVolumes
+  getWeeklyVolumes,
+  getRiegelPredictions
 } = require('./context');
 
 const {
@@ -101,17 +102,18 @@ async function loadChatContext(userId, lang = 'ru') {
     content: m.content
   }));
 
-  const [monthlySummary, goals, currentPlan, userProfile, records, weeklyVolumes] = await Promise.all([
+  const [monthlySummary, goals, currentPlan, userProfile, records, weeklyVolumes, predictions] = await Promise.all([
     getMonthlySummaryContext(userId),
     getUserGoals(userId),
     getCurrentPlan(userId),
     getUserProfile(userId),
     getUserRecords(userId),
-    getWeeklyVolumes(userId)
+    getWeeklyVolumes(userId),
+    getRiegelPredictions(userId)
   ]);
 
   const aiPrefs = getAiPrefs(userProfile);
-  const systemPrompt = buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, records, lang, aiPrefs, weeklyVolumes);
+  const systemPrompt = buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, records, lang, aiPrefs, weeklyVolumes, predictions);
 
   return { chatHistory, systemPrompt, currentPlan };
 }

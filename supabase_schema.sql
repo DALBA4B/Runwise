@@ -84,6 +84,9 @@ CREATE INDEX IF NOT EXISTS idx_personal_records_user ON personal_records(user_id
 ALTER TABLE users ADD COLUMN IF NOT EXISTS gender TEXT CHECK (gender IN ('male', 'female'));
 ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_preferences JSONB DEFAULT '{}';
 
+-- Predicted time for PB goals (cached from Riegel computation)
+ALTER TABLE goals ADD COLUMN IF NOT EXISTS predicted_time REAL;
+
 -- GPS anomaly detection columns
 ALTER TABLE workouts ADD COLUMN IF NOT EXISTS is_suspicious BOOLEAN DEFAULT false;
 ALTER TABLE workouts ADD COLUMN IF NOT EXISTS suspicious_reasons JSONB;

@@ -91,6 +91,36 @@ function formatGoalsForAI(goals, lang = 'ru') {
   }).join('\n');
 }
 
+// Helper: format Riegel predictions for AI context
+function formatPredictionsForAI(predictions, lang = 'ru') {
+  if (!predictions || predictions.length === 0) return '';
+  const headers = {
+    ru: 'ПРОГНОЗЫ ВРЕМЕНИ (расчёт Ригеля по недавним тренировкам)',
+    uk: 'ПРОГНОЗИ ЧАСУ (розрахунок Рігеля за нещодавніми тренуваннями)',
+    en: 'TIME PREDICTIONS (Riegel calculation from recent workouts)'
+  };
+  const targetLabel = { ru: 'цель', uk: 'ціль', en: 'target' };
+  const predictLabel = { ru: 'прогноз', uk: 'прогноз', en: 'predicted' };
+  const fasterLabel = { ru: 'быстрее цели на', uk: 'швидше цілі на', en: 'faster than target by' };
+  const slowerLabel = { ru: 'медленнее цели на', uk: 'повільніше цілі на', en: 'slower than target by' };
+
+  const fmtGap = (sec) => {
+    const abs = Math.abs(sec);
+    const m = Math.floor(abs / 60);
+    const s = Math.round(abs % 60);
+    return m > 0 ? `${m} мин ${s} сек` : `${s} сек`;
+  };
+
+  const lines = predictions.map(p => {
+    const gapText = p.gap < 0
+      ? `✅ ${(fasterLabel[lang] || fasterLabel.ru)} ${fmtGap(p.gap)}`
+      : `⚠️ ${(slowerLabel[lang] || slowerLabel.ru)} ${fmtGap(p.gap)}`;
+    return `- ${p.name}: ${predictLabel[lang] || predictLabel.ru} ${p.predictedTimeFormatted}, ${targetLabel[lang] || targetLabel.ru} ${p.targetTimeFormatted} (${gapText})`;
+  });
+
+  return `${headers[lang] || headers.ru}:\n${lines.join('\n')}`;
+}
+
 // Helper: compact monthly summary as one-liner (saves ~800 tokens vs JSON)
 function formatMonthlySummaryCompact(summary, lang = 'ru') {
   if (!summary || summary.workouts_count === 0) {
@@ -386,7 +416,7 @@ function formatWeeklyVolumeBlock({ weeks, avg }, lang = 'ru') {
 }
 
 // Helper: build chat system prompt
-function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, records, lang = 'ru', aiPrefs = null, weeklyVolumes = null) {
+function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, records, lang = 'ru', aiPrefs = null, weeklyVolumes = null, predictions = null) {
   const today = new Date();
   const dayNamesMap = {
     ru: ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'],
@@ -544,7 +574,7 @@ ${formatMonthlySummaryCompact(monthlySummary, lang)}
 ${p2.goals}:
 ${formatGoalsForAI(goals, lang)}
 
-${p2.records}:
+${predictions && predictions.length > 0 ? formatPredictionsForAI(predictions, lang) + '\n\n' : ''}${p2.records}:
 ${formatRecordsForAI(records || [], lang)}
 ${p2.recordsNote}
 
@@ -636,6 +666,7 @@ module.exports = {
   getGoalLabels,
   formatGoalValue,
   formatGoalsForAI,
+  formatPredictionsForAI,
   formatPlanForAI,
   formatRecordsForAI,
   formatProfileForAI,

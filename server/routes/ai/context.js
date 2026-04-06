@@ -246,6 +246,37 @@ async function getUserProfile(userId) {
   return data || {};
 }
 
+// Helper: read stored Riegel predictions from goals table (saved by /goals/predictions endpoint)
+async function getRiegelPredictions(userId) {
+  const { data: goals } = await supabase
+    .from('goals')
+    .select('type, target_value, predicted_time')
+    .eq('user_id', userId)
+    .in('type', ['pb_5k', 'pb_10k', 'pb_21k', 'pb_42k']);
+
+  if (!goals || goals.length === 0) return [];
+
+  const nameMap = { pb_5k: '5K', pb_10k: '10K', pb_21k: 'Полумарафон', pb_42k: 'Марафон' };
+  const fmtTime = (s) => {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = Math.round(s % 60);
+    return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}` : `${m}:${sec.toString().padStart(2, '0')}`;
+  };
+
+  return goals
+    .filter(g => g.predicted_time)
+    .map(g => ({
+      type: g.type,
+      name: nameMap[g.type],
+      targetTime: g.target_value,
+      targetTimeFormatted: fmtTime(g.target_value),
+      predictedTime: g.predicted_time,
+      predictedTimeFormatted: fmtTime(g.predicted_time),
+      gap: g.predicted_time - g.target_value,
+    }));
+}
+
 module.exports = {
   toLocalDateStr,
   formatPace,
@@ -261,5 +292,6 @@ module.exports = {
   savePlanUpdate,
   getUserRecords,
   getUserProfile,
-  getWeeklyVolumes
+  getWeeklyVolumes,
+  getRiegelPredictions
 };
