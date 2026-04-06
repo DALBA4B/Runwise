@@ -140,7 +140,7 @@ const App: React.FC = () => {
           <Plan isActive={currentScreen === 'plan'} />
         </div>
         <div style={{ display: currentScreen === 'ai' ? 'contents' : 'none' }}>
-          <AIChat onWorkoutClick={handleWorkoutClick} />
+          <AIChat onWorkoutClick={handleWorkoutClick} isActive={currentScreen === 'ai'} />
         </div>
         <div style={{ display: currentScreen === 'profile' ? 'contents' : 'none' }}>
           <Profile onLogout={logout} isActive={currentScreen === 'profile'} />

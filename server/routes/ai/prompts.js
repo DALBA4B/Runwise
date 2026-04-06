@@ -467,6 +467,10 @@ ${formatMonthlySummaryCompact(monthlySummary, lang)}
 ${p2.goals}:
 ${formatGoalsForAI(goals, lang)}
 
+${p2.records}:
+${formatRecordsForAI(records || [], lang)}
+${p2.recordsNote}
+
 ${formatPlanBrief(currentPlan, lang)}
 
 ${p2.toolsSection}

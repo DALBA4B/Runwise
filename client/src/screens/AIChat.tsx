@@ -14,9 +14,10 @@ interface Message {
 
 interface AIChatProps {
   onWorkoutClick?: (id: string) => void;
+  isActive?: boolean;
 }
 
-const AIChat: React.FC<AIChatProps> = ({ onWorkoutClick }) => {
+const AIChat: React.FC<AIChatProps> = ({ onWorkoutClick, isActive }) => {
   const { t } = useTranslation();
 
   const QUICK_QUESTIONS = [
@@ -83,13 +84,21 @@ const AIChat: React.FC<AIChatProps> = ({ onWorkoutClick }) => {
   // Always scroll to bottom after history loads
   useEffect(() => {
     if (historyLoaded && messagesContainerRef.current) {
-      // Use requestAnimationFrame to ensure DOM has rendered messages
       requestAnimationFrame(() => {
         messagesEndRef.current?.scrollIntoView();
         scrollRestoredRef.current = true;
       });
     }
   }, [historyLoaded]);
+
+  // Scroll to bottom when tab becomes active (container was hidden, scrollIntoView didn't work)
+  useEffect(() => {
+    if (isActive && historyLoaded) {
+      requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView();
+      });
+    }
+  }, [isActive]);
 
   // Load chat history and AI prefs on mount
   useEffect(() => {
