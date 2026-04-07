@@ -38,24 +38,9 @@ const AdminPanel: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'codes' | 'activations'>('codes');
 
-  const handleLogin = async () => {
-    if (!secret.trim()) return;
-    setLoading(true);
-    setError('');
-    try {
-      await promo.adminList(secret.trim());
-      localStorage.setItem('rw_admin_secret', secret.trim());
-      setAuthenticated(true);
-      loadData(secret.trim());
-    } catch {
-      setError('Invalid admin secret');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const loadData = async (s: string) => {
     setLoading(true);
+    setError('');
     try {
       const [codesData, activationsData] = await Promise.all([
         promo.adminList(s),
@@ -63,25 +48,30 @@ const AdminPanel: React.FC = () => {
       ]);
       setCodes(codesData);
       setActivations(activationsData);
+      setAuthenticated(true);
+      localStorage.setItem('rw_admin_secret', s);
     } catch {
-      setError('Failed to load data');
+      if (!authenticated) {
+        setError('Invalid admin secret');
+        localStorage.removeItem('rw_admin_secret');
+      } else {
+        setError('Failed to load data');
+      }
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleLogin = async () => {
+    if (!secret.trim()) return;
+    loadData(secret.trim());
   };
 
   useEffect(() => {
     const saved = localStorage.getItem('rw_admin_secret');
     if (saved) {
       setSecret(saved);
-      promo.adminList(saved)
-        .then(() => {
-          setAuthenticated(true);
-          loadData(saved);
-        })
-        .catch(() => {
-          localStorage.removeItem('rw_admin_secret');
-        });
+      loadData(saved);
     }
   }, []);
 

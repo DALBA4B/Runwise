@@ -43,7 +43,7 @@ const aiLimiter = rateLimit({
 // Promo activation: 5 attempts per minute per IP (prevent brute-force)
 const promoLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 5,
+  max: 15,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many promo attempts, please try again later' }
