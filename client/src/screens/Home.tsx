@@ -4,7 +4,6 @@ import MetricCard from '../components/MetricCard';
 import WeekChart from '../components/WeekChart';
 import WorkoutRow from '../components/WorkoutRow';
 import PeriodComparison from '../components/PeriodComparison';
-import GoalProgressMini from '../components/GoalProgressMini';
 import { useWorkouts } from '../hooks/useWorkouts';
 import { ai, workouts as workoutsApi } from '../api/api';
 import { ALL_METRICS, getSelectedWidgets, saveSelectedWidgets } from '../config/metrics';
@@ -25,13 +24,11 @@ function writeCache(key: string, data: any) {
 const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate, isActive }) => {
   const { t } = useTranslation();
   const { recentWorkouts, weeklyData, weekStats, loading, hadCache, refresh } = useWorkouts();
-  const homeCache = readCache<{ comparison: any; goals: any[]; goalPreds: any[] }>('rw_home_extra');
+  const homeCache = readCache<{ comparison: any }>('rw_home_extra');
   const [weekAnalysis, setWeekAnalysis] = useState<string | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [comparison, setComparison] = useState<any>(homeCache?.comparison || null);
   const [comparisonLoading, setComparisonLoading] = useState(!homeCache?.comparison);
-  const [goals, setGoals] = useState<any[]>(homeCache?.goals || []);
-  const [goalPreds, setGoalPreds] = useState<any[]>(homeCache?.goalPreds || []);
 
   const [selectedWidgets, setSelectedWidgets] = useState<string[]>(getSelectedWidgets);
   const [showSettings, setShowSettings] = useState(false);
@@ -48,14 +45,10 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate, isActive }) => 
   const refreshExtra = () => {
     Promise.all([
       workoutsApi.comparison().catch(() => null),
-      workoutsApi.getGoals().catch(() => []),
-      workoutsApi.goalPredictions().catch(() => [])
-    ]).then(([comp, g, preds]) => {
+    ]).then(([comp]) => {
       if (comp) setComparison(comp);
-      setGoals(g || []);
-      setGoalPreds(preds || []);
       setComparisonLoading(false);
-      writeCache('rw_home_extra', { comparison: comp, goals: g || [], goalPreds: preds || [] });
+      writeCache('rw_home_extra', { comparison: comp });
     });
   };
 
@@ -250,11 +243,6 @@ const Home: React.FC<HomeProps> = ({ onWorkoutClick, onNavigate, isActive }) => 
           </div>
         ))}
       </div>
-
-      <GoalProgressMini goals={goals.map(g => {
-        const pred = goalPreds.find((p: any) => p.goalId === g.id);
-        return { ...g, current_value: pred?.computedCurrentValue ?? g.current_value, _predPercent: pred?.percent };
-      })} onNavigate={onNavigate} />
 
       <WeekChart data={weeklyData} skipAnimation={hadCache} />
 

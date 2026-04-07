@@ -130,19 +130,19 @@ const App: React.FC = () => {
   return (
     <div className="app">
       <div className={`app-container ${animClass}`}>
-        <div style={{ display: currentScreen === 'home' ? 'contents' : 'none' }}>
+        <div style={{ display: currentScreen === 'home' ? 'block' : 'none', width: '100%', maxWidth: 420 }}>
           <Home onWorkoutClick={handleWorkoutClick} onNavigate={handleNavigate} isActive={currentScreen === 'home'} />
         </div>
-        <div style={{ display: currentScreen === 'history' ? 'contents' : 'none' }}>
+        <div style={{ display: currentScreen === 'history' ? 'block' : 'none', width: '100%', maxWidth: 420 }}>
           <History onWorkoutClick={handleWorkoutClick} isActive={currentScreen === 'history'} />
         </div>
-        <div style={{ display: currentScreen === 'plan' ? 'contents' : 'none' }}>
+        <div style={{ display: currentScreen === 'plan' ? 'block' : 'none', width: '100%', maxWidth: 420 }}>
           <Plan isActive={currentScreen === 'plan'} />
         </div>
-        <div style={{ display: currentScreen === 'ai' ? 'contents' : 'none' }}>
+        <div style={{ display: currentScreen === 'ai' ? 'block' : 'none', width: '100%', maxWidth: 420 }}>
           <AIChat onWorkoutClick={handleWorkoutClick} isActive={currentScreen === 'ai'} />
         </div>
-        <div style={{ display: currentScreen === 'profile' ? 'contents' : 'none' }}>
+        <div style={{ display: currentScreen === 'profile' ? 'block' : 'none', width: '100%', maxWidth: 420 }}>
           <Profile onLogout={logout} isActive={currentScreen === 'profile'} />
         </div>
         {currentScreen === 'workout-detail' && selectedWorkoutId && (

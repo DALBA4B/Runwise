@@ -190,41 +190,39 @@ const History: React.FC<HistoryProps> = ({ onWorkoutClick, isActive }) => {
         <button className="month-btn" onClick={handleNextMonth}>→</button>
       </div>
 
-      {monthStats && (
-        <div className={`metrics-grid ${editMode ? 'metrics-grid-edit' : ''}`} ref={gridRef}>
-          {activeMetrics.map((metric, idx) => (
-            <div
-              key={metric.id}
-              className={`metric-card-wrapper ${editMode ? 'editable' : ''} ${draggingIdx === idx ? 'dragging' : ''}`}
-              draggable={editMode}
-              onDragStart={() => handleDragStart(idx)}
-              onDragEnter={() => handleDragEnter(idx)}
-              onDragEnd={handleDragEnd}
-              onDragOver={(e) => e.preventDefault()}
-              onTouchStart={(e) => handleTouchStart(e, idx)}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleTouchEnd}
-            >
-              <MetricCard
-                icon={metric.icon}
-                label={t(metric.labelKey)}
-                value={metric.getValue(monthStats)}
-                sub={metric.subKey ? t(metric.subKey) : undefined}
-              />
-              {editMode && (
-                <button
-                  className="metric-card-remove"
-                  onClick={() => {
-                    const updated = selectedWidgets.filter(id => id !== metric.id);
-                    setSelectedWidgets(updated);
-                    saveHistoryWidgets(updated);
-                  }}
-                >✕</button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+      <div className={`metrics-grid ${editMode ? 'metrics-grid-edit' : ''}`} ref={gridRef}>
+        {activeMetrics.map((metric, idx) => (
+          <div
+            key={metric.id}
+            className={`metric-card-wrapper ${editMode ? 'editable' : ''} ${draggingIdx === idx ? 'dragging' : ''}`}
+            draggable={editMode}
+            onDragStart={() => handleDragStart(idx)}
+            onDragEnter={() => handleDragEnter(idx)}
+            onDragEnd={handleDragEnd}
+            onDragOver={(e) => e.preventDefault()}
+            onTouchStart={(e) => handleTouchStart(e, idx)}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+          >
+            <MetricCard
+              icon={metric.icon}
+              label={t(metric.labelKey)}
+              value={monthStats ? metric.getValue(monthStats) : '—'}
+              sub={metric.subKey ? t(metric.subKey) : undefined}
+            />
+            {editMode && (
+              <button
+                className="metric-card-remove"
+                onClick={() => {
+                  const updated = selectedWidgets.filter(id => id !== metric.id);
+                  setSelectedWidgets(updated);
+                  saveHistoryWidgets(updated);
+                }}
+              >✕</button>
+            )}
+          </div>
+        ))}
+      </div>
 
       {!loading && allWorkouts.length === 0 ? (
         <p className="empty-text">{t('history.noWorkouts')}</p>
