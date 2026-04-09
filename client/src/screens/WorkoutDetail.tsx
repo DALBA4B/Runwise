@@ -56,6 +56,7 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
   const [splits500m, setSplits500m] = useState<Split[] | null>(null);
   const [splits500mLoading, setSplits500mLoading] = useState(false);
   const [splits500mError, setSplits500mError] = useState<string | null>(null);
+  const [splitsLoading, setSplitsLoading] = useState(false);
 
   // GPS anomaly states
   const [showExplainModal, setShowExplainModal] = useState(false);
@@ -131,6 +132,25 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
       try {
         const data = await workouts.get(workoutId);
         setWorkout(data);
+
+        // Lazy-load splits if missing
+        if (!data.splits) {
+          setSplitsLoading(true);
+          try {
+            const splitsData = await strava.syncSplits(workoutId);
+            if (splitsData.splits) {
+              setWorkout((prev: any) => prev ? {
+                ...prev,
+                splits: splitsData.splits,
+                best_efforts: splitsData.best_efforts || prev.best_efforts
+              } : prev);
+            }
+          } catch {
+            // Splits unavailable — not critical
+          } finally {
+            setSplitsLoading(false);
+          }
+        }
       } catch (err) {
         console.error('Failed to fetch workout:', err);
       } finally {
@@ -309,7 +329,17 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
         </div>
       )}
 
-      {(splitsData.length > 0 || splitMode === '500m') && (() => {
+      {splitsLoading && (
+        <div className="splits-section">
+          <h3 className="section-title">{t('workout.paceByKm')}</h3>
+          <div className="splits-loading">
+            <div className="loader"></div>
+            <span>{t('workout.loadingSplits')}</span>
+          </div>
+        </div>
+      )}
+
+      {!splitsLoading && (splitsData.length > 0 || splitMode === '500m') && (() => {
         const activeSplits = splitMode === '1km' ? splitsData : splits500mData;
         const paces = activeSplits.map(s => s.pace).filter(p => p > 0);
         const minPace = paces.length > 0 ? Math.min(...paces) : 0;

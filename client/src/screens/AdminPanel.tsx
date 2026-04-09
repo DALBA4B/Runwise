@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { promo } from '../api/api';
+import { promo, strava } from '../api/api';
 
 interface PromoCode {
   id: string;
@@ -36,18 +36,24 @@ const AdminPanel: React.FC = () => {
   const [newMaxUses, setNewMaxUses] = useState('1');
   const [creating, setCreating] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'codes' | 'activations'>('codes');
+  const [activeTab, setActiveTab] = useState<'codes' | 'activations' | 'api'>('codes');
+  const [apiStats, setApiStats] = useState<{ count: number; limit: number; date: string; perUser: Record<string, number> } | null>(null);
+  const [webhookLog, setWebhookLog] = useState<any[]>([]);
 
   const loadData = async (s: string) => {
     setLoading(true);
     setError('');
     try {
-      const [codesData, activationsData] = await Promise.all([
+      const [codesData, activationsData, apiData, webhookLogData] = await Promise.all([
         promo.adminList(s),
-        promo.adminActivations(s)
+        promo.adminActivations(s),
+        strava.adminRateLimit(s).catch(() => null),
+        strava.adminWebhookLog(s).catch(() => [])
       ]);
       setCodes(codesData);
       setActivations(activationsData);
+      if (apiData) setApiStats(apiData);
+      setWebhookLog(webhookLogData || []);
       setAuthenticated(true);
       localStorage.setItem('rw_admin_secret', s);
     } catch {
@@ -144,6 +150,12 @@ const AdminPanel: React.FC = () => {
         >
           Activations ({activations.length})
         </button>
+        <button
+          className={`admin-tab ${activeTab === 'api' ? 'active' : ''}`}
+          onClick={() => setActiveTab('api')}
+        >
+          API Stats
+        </button>
       </div>
 
       {activeTab === 'codes' && (
@@ -230,6 +242,80 @@ const AdminPanel: React.FC = () => {
           {activations.length === 0 && !loading && (
             <div className="admin-empty">No activations yet</div>
           )}
+        </div>
+      )}
+
+      {activeTab === 'api' && (
+        <div className="admin-api-stats">
+          {apiStats ? (
+            <>
+              <div className="admin-api-global">
+                <h3>Strava API — Today</h3>
+                <div className="admin-api-bar-container">
+                  <div
+                    className="admin-api-bar"
+                    style={{
+                      width: `${Math.min((apiStats.count / apiStats.limit) * 100, 100)}%`,
+                      backgroundColor: apiStats.count > apiStats.limit * 0.8 ? '#ff4444' :
+                                       apiStats.count > apiStats.limit * 0.5 ? '#ffaa00' : '#4ecdc4'
+                    }}
+                  />
+                </div>
+                <div className="admin-api-numbers">
+                  <span>{apiStats.count} / {apiStats.limit} requests</span>
+                  <span>{Math.round((apiStats.count / apiStats.limit) * 100)}%</span>
+                </div>
+              </div>
+
+              {Object.keys(apiStats.perUser).length > 0 && (
+                <div className="admin-api-users">
+                  <h3>Per User</h3>
+                  {Object.entries(apiStats.perUser)
+                    .sort(([, a], [, b]) => (b as number) - (a as number))
+                    .map(([userId, count]) => (
+                      <div key={userId} className="admin-api-user-row">
+                        <span className="admin-api-user-id">{(userId as string).slice(0, 8)}...</span>
+                        <span className="admin-api-user-count">{count as number} requests</span>
+                      </div>
+                    ))
+                  }
+                </div>
+              )}
+
+              {Object.keys(apiStats.perUser).length === 0 && (
+                <div className="admin-empty">No API requests today (counter resets on server restart)</div>
+              )}
+            </>
+          ) : (
+            <div className="admin-empty">Failed to load API stats</div>
+          )}
+
+          <div className="admin-webhook-log">
+            <h3>Webhook Log (last 50)</h3>
+            {webhookLog.length > 0 ? (
+              webhookLog.map((event, i) => (
+                <div key={i} className={`admin-webhook-item admin-webhook-${event.type}`}>
+                  <div className="admin-webhook-header">
+                    <span className={`admin-webhook-badge ${event.type === 'saved' ? 'success' : event.type === 'error' ? 'error' : 'neutral'}`}>
+                      {event.type}
+                    </span>
+                    <span className="admin-webhook-time">
+                      {new Date(event.timestamp).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="admin-webhook-details">
+                    {event.object_id && <span>Activity: {event.object_id}</span>}
+                    {event.workoutName && <span>{event.workoutName}</span>}
+                    {event.distance && <span>{(event.distance / 1000).toFixed(1)} km</span>}
+                    {event.error && <span className="admin-webhook-error">{event.error}</span>}
+                    {event.activityType && <span>Type: {event.activityType}</span>}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="admin-empty">No webhook events yet (log resets on server restart)</div>
+            )}
+          </div>
         </div>
       )}
 

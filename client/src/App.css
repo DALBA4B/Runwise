@@ -3473,3 +3473,109 @@ input[type="number"] {
   color: var(--color-text-secondary);
   padding: 16px;
 }
+
+/* Admin API Stats */
+.admin-api-stats {
+  padding: 4px 0;
+}
+.admin-api-global h3,
+.admin-api-users h3 {
+  font-size: 14px;
+  color: var(--color-text-primary);
+  margin: 0 0 10px 0;
+}
+.admin-api-bar-container {
+  width: 100%;
+  height: 12px;
+  background: var(--color-card-bg);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.admin-api-bar {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.3s ease;
+}
+.admin-api-numbers {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-bottom: 16px;
+}
+.admin-api-users {
+  margin-top: 12px;
+}
+.admin-api-user-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--color-card-bg);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.admin-api-user-id {
+  color: var(--color-text-secondary);
+  font-family: monospace;
+}
+.admin-api-user-count {
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+
+/* Webhook Log */
+.admin-webhook-log {
+  margin-top: 20px;
+}
+.admin-webhook-log h3 {
+  font-size: 14px;
+  color: var(--color-text-primary);
+  margin: 0 0 10px 0;
+}
+.admin-webhook-item {
+  background: var(--color-card-bg);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+}
+.admin-webhook-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.admin-webhook-badge {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.admin-webhook-badge.success {
+  background: rgba(78, 205, 196, 0.2);
+  color: #4ecdc4;
+}
+.admin-webhook-badge.error {
+  background: rgba(255, 68, 68, 0.2);
+  color: #ff4444;
+}
+.admin-webhook-badge.neutral {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text-secondary);
+}
+.admin-webhook-time {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+.admin-webhook-details {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  flex-wrap: wrap;
+}
+.admin-webhook-error {
+  color: #ff4444;
+}

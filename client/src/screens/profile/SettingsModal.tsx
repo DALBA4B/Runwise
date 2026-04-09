@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n';
-import { workouts, promo as promoApi } from '../../api/api';
+import { workouts, strava, promo as promoApi } from '../../api/api';
 
 const LANGUAGES = [
   { code: 'ru', label: '🇷🇺 Русский' },
@@ -25,6 +25,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ show, syncStatus, premium
   const [promoCode, setPromoCode] = useState('');
   const [promoLoading, setPromoLoading] = useState(false);
   const [promoMessage, setPromoMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [apiUsage, setApiUsage] = useState<{ count: number; limit: number } | null>(null);
+
+  useEffect(() => {
+    if (show) {
+      strava.rateLimit().then(setApiUsage).catch(() => {});
+    }
+  }, [show]);
 
   const closeModal = () => {
     setClosing(true);
@@ -121,6 +128,40 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ show, syncStatus, premium
               </div>
             </div>
           )}
+
+          {apiUsage && (
+            <div className="settings-item">
+              <div className="settings-item-icon">📡</div>
+              <div className="settings-item-info">
+                <span className="settings-item-label">{t('profile.stravaApiUsage')}</span>
+                <span className="settings-item-status" style={{
+                  color: apiUsage.count > apiUsage.limit * 0.8 ? '#ff4444' :
+                         apiUsage.count > apiUsage.limit * 0.5 ? '#ffaa00' : 'inherit'
+                }}>
+                  {apiUsage.count} / {apiUsage.limit}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <button
+            className="btn btn-secondary btn-full"
+            style={{ marginTop: 8 }}
+            onClick={async (e) => {
+              const btn = e.currentTarget;
+              btn.disabled = true;
+              btn.textContent = t('profile.syncing');
+              try {
+                const res = await strava.sync();
+                btn.textContent = `${t('profile.syncDone')}: +${res.imported}`;
+              } catch {
+                btn.textContent = t('profile.syncError');
+              }
+              setTimeout(() => { btn.disabled = false; btn.textContent = `🔄 ${t('profile.syncButton')}`; }, 3000);
+            }}
+          >
+            🔄 {t('profile.syncButton')}
+          </button>
 
           <button
             className="btn btn-secondary btn-full"

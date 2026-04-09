@@ -24,8 +24,10 @@ export function useAuth() {
       setUser(data.user);
       setIsAuthenticated(true);
 
-      // Sync latest workouts from Strava on every app open
-      strava.sync().catch(() => {});
+      // Auto-sync if there are pending workouts (user was inactive >3 days)
+      if (data.hasPendingSync) {
+        strava.sync().catch(() => {});
+      }
     } catch {
       localStorage.removeItem('runwise_token');
       setIsAuthenticated(false);

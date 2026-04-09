@@ -5,6 +5,56 @@ const authMiddleware = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
+// ============ Strava API request counter ============
+// Tracks daily usage per user + global (in-memory, resets on server restart)
+const apiUsage = {}; // { userId: { count, date } }
+let globalUsage = { count: 0, date: new Date().toDateString() };
+
+function trackApiUsage(userId) {
+  const today = new Date().toDateString();
+
+  // Per-user
+  if (!apiUsage[userId] || apiUsage[userId].date !== today) {
+    apiUsage[userId] = { count: 0, date: today };
+  }
+  apiUsage[userId].count++;
+
+  // Global
+  if (globalUsage.date !== today) {
+    globalUsage = { count: 0, date: today };
+  }
+  globalUsage.count++;
+}
+
+function getApiUsage(userId) {
+  const today = new Date().toDateString();
+  if (!apiUsage[userId] || apiUsage[userId].date !== today) {
+    return { count: 0, limit: 1000, date: today };
+  }
+  return { count: apiUsage[userId].count, limit: 1000, date: today };
+}
+
+function getGlobalApiUsage() {
+  const today = new Date().toDateString();
+  if (globalUsage.date !== today) {
+    return { count: 0, limit: 1000, date: today, perUser: {} };
+  }
+  // Build per-user breakdown
+  const perUser = {};
+  for (const [uid, data] of Object.entries(apiUsage)) {
+    if (data.date === today && data.count > 0) {
+      perUser[uid] = data.count;
+    }
+  }
+  return { count: globalUsage.count, limit: 1000, date: today, perUser };
+}
+
+// Wrapper: make a tracked request to Strava API
+async function stravaGet(url, config, userId) {
+  trackApiUsage(userId);
+  return axios.get(url, config);
+}
+
 // Helper: load full user with Strava tokens from DB
 async function loadUserWithTokens(userId) {
   const { data, error } = await supabase
@@ -302,17 +352,14 @@ router.post('/sync', authMiddleware, async (req, res) => {
     const fullUser = await loadUserWithTokens(req.user.id);
     const token = await getValidToken(fullUser);
 
-    const response = await axios.get('https://www.strava.com/api/v3/athlete/activities', {
+    const response = await stravaGet('https://www.strava.com/api/v3/athlete/activities', {
       headers: { Authorization: `Bearer ${token}` },
       params: { per_page: 50, page: 1 }
-    });
+    }, req.user.id);
 
     const activities = response.data.filter(a => a.type === 'Run');
     const parsed = activities.map(a => parseActivity(a, req.user.id));
     const imported = await bulkUpsertWorkouts(parsed, req.user.id);
-
-    // Fire-and-forget: auto-load splits for workouts missing them
-    runSplitsSync(req.user.id).catch(() => {});
 
     res.json({ imported, total: activities.length });
   } catch (err) {
@@ -334,10 +381,10 @@ router.post('/sync-all', authMiddleware, async (req, res) => {
     let totalImported = 0;
 
     while (hasMore) {
-      const response = await axios.get('https://www.strava.com/api/v3/athlete/activities', {
+      const response = await stravaGet('https://www.strava.com/api/v3/athlete/activities', {
         headers: { Authorization: `Bearer ${token}` },
         params: { per_page: 100, page }
-      });
+      }, req.user.id);
 
       if (response.data.length === 0) {
         hasMore = false;
@@ -358,8 +405,6 @@ router.post('/sync-all', authMiddleware, async (req, res) => {
     console.log(`Full sync complete for user ${req.user.id}: ${totalImported} new workouts`);
     // Save sync result to user record
     await supabase.from('users').update({ last_sync_status: 'done', last_sync_count: totalImported }).eq('id', req.user.id);
-    // Fire-and-forget: auto-load splits for workouts missing them
-    runSplitsSync(req.user.id).catch(() => {});
   } catch (err) {
     console.error('Full sync error:', err.response?.data || err.message);
     // Save error to user record
@@ -397,9 +442,9 @@ async function runSplitsSync(userId) {
 
     for (const workout of workoutsNeedingDetail) {
       try {
-        const detail = await axios.get(`https://www.strava.com/api/v3/activities/${workout.strava_id}`, {
+        const detail = await stravaGet(`https://www.strava.com/api/v3/activities/${workout.strava_id}`, {
           headers: { Authorization: `Bearer ${token}` }
-        });
+        }, userId);
 
         const splits = detail.data.splits_metric;
         const updateData = {};
@@ -454,6 +499,105 @@ async function runSplitsSync(userId) {
   }
 }
 
+
+// POST /api/strava/sync-splits/:workoutId — lazy-load 1km splits & best_efforts for a single workout
+router.post('/sync-splits/:workoutId', authMiddleware, async (req, res) => {
+  try {
+    const { workoutId } = req.params;
+
+    // 1. Get workout from DB
+    const { data: workout, error: wErr } = await supabase
+      .from('workouts')
+      .select('id, strava_id, splits, best_efforts, user_id')
+      .eq('id', workoutId)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (wErr || !workout) {
+      return res.status(404).json({ error: 'Workout not found' });
+    }
+
+    // 2. Return cached if both already exist
+    if (workout.splits && workout.best_efforts) {
+      return res.json({
+        splits: typeof workout.splits === 'string' ? JSON.parse(workout.splits) : workout.splits,
+        best_efforts: typeof workout.best_efforts === 'string' ? JSON.parse(workout.best_efforts) : workout.best_efforts,
+        cached: true
+      });
+    }
+
+    // 3. Fetch details from Strava
+    const fullUser = await loadUserWithTokens(req.user.id);
+    const token = await getValidToken(fullUser);
+
+    let detail;
+    try {
+      detail = await stravaGet(`https://www.strava.com/api/v3/activities/${workout.strava_id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      }, req.user.id);
+    } catch (stravaErr) {
+      if (stravaErr.response?.status === 429) {
+        return res.status(429).json({ error: 'Strava rate limit, try again later' });
+      }
+      throw stravaErr;
+    }
+
+    // 4. Parse and save
+    const updateData = {};
+    const splitsMetric = detail.data.splits_metric;
+
+    if (splitsMetric && splitsMetric.length > 0) {
+      updateData.splits = JSON.stringify(splitsMetric.map((s, i) => ({
+        km: i + 1,
+        time: s.moving_time,
+        pace: s.moving_time / (s.distance / 1000),
+        distance: s.distance,
+        heartrate: s.average_heartrate || null,
+        elevation: s.elevation_difference || 0
+      })));
+    }
+
+    if (detail.data.best_efforts && detail.data.best_efforts.length > 0) {
+      updateData.best_efforts = JSON.stringify(detail.data.best_efforts.map(e => ({
+        name: e.name,
+        distance: e.distance,
+        moving_time: e.moving_time
+      })));
+    }
+
+    if (detail.data.description && !workout.description) {
+      updateData.description = detail.data.description;
+    }
+
+    if (Object.keys(updateData).length > 0) {
+      await supabase.from('workouts').update(updateData).eq('id', workout.id);
+    }
+
+    res.json({
+      splits: updateData.splits ? JSON.parse(updateData.splits) : null,
+      best_efforts: updateData.best_efforts ? JSON.parse(updateData.best_efforts) : null,
+      cached: false
+    });
+  } catch (err) {
+    console.error('Sync splits error:', err.response?.data || err.message);
+    res.status(500).json({ error: 'Failed to load splits' });
+  }
+});
+
+// GET /api/strava/rate-limit — current API usage for this user
+router.get('/rate-limit', authMiddleware, (req, res) => {
+  const usage = getApiUsage(req.user.id);
+  res.json(usage);
+});
+
+// GET /api/strava/rate-limit/global — admin: global API usage with per-user breakdown
+router.get('/rate-limit/global', (req, res) => {
+  const secret = req.headers['x-admin-secret'];
+  if (!secret || secret !== process.env.ADMIN_SECRET) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  res.json(getGlobalApiUsage());
+});
 
 // GET /api/strava/sync-status — check how many workouts loaded
 router.get('/sync-status', authMiddleware, async (req, res) => {
@@ -510,12 +654,13 @@ router.post('/sync-splits-500/:workoutId', authMiddleware, async (req, res) => {
 
     let streamsData;
     try {
-      const streamsResp = await axios.get(
+      const streamsResp = await stravaGet(
         `https://www.strava.com/api/v3/activities/${workout.strava_id}/streams`,
         {
           headers: { Authorization: `Bearer ${token}` },
           params: { keys: 'distance,time,heartrate', key_type: 'value' }
-        }
+        },
+        req.user.id
       );
       streamsData = streamsResp.data;
     } catch (streamErr) {
@@ -563,12 +708,13 @@ async function fetchAndSave500mSplits(workoutId, stravaId, userId) {
     const fullUser = await loadUserWithTokens(userId);
     const token = await getValidToken(fullUser);
 
-    const streamsResp = await axios.get(
+    const streamsResp = await stravaGet(
       `https://www.strava.com/api/v3/activities/${stravaId}/streams`,
       {
         headers: { Authorization: `Bearer ${token}` },
         params: { keys: 'distance,time,heartrate', key_type: 'value' }
-      }
+      },
+      userId
     );
 
     const distStream = streamsResp.data.find(s => s.type === 'distance');
@@ -595,6 +741,24 @@ async function fetchAndSave500mSplits(workoutId, stravaId, userId) {
   }
 }
 
+// ============ Webhook event log (in-memory, last 50 events) ============
+const webhookLog = [];
+const MAX_WEBHOOK_LOG = 50;
+
+function logWebhook(event) {
+  webhookLog.unshift({ ...event, timestamp: new Date().toISOString() });
+  if (webhookLog.length > MAX_WEBHOOK_LOG) webhookLog.pop();
+}
+
+// GET /api/strava/webhook-log — admin: recent webhook events
+router.get('/webhook-log', (req, res) => {
+  const secret = req.headers['x-admin-secret'];
+  if (!secret || secret !== process.env.ADMIN_SECRET) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  res.json(webhookLog);
+});
+
 // Strava Webhook verification (GET)
 router.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
@@ -615,7 +779,10 @@ router.post('/webhook', async (req, res) => {
   try {
     const { object_type, aspect_type, object_id, owner_id } = req.body;
 
-    if (object_type !== 'activity' || aspect_type !== 'create') return;
+    if (object_type !== 'activity' || aspect_type !== 'create') {
+      logWebhook({ type: 'ignored', object_type, aspect_type, object_id, owner_id });
+      return;
+    }
 
     // Find user by strava_id
     const { data: user } = await supabase
@@ -624,17 +791,35 @@ router.post('/webhook', async (req, res) => {
       .eq('strava_id', owner_id.toString())
       .single();
 
-    if (!user) return;
+    if (!user) {
+      logWebhook({ type: 'user_not_found', object_id, owner_id });
+      return;
+    }
+
+    // Skip full processing for inactive users (>3 days) — save API quota
+    const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
+    const lastActive = user.last_active ? new Date(user.last_active).getTime() : 0;
+    const isInactive = (Date.now() - lastActive) > THREE_DAYS;
+
+    if (isInactive) {
+      // Mark that there are pending workouts — will sync on next login
+      await supabase.from('users').update({ has_pending_sync: true }).eq('id', user.id).catch(() => {});
+      logWebhook({ type: 'deferred', object_id, owner_id, reason: 'user inactive >3d' });
+      return;
+    }
 
     const token = await getValidToken(user);
 
     // Fetch the activity
-    const response = await axios.get(`https://www.strava.com/api/v3/activities/${object_id}`, {
+    const response = await stravaGet(`https://www.strava.com/api/v3/activities/${object_id}`, {
       headers: { Authorization: `Bearer ${token}` }
-    });
+    }, user.id);
 
     const activity = response.data;
-    if (activity.type !== 'Run') return;
+    if (activity.type !== 'Run') {
+      logWebhook({ type: 'not_run', object_id, owner_id, activityType: activity.type });
+      return;
+    }
 
     const parsed = parseActivity(activity, user.id);
 
@@ -665,9 +850,13 @@ router.post('/webhook', async (req, res) => {
         // Fire-and-forget: pre-compute 500m splits
         fetchAndSave500mSplits(inserted.id, parsed.strava_id, user.id).catch(() => {});
       }
+      logWebhook({ type: 'saved', object_id, owner_id, workoutName: parsed.name, distance: parsed.distance });
       console.log(`Webhook: new workout saved for user ${user.id}`);
+    } else {
+      logWebhook({ type: 'duplicate', object_id, owner_id });
     }
   } catch (err) {
+    logWebhook({ type: 'error', object_id: req.body?.object_id, error: err.message });
     console.error('Webhook processing error:', err.message);
   }
 });

@@ -117,7 +117,7 @@ router.get('/me', async (req, res) => {
 
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, strava_id, created_at')
+      .select('id, strava_id, created_at, has_pending_sync')
       .eq('id', decoded.userId)
       .single();
 
@@ -125,7 +125,10 @@ router.get('/me', async (req, res) => {
       return res.status(401).json({ error: 'User not found' });
     }
 
-    res.json({ user });
+    // Track last active time + clear pending flag (fire-and-forget)
+    supabase.from('users').update({ last_active: new Date().toISOString(), has_pending_sync: false }).eq('id', user.id).then(() => {}).catch(() => {});
+
+    res.json({ user, hasPendingSync: !!user.has_pending_sync });
   } catch (err) {
     res.status(401).json({ error: 'Invalid token' });
   }
