@@ -6,6 +6,7 @@ interface PlanDay {
   day: string;
   type: string;
   distance_km: number;
+  pace?: string;
   description: string;
   badge: string;
 }
@@ -16,10 +17,26 @@ interface PlanRowProps {
   dayLabel?: string;
 }
 
+// Extract pace from description for old plans without pace field
+function extractPace(description: string): string | null {
+  if (!description) return null;
+  const patterns = [
+    /(\d{1,2}:\d{2})\s*\/\s*(?:км|km)/i,
+    /(?:темп[еі]?|pace|at)\s+(\d{1,2}:\d{2})/i,
+    /(\d{1,2}:\d{2})\s*(?:мін\/км|мин\/км|min\/km)/i,
+    /\((\d{1,2}:\d{2})\/км\)/i,
+  ];
+  for (const p of patterns) {
+    const m = description.match(p);
+    if (m) return m[1];
+  }
+  return null;
+}
+
 const PlanRow: React.FC<PlanRowProps> = ({ plan, isToday, dayLabel }) => {
   const { t } = useTranslation();
-
   const displayDay = dayLabel || plan.day;
+  const pace = plan.pace || extractPace(plan.description);
 
   return (
     <div className={`plan-row ${isToday ? 'today' : ''} ${plan.type === 'rest' ? 'rest' : ''}`}>
@@ -33,7 +50,18 @@ const PlanRow: React.FC<PlanRowProps> = ({ plan, isToday, dayLabel }) => {
         </div>
       </div>
       {plan.distance_km > 0 && (
-        <div className="plan-day-distance">{plan.distance_km} {t('units.km')}</div>
+        <div className="plan-day-stats">
+          <div className="plan-day-stat">
+            <span className="plan-day-stat-value">{plan.distance_km}</span>
+            <span className="plan-day-stat-label">{t('units.km')}</span>
+          </div>
+          {pace && (
+            <div className="plan-day-stat">
+              <span className="plan-day-stat-value">{pace}</span>
+              <span className="plan-day-stat-label">{t('units.minKm')}</span>
+            </div>
+          )}
+        </div>
       )}
       <div className="plan-day-description">{plan.description}</div>
     </div>

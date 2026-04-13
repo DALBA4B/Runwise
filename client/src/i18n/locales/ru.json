@@ -352,5 +352,29 @@
     "deadlineOptional": "Дедлайн (необязательно)",
     "distanceLabel": "Дистанция",
     "dateOptional": "Дата (необязательно)"
+  },
+  "paceZones": {
+    "title": "Темповые зоны",
+    "beginner": "Новичок",
+    "intermediate": "Средний",
+    "advanced": "Продвинутый",
+    "levelLabel": "Уровень",
+    "details": "Подробнее",
+    "easy": "Лёгкий",
+    "marathon": "Марафон",
+    "threshold": "Пороговый",
+    "interval": "Интервал",
+    "repetition": "Повторы",
+    "calculationTitle": "Как рассчитано",
+    "source": "Источник данных",
+    "fromRecords": "Личные рекорды",
+    "fromWorkouts": "Тренировки (12 нед.)",
+    "fromDecay": "Старая тренировка (с поправкой)",
+    "weeklyVolume": "Объём в неделю",
+    "week": "нед",
+    "workoutsAnalyzed": "Тренировок за 4 нед.",
+    "avgPace": "Средний темп",
+    "bestPace": "Лучший темп",
+    "recordsVdot": "VDOT по рекордам"
   }
 }

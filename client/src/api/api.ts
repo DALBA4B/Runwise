@@ -246,5 +246,6 @@ export const ai = {
   weeklyAnalysis: () => request('/api/ai/weekly-analysis', {
     method: 'POST',
     body: JSON.stringify({ lang: getLang() })
-  })
+  }),
+  getPaceZones: () => request('/api/ai/pace-zones')
 };

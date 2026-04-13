@@ -277,6 +277,39 @@ async function getRiegelPredictions(userId) {
     }));
 }
 
+/**
+ * Статистика темпа за последние тренировки
+ * @param {Array} workouts — массив тренировок из БД
+ * @returns {object} { avgPace, avgEasyPace, bestPace, count }
+ */
+function getRecentPaceStats(workouts) {
+  if (!workouts || !workouts.length) return { avgPace: null, avgEasyPace: null, bestPace: null, count: 0 };
+
+  const runWorkouts = workouts.filter(w => {
+    const dist = effectiveDistance(w);
+    return dist >= 2000; // минимум 2 км
+  });
+
+  const paces = runWorkouts
+    .map(w => effectivePace(w))
+    .filter(p => p && p > 0);
+
+  if (!paces.length) return { avgPace: null, avgEasyPace: null, bestPace: null, count: 0 };
+
+  const avgPace = Math.round(paces.reduce((a, b) => a + b, 0) / paces.length);
+  const bestPace = Math.min(...paces);
+
+  // Easy-тренировки: темп медленнее среднего (верхние 60% по темпу = более медленные)
+  const sorted = [...paces].sort((a, b) => a - b);
+  const easyThreshold = Math.ceil(sorted.length * 0.4);
+  const easyPaces = sorted.slice(easyThreshold); // медленная часть
+  const avgEasyPace = easyPaces.length
+    ? Math.round(easyPaces.reduce((a, b) => a + b, 0) / easyPaces.length)
+    : avgPace;
+
+  return { avgPace, avgEasyPace, bestPace, count: paces.length };
+}
+
 module.exports = {
   toLocalDateStr,
   formatPace,
@@ -293,5 +326,6 @@ module.exports = {
   getUserRecords,
   getUserProfile,
   getWeeklyVolumes,
-  getRiegelPredictions
+  getRiegelPredictions,
+  getRecentPaceStats
 };

@@ -7,6 +7,7 @@ import { formatPace, formatDistance } from '../utils';
 import { ALL_METRICS, getProfileWidgets, saveProfileWidgets } from '../config/metrics';
 import GoalsSection from './profile/GoalsSection';
 import RecordsSection from './profile/RecordsSection';
+import PaceZonesSection from './profile/PaceZonesSection';
 import SettingsModal from './profile/SettingsModal';
 
 interface PersonalRecord {
@@ -338,6 +339,8 @@ const Profile: React.FC<ProfileProps> = ({ onLogout, isActive }) => {
           ✏️ {(age || height || weight) ? t('common.edit') : t('profile.setParams')}
         </button>
       </div>
+
+      <PaceZonesSection />
 
       <RecordsSection records={records} setRecords={setRecords} />
 

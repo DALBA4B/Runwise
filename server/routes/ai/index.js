@@ -18,8 +18,21 @@ const {
   getUserRecords,
   getUserProfile,
   getWeeklyVolumes,
-  getRiegelPredictions
+  getRiegelPredictions,
+  getRecentPaceStats
 } = require('./context');
+
+const {
+  calculateVDOT,
+  getVDOTFromRecords,
+  getVDOTFromRecentWorkouts,
+  estimateVDOT,
+  QUALITY_TYPES,
+  calculatePaceZones,
+  getRunnerLevel,
+  ensurePaceField,
+  formatZonesForPrompt
+} = require('./vdot');
 
 const {
   getLangInstruction,
@@ -112,8 +125,34 @@ async function loadChatContext(userId, lang = 'ru') {
     getRiegelPredictions(userId)
   ]);
 
+  // Calculate VDOT and pace zones for chat context (12-week window + decay fallback)
+  const twelveWeeksAgo = new Date();
+  twelveWeeksAgo.setDate(twelveWeeksAgo.getDate() - 84);
+  const { data: recentWorkouts } = await supabase
+    .from('workouts')
+    .select('name, distance, moving_time, average_pace, date, type, manual_distance, manual_moving_time, is_suspicious')
+    .eq('user_id', userId)
+    .gte('date', twelveWeeksAgo.toISOString())
+    .order('date', { ascending: false });
+
+  const { data: allWorkouts } = await supabase
+    .from('workouts')
+    .select('name, distance, moving_time, average_pace, date, type, manual_distance, manual_moving_time, is_suspicious')
+    .eq('user_id', userId)
+    .order('date', { ascending: false });
+
+  const estimate = estimateVDOT(recentWorkouts, allWorkouts);
+  const currentVDOT = estimate.vdot;
+  const paceZones = currentVDOT ? calculatePaceZones(currentVDOT) : null;
+
+  let vdotSource = null;
+  if (estimate.source === 'recent') vdotSource = 'workouts';
+  else if (estimate.source === 'decay') vdotSource = 'decay';
+
+  const paceZonesData = currentVDOT ? { vdot: currentVDOT, source: vdotSource, zones: paceZones } : null;
+
   const aiPrefs = getAiPrefs(userProfile);
-  const systemPrompt = buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, records, lang, aiPrefs, weeklyVolumes, predictions);
+  const systemPrompt = buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, records, lang, aiPrefs, weeklyVolumes, predictions, paceZonesData);
 
   return { chatHistory, systemPrompt, currentPlan };
 }
@@ -348,11 +387,26 @@ router.post('/generate-plan', authMiddleware, async (req, res) => {
 
     const { data: recentWorkouts } = await supabase
       .from('workouts')
-      .select('name, distance, moving_time, average_pace, average_heartrate, date, type, manual_distance, manual_moving_time')
+      .select('name, distance, moving_time, average_pace, average_heartrate, date, type, manual_distance, manual_moving_time, is_suspicious')
       .eq('user_id', req.user.id)
       .gte('date', fourWeeksBeforeAnchor.toISOString())
       .lt('date', anchor.toISOString())
       .order('date', { ascending: false });
+
+    // All workouts for VDOT fallback (last quality workout with decay)
+    const { data: allWorkouts } = await supabase
+      .from('workouts')
+      .select('name, distance, moving_time, average_pace, date, type, manual_distance, manual_moving_time, is_suspicious')
+      .eq('user_id', req.user.id)
+      .order('date', { ascending: false });
+
+    // 12-week window for VDOT estimation
+    const twelveWeeksBeforeAnchor = new Date(anchor);
+    twelveWeeksBeforeAnchor.setDate(twelveWeeksBeforeAnchor.getDate() - 84);
+    const recentWorkouts12w = (allWorkouts || []).filter(w => {
+      const d = new Date(w.date);
+      return d >= twelveWeeksBeforeAnchor && d < anchor;
+    });
 
     const [goals, records, userProfile] = await Promise.all([
       getUserGoals(req.user.id),
@@ -377,6 +431,17 @@ router.post('/generate-plan', authMiddleware, async (req, res) => {
     const avgWeeklyKm = weeklyDistances.length > 0
       ? Math.round(weeklyDistances.reduce((a, b) => a + b, 0) / weeklyDistances.length * 10) / 10
       : 0;
+
+    // Calculate VDOT and pace zones (12-week window + decay fallback)
+    const estimate = estimateVDOT(recentWorkouts12w, allWorkouts);
+    const currentVDOT = estimate.vdot;
+    const paceZones = currentVDOT ? calculatePaceZones(currentVDOT) : null;
+    const paceStats = getRecentPaceStats(recentWorkouts);
+    const runnerLevel = getRunnerLevel(avgWeeklyKm);
+
+    if (currentVDOT) {
+      console.log(`[VDOT] User ${req.user.id}: VDOT=${currentVDOT} (${estimate.source}), level=${runnerLevel}, zones:`, paceZones);
+    }
 
     const DAY_NAMES_I18N = {
       ru: ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'],
@@ -445,11 +510,13 @@ router.post('/generate-plan', authMiddleware, async (req, res) => {
 - НИКОГДА не говори "ты бежал X в прошлом году, значит сейчас легко побьёшь Y". Опирайся на цифры и факты последних недель.
 - Рекорды используй как ориентир потенциала, но НЕ как текущий уровень.
 
-РАСЧЁТ ТЕМПОВ (на основе СВЕЖИХ данных и рекордов как ориентира):
-- Easy/Recovery: на 60-90 сек/км медленнее текущего среднего темпа на 5км (или среднего темпа за последние недели)
+РАСЧЁТ ТЕМПОВ (VDOT-система Дэниелса):
+${paceZones ? `РАССЧИТАННЫЕ ТЕМПОВЫЕ ЗОНЫ (VDOT = ${currentVDOT}):
+- ${formatZonesForPrompt(paceZones)}
+Используй эти зоны как основу для назначения темпов. Они рассчитаны по формуле Дэниелса-Гилберта на основе данных бегуна.` : `- Easy/Recovery: на 60-90 сек/км медленнее текущего среднего темпа на 5км
 - Tempo: на 10-20 сек/км быстрее среднего темпа последних лёгких тренировок
-- Interval (VO2max): темп 3км-5км или чуть быстрее (ориентируйся на свежие результаты)
-- Long run: как easy, допускается финиш в темповой зоне
+- Interval (VO2max): темп 3км-5км или чуть быстрее
+- Long run: как easy, допускается финиш в темповой зоне`}
 
 ОЦЕНКА РЕАЛИСТИЧНОСТИ ЦЕЛЕЙ (КРИТИЧЕСКИ ВАЖНО):
 - Тренированный бегун улучшается на ~1-3% в месяц при правильной подготовке.
@@ -462,7 +529,7 @@ router.post('/generate-plan', authMiddleware, async (req, res) => {
 - Если цель на время (pb), рассчитай необходимый целевой темп и сравни с текущими возможностями. Если разрыв >10 сек/км — нужно больше времени.`,
         mathRules: `КРИТИЧЕСКИ ВАЖНО — МАТЕМАТИЧЕСКАЯ ТОЧНОСТЬ:\n- Если пишешь темп (мин/км) и время — проверь что дистанция = время / темп. Например: 20 мин в темпе 5:00/км = 4 км, НЕ 9 км.\n- Если пишешь дистанцию и темп — рассчитай ожидаемое время и укажи его.\n- distance_km должна точно соответствовать описанию. Если в описании "5 км легко + 3 км темпом", то distance_km = 8.\n- Всегда перепроверяй: дистанция × темп = время.`,
         jsonOnly: 'ВАЖНО: Ответ должен быть ТОЛЬКО валидным JSON массивом из 7 объектов, без markdown, без пояснений, без текста до или после JSON.',
-        format: (day) => `Формат каждого дня:\n{\n  "day": "${day}",\n  "type": "recovery|easy|long|tempo|interval|fartlek|strength|race|rest",\n  "distance_km": число или 0 для отдыха/силовой,\n  "description": "краткое описание тренировки с ТОЧНЫМИ цифрами (темп, время, дистанция — всё должно быть математически согласовано)",\n  "badge": "🧘|🏃|🏔️|⚡|💨|🎯|💪|🏁|😴"\n}`,
+        format: (day) => `Формат каждого дня:\n{\n  "day": "${day}",\n  "type": "recovery|easy|long|tempo|interval|fartlek|strength|race|rest",\n  "distance_km": число или 0 для отдыха/силовой,\n  "pace": "темп в формате m:ss (например 5:30) или null для отдыха/силовой",\n  "description": "краткое описание тренировки с ТОЧНЫМИ цифрами (темп, время, дистанция — всё должно быть математически согласовано)",\n  "badge": "🧘|🏃|🏔️|⚡|💨|🎯|💪|🏁|😴"\n}`,
         contextLabel: 'Тренировки за последние 4 недели',
         weeklyVolumes: 'Недельные объёмы (последние 4 недели)',
         km: 'км',
@@ -525,11 +592,13 @@ router.post('/generate-plan', authMiddleware, async (req, res) => {
 - Якщо рекорд старий, а свіжі тренування показують темп значно повільніший — бери за основу СВІЖІ дані, не рекорд.
 - Рекорди використовуй як орієнтир потенціалу, але НЕ як поточний рівень.
 
-РОЗРАХУНОК ТЕМПІВ (на основі СВІЖИХ даних і рекордів як орієнтира):
-- Easy/Recovery: на 60-90 сек/км повільніше поточного середнього темпу на 5км
+РОЗРАХУНОК ТЕМПІВ (VDOT-система Деніелса):
+${paceZones ? `РОЗРАХОВАНІ ТЕМПОВІ ЗОНИ (VDOT = ${currentVDOT}):
+- ${formatZonesForPrompt(paceZones)}
+Використовуй ці зони як основу для призначення темпів. Вони розраховані за формулою Деніелса-Гілберта на основі даних бігуна.` : `- Easy/Recovery: на 60-90 сек/км повільніше поточного середнього темпу на 5км
 - Tempo: на 10-20 сек/км швидше середнього темпу останніх легких тренувань
-- Interval (VO2max): темп 3км-5км або трохи швидше (орієнтуйся на свіжі результати)
-- Long run: як easy
+- Interval (VO2max): темп 3км-5км або трохи швидше
+- Long run: як easy`}
 
 ОЦІНКА РЕАЛІСТИЧНОСТІ ЦІЛЕЙ (КРИТИЧНО ВАЖЛИВО):
 - Тренований бігун покращується на ~1-3% на місяць при правильній підготовці.
@@ -540,7 +609,7 @@ router.post('/generate-plan', authMiddleware, async (req, res) => {
 - Безпечний тижневий об'єм: поточний середній + максимум 10-15%. НІКОЛИ не стрибай з 30 км/тиж на 70 км/тиж — це шлях до травми.`,
         mathRules: `КРИТИЧНО ВАЖЛИВО — МАТЕМАТИЧНА ТОЧНІСТЬ:\n- Якщо пишеш темп (хв/км) і час — перевір що дистанція = час / темп. Наприклад: 20 хв у темпі 5:00/км = 4 км, НЕ 9 км.\n- Якщо пишеш дистанцію і темп — розрахуй очікуваний час і вкажи його.\n- distance_km має точно відповідати опису.\n- Завжди перевіряй: дистанція × темп = час.`,
         jsonOnly: 'ВАЖЛИВО: Відповідь має бути ТІЛЬКИ валідним JSON масивом з 7 об\'єктів, без markdown, без пояснень, без тексту до або після JSON.',
-        format: (day) => `Формат кожного дня:\n{\n  "day": "${day}",\n  "type": "recovery|easy|long|tempo|interval|fartlek|strength|race|rest",\n  "distance_km": число або 0 для відпочинку/силової,\n  "description": "короткий опис тренування з ТОЧНИМИ цифрами",\n  "badge": "🧘|🏃|🏔️|⚡|💨|🎯|💪|🏁|😴"\n}`,
+        format: (day) => `Формат кожного дня:\n{\n  "day": "${day}",\n  "type": "recovery|easy|long|tempo|interval|fartlek|strength|race|rest",\n  "distance_km": число або 0 для відпочинку/силової,\n  "pace": "темп у форматі m:ss (наприклад 5:30) або null для відпочинку/силової",\n  "description": "короткий опис тренування з ТОЧНИМИ цифрами",\n  "badge": "🧘|🏃|🏔️|⚡|💨|🎯|💪|🏁|😴"\n}`,
         contextLabel: 'Тренування за останні 4 тижні',
         weeklyVolumes: 'Тижневі об\'єми (останні 4 тижні)',
         km: 'км',
@@ -604,11 +673,13 @@ CURRENT FITNESS ASSESSMENT (CRITICALLY IMPORTANT):
 - NEVER say "you ran X last year so you can easily run Y now". Base everything on recent numbers and facts.
 - Use records as a guide to potential, NOT as current level.
 
-PACE CALCULATION (based on RECENT data and records as reference):
-- Easy/Recovery: 60-90 sec/km slower than current average 5k pace (or recent weeks' average pace)
+PACE CALCULATION (Daniels VDOT system):
+${paceZones ? `CALCULATED PACE ZONES (VDOT = ${currentVDOT}):
+- ${formatZonesForPrompt(paceZones)}
+Use these zones as the basis for assigning paces. They are calculated using the Daniels-Gilbert formula based on the runner's data.` : `- Easy/Recovery: 60-90 sec/km slower than current average 5k pace
 - Tempo: 10-20 sec/km faster than recent easy run average pace
-- Interval (VO2max): 3k-5k pace or slightly faster (based on recent results)
-- Long run: same as easy, finishing in tempo zone allowed
+- Interval (VO2max): 3k-5k pace or slightly faster
+- Long run: same as easy, finishing in tempo zone allowed`}
 
 GOAL REALISM ASSESSMENT (CRITICALLY IMPORTANT):
 - A trained runner improves ~1-3% per month with proper training.
@@ -621,7 +692,7 @@ GOAL REALISM ASSESSMENT (CRITICALLY IMPORTANT):
 - If goal is time-based (pb), calculate required target pace and compare with current ability. If gap >10 sec/km — more time is needed.`,
         mathRules: `CRITICALLY IMPORTANT — MATH ACCURACY:\n- If you write pace (min/km) and time — verify that distance = time / pace. For example: 20 min at 5:00/km = 4 km, NOT 9 km.\n- If you write distance and pace — calculate expected time and include it.\n- distance_km must exactly match the description.\n- Always double-check: distance × pace = time.`,
         jsonOnly: 'IMPORTANT: Response must be ONLY a valid JSON array of 7 objects, no markdown, no explanations, no text before or after JSON.',
-        format: (day) => `Format for each day:\n{\n  "day": "${day}",\n  "type": "recovery|easy|long|tempo|interval|fartlek|strength|race|rest",\n  "distance_km": number or 0 for rest/strength,\n  "description": "brief workout description with EXACT numbers (pace, time, distance — all mathematically consistent)",\n  "badge": "🧘|🏃|🏔️|⚡|💨|🎯|💪|🏁|😴"\n}`,
+        format: (day) => `Format for each day:\n{\n  "day": "${day}",\n  "type": "recovery|easy|long|tempo|interval|fartlek|strength|race|rest",\n  "distance_km": number or 0 for rest/strength,\n  "pace": "pace in m:ss format (e.g. 5:30) or null for rest/strength",\n  "description": "brief workout description with EXACT numbers (pace, time, distance — all mathematically consistent)",\n  "badge": "🧘|🏃|🏔️|⚡|💨|🎯|💪|🏁|😴"\n}`,
         contextLabel: 'Workouts for the last 4 weeks',
         weeklyVolumes: 'Weekly volumes (last 4 weeks)',
         km: 'km',
@@ -682,6 +753,11 @@ ${gp.generate}`;
       } else {
         throw new Error('Failed to parse plan JSON');
       }
+    }
+
+    // Ensure every day has a pace field (extract from description or use zone default)
+    if (paceZones) {
+      plan = ensurePaceField(plan, paceZones);
     }
 
     // Calculate week start (current Monday if today is Mon, otherwise next Monday)
@@ -756,6 +832,107 @@ router.get('/plan', authMiddleware, async (req, res) => {
   }
 });
 
+// GET /api/ai/pace-zones — calculate VDOT and pace zones for user
+router.get('/pace-zones', authMiddleware, async (req, res) => {
+  try {
+    const records = await getUserRecords(req.user.id);
+
+    // Get last 12 weeks of workouts (for estimateVDOT primary window)
+    const twelveWeeksAgo = new Date();
+    twelveWeeksAgo.setDate(twelveWeeksAgo.getDate() - 84);
+    const { data: recentWorkouts } = await supabase
+      .from('workouts')
+      .select('name, distance, moving_time, average_pace, date, type, manual_distance, manual_moving_time, is_suspicious')
+      .eq('user_id', req.user.id)
+      .gte('date', twelveWeeksAgo.toISOString())
+      .order('date', { ascending: false });
+
+    // All workouts for fallback (last quality workout with decay)
+    const { data: allWorkouts } = await supabase
+      .from('workouts')
+      .select('name, distance, moving_time, average_pace, date, type, manual_distance, manual_moving_time, is_suspicious')
+      .eq('user_id', req.user.id)
+      .order('date', { ascending: false });
+
+    // Calculate weeklyKm by active weeks (weeks that had at least 1 workout)
+    const activeWeeks = new Set();
+    for (const w of (recentWorkouts || [])) {
+      if (w.date) {
+        const d = new Date(w.date);
+        // ISO week identifier: year + week number
+        const jan1 = new Date(d.getFullYear(), 0, 1);
+        const weekNum = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+        activeWeeks.add(`${d.getFullYear()}-W${weekNum}`);
+      }
+    }
+    const totalKm12w = (recentWorkouts || []).reduce((s, w) => s + effectiveDistance(w) / 1000, 0);
+    const weeklyKm = activeWeeks.size > 0 ? totalKm12w / activeWeeks.size : 0;
+
+    // VDOT from records (for breakdown display)
+    const distanceMap = { '1km': 1000, '3km': 3000, '5km': 5000, '10km': 10000, '21km': 21097, '42km': 42195 };
+    const recordsBreakdown = (records || [])
+      .filter(r => distanceMap[r.distance_type] && r.time_seconds)
+      .map(r => {
+        const vdot = calculateVDOT(r.time_seconds, distanceMap[r.distance_type]);
+        return {
+          distance: r.distance_type,
+          time_seconds: r.time_seconds,
+          date: r.record_date,
+          vdot
+        };
+      })
+      .filter(r => r.vdot);
+
+    // Main VDOT estimation
+    const estimate = estimateVDOT(recentWorkouts, allWorkouts);
+    const currentVDOT = estimate.vdot;
+
+    // Source label for UI
+    let vdotSource = null;
+    if (estimate.source === 'recent') vdotSource = 'workouts';
+    else if (estimate.source === 'decay') vdotSource = 'decay';
+
+    if (!currentVDOT) {
+      return res.json({ vdot: null, zones: null, level: getRunnerLevel(weeklyKm) });
+    }
+
+    const zones = calculatePaceZones(currentVDOT);
+    const level = getRunnerLevel(weeklyKm);
+    const paceStats = getRecentPaceStats(recentWorkouts);
+
+    const fmt = (sec) => {
+      if (!sec) return null;
+      const m = Math.floor(sec / 60);
+      const s = Math.round(sec % 60);
+      return `${m}:${s.toString().padStart(2, '0')}`;
+    };
+
+    res.json({
+      vdot: currentVDOT,
+      level,
+      zones: {
+        easy:       { from: fmt(zones.easyMin), to: fmt(zones.easyMax) },
+        marathon:   { from: fmt(zones.easyMax), to: fmt(zones.marathon) },
+        threshold:  { from: fmt(zones.marathon), to: fmt(zones.threshold) },
+        interval:   { from: fmt(zones.threshold), to: fmt(zones.interval) },
+        repetition: { from: fmt(zones.interval),  to: fmt(zones.repetition) }
+      },
+      details: {
+        source: vdotSource,
+        weeklyKm: Math.round(weeklyKm * 10) / 10,
+        workoutsCount: (recentWorkouts || []).length,
+        avgPace: fmt(paceStats.avgPace),
+        bestPace: fmt(paceStats.bestPace),
+        recordsBreakdown,
+        sourceWorkout: estimate.sourceWorkout || null
+      }
+    });
+  } catch (err) {
+    console.error('Pace zones error:', err.message);
+    res.status(500).json({ error: 'Failed to calculate pace zones' });
+  }
+});
+
 // POST /api/ai/weekly-analysis — AI analysis of current week
 router.post('/weekly-analysis', authMiddleware, async (req, res) => {
   try {
@@ -770,7 +947,7 @@ router.post('/weekly-analysis', authMiddleware, async (req, res) => {
 
     const { data: weekData } = await supabase
       .from('workouts')
-      .select('name, distance, moving_time, average_pace, average_heartrate, date, type, manual_distance, manual_moving_time')
+      .select('name, distance, moving_time, average_pace, average_heartrate, date, type, manual_distance, manual_moving_time, is_suspicious')
       .eq('user_id', req.user.id)
       .gte('date', monday.toISOString())
       .order('date', { ascending: false });

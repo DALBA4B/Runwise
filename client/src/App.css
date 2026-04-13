@@ -942,10 +942,27 @@ input[type="number"] {
   margin-bottom: var(--spacing-sm);
 }
 
-.plan-day-distance {
-  font-size: 16px;
-  font-weight: 600;
+.plan-day-stats {
+  display: flex;
+  gap: var(--spacing-lg);
   margin-bottom: var(--spacing-sm);
+}
+
+.plan-day-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.plan-day-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.plan-day-stat-label {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-weight: 400;
 }
 
 .plan-day-description {
@@ -2253,6 +2270,109 @@ input[type="number"] {
 .settings-item-status {
   font-size: 12px;
   color: var(--color-success);
+}
+
+/* Pace Zones Section — compact summary */
+
+.pace-zones-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.pace-zones-summary-item {
+  flex: 1;
+  min-width: 70px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 4px;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.pace-zones-summary-label {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  margin-bottom: 2px;
+}
+
+.pace-zones-summary-value {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.pace-zones-summary-value.accent {
+  color: var(--color-accent);
+}
+
+/* Pace Zones Modal — detailed view */
+
+.pace-zones-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: var(--spacing-md);
+}
+
+.pace-zone-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.pace-zone-indicator {
+  width: 4px;
+  height: 24px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.pace-zone-label {
+  font-size: 14px;
+  font-weight: 600;
+  flex: 1;
+}
+
+.pace-zone-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.pace-zones-details {
+  margin-top: var(--spacing-md);
+}
+
+.pace-zones-details h4 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+  color: var(--color-text-secondary);
+}
+
+.pace-zones-detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 13px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.pace-zones-detail-row .detail-value {
+  font-weight: 600;
+}
+
+.pace-zones-detail-row .detail-date {
+  font-size: 11px;
+  color: var(--color-text-secondary);
 }
 
 .profile-footer {

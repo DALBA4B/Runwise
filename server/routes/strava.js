@@ -94,16 +94,19 @@ async function getValidToken(user) {
   return access_token;
 }
 
-// Helper: classify workout type based on pace and distance
+// Helper: classify workout type based on Strava workout_type, pace and distance
+// Strava workout_type: 0=Default, 1=Race, 2=Long Run, 3=Workout(intervals)
 function classifyWorkout(activity) {
   const paceSecPerKm = activity.moving_time / (activity.distance / 1000);
   const distanceKm = activity.distance / 1000;
+  const nameLower = (activity.name || '').toLowerCase();
 
-  if (distanceKm >= 15) return 'long';
-  if (activity.workout_type === 3 || (activity.name && activity.name.toLowerCase().includes('interval'))) return 'interval';
-  if (paceSecPerKm < 300) return 'tempo';
-  if (paceSecPerKm >= 360) return 'easy';
-  return 'other';
+  if (activity.workout_type === 1) return 'race';
+  if (activity.workout_type === 2 || distanceKm >= 15) return 'long';
+  if (activity.workout_type === 3 || nameLower.includes('interval') || nameLower.includes('интервал')) return 'interval';
+  if (nameLower.includes('tempo') || nameLower.includes('темп') || nameLower.includes('threshold') || nameLower.includes('пороговый')) return 'tempo';
+  if (paceSecPerKm < 300) return 'tempo';   // быстрее 5:00/км
+  return 'easy';                              // всё остальное — easy
 }
 
 // Helper: parse Strava activity to our format

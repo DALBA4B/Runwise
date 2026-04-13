@@ -352,5 +352,29 @@
     "deadlineOptional": "Дедлайн (необов'язково)",
     "distanceLabel": "Дистанція",
     "dateOptional": "Дата (необов'язково)"
+  },
+  "paceZones": {
+    "title": "Темпові зони",
+    "beginner": "Новачок",
+    "intermediate": "Середній",
+    "advanced": "Просунутий",
+    "levelLabel": "Рівень",
+    "details": "Детальніше",
+    "easy": "Легкий",
+    "marathon": "Марафон",
+    "threshold": "Пороговий",
+    "interval": "Інтервал",
+    "repetition": "Повтори",
+    "calculationTitle": "Як розраховано",
+    "source": "Джерело даних",
+    "fromRecords": "Особисті рекорди",
+    "fromWorkouts": "Тренування (12 тиж.)",
+    "fromDecay": "Старе тренування (з поправкою)",
+    "weeklyVolume": "Об'єм на тиждень",
+    "week": "тиж",
+    "workoutsAnalyzed": "Тренувань за 4 тиж.",
+    "avgPace": "Середній темп",
+    "bestPace": "Кращий темп",
+    "recordsVdot": "VDOT за рекордами"
   }
 }

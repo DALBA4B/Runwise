@@ -352,5 +352,29 @@
     "deadlineOptional": "Deadline (optional)",
     "distanceLabel": "Distance",
     "dateOptional": "Date (optional)"
+  },
+  "paceZones": {
+    "title": "Pace Zones",
+    "beginner": "Beginner",
+    "intermediate": "Intermediate",
+    "advanced": "Advanced",
+    "levelLabel": "Level",
+    "details": "Details",
+    "easy": "Easy",
+    "marathon": "Marathon",
+    "threshold": "Threshold",
+    "interval": "Interval",
+    "repetition": "Repetition",
+    "calculationTitle": "How it's calculated",
+    "source": "Data source",
+    "fromRecords": "Personal records",
+    "fromWorkouts": "Workouts (12 weeks)",
+    "fromDecay": "Older workout (time-adjusted)",
+    "weeklyVolume": "Weekly volume",
+    "week": "wk",
+    "workoutsAnalyzed": "Workouts (4 weeks)",
+    "avgPace": "Average pace",
+    "bestPace": "Best pace",
+    "recordsVdot": "VDOT by records"
   }
 }

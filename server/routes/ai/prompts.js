@@ -415,8 +415,78 @@ function formatWeeklyVolumeBlock({ weeks, avg }, lang = 'ru') {
   return `${l.title}:\n${l.volumes}: ${weeks.join(', ')} ${l.km}\n${l.avg}: ${avg} ${l.km}, ${l.last}: ${lastWeek} ${l.km}${l.lowNote}\n\n${l.rule}`;
 }
 
+// Helper: format pace zones block for chat system prompt
+function formatPaceZonesBlock(paceZonesData, lang = 'ru') {
+  if (!paceZonesData || !paceZonesData.zones) return '';
+
+  const { vdot, source, zones } = paceZonesData;
+
+  const fmt = (sec) => {
+    if (!sec) return '—';
+    const m = Math.floor(sec / 60);
+    const s = Math.round(sec % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const sourceLabels = {
+    ru: { workouts: 'лучшая quality-тренировка за 12 недель', decay: 'старая quality-тренировка (с поправкой на время)', records: 'личные рекорды' },
+    uk: { workouts: 'найкраще quality-тренування за 12 тижнів', decay: 'старе quality-тренування (з поправкою на час)', records: 'особисті рекорди' },
+    en: { workouts: 'best quality workout (last 12 weeks)', decay: 'older quality workout (time-adjusted)', records: 'personal records' }
+  };
+  const sourceLabel = {
+    ru: (sourceLabels.ru[source] || sourceLabels.ru.workouts),
+    uk: (sourceLabels.uk[source] || sourceLabels.uk.workouts),
+    en: (sourceLabels.en[source] || sourceLabels.en.workouts)
+  };
+
+  const labels = {
+    ru: {
+      title: `ТЕМПОВЫЕ ЗОНЫ ПОЛЬЗОВАТЕЛЯ (VDOT = ${vdot})`,
+      source: `Источник расчёта: ${sourceLabel.ru}`,
+      easy: 'Лёгкий (Easy)',
+      marathon: 'Марафон',
+      threshold: 'Пороговый (Threshold)',
+      interval: 'Интервал',
+      repetition: 'Повторы (Repetition)',
+      note: 'Используй эти зоны при рекомендациях по темпу. Если пользователь спросит о своих зонах — расскажи их. При изменении плана — назначай темпы из этих зон.'
+    },
+    uk: {
+      title: `ТЕМПОВІ ЗОНИ КОРИСТУВАЧА (VDOT = ${vdot})`,
+      source: `Джерело розрахунку: ${sourceLabel.uk}`,
+      easy: 'Легкий (Easy)',
+      marathon: 'Марафон',
+      threshold: 'Пороговий (Threshold)',
+      interval: 'Інтервал',
+      repetition: 'Повтори (Repetition)',
+      note: 'Використовуй ці зони при рекомендаціях щодо темпу. Якщо користувач запитає про свої зони — розкажи їх. При зміні плану — призначай темпи з цих зон.'
+    },
+    en: {
+      title: `USER PACE ZONES (VDOT = ${vdot})`,
+      source: `Calculation source: ${sourceLabel.en}`,
+      easy: 'Easy',
+      marathon: 'Marathon',
+      threshold: 'Threshold',
+      interval: 'Interval',
+      repetition: 'Repetition',
+      note: 'Use these zones when recommending paces. If the user asks about their zones — tell them. When modifying the plan — assign paces from these zones.'
+    }
+  };
+
+  const l = labels[lang] || labels.ru;
+  const z = zones;
+
+  return `${l.title}
+${l.source}
+- ${l.easy}: ${fmt(z.easyMin)} – ${fmt(z.easyMax)} /км
+- ${l.marathon}: ${fmt(z.easyMax)} – ${fmt(z.marathon)} /км
+- ${l.threshold}: ${fmt(z.marathon)} – ${fmt(z.threshold)} /км
+- ${l.interval}: ${fmt(z.threshold)} – ${fmt(z.interval)} /км
+- ${l.repetition}: ${fmt(z.interval)} – ${fmt(z.repetition)} /км
+${l.note}`;
+}
+
 // Helper: build chat system prompt
-function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, records, lang = 'ru', aiPrefs = null, weeklyVolumes = null, predictions = null) {
+function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, records, lang = 'ru', aiPrefs = null, weeklyVolumes = null, predictions = null, paceZonesData = null) {
   const today = new Date();
   const dayNamesMap = {
     ru: ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'],
@@ -460,7 +530,7 @@ function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, 
 - Race: не чаще 1 раза в 2-3 недели, перед ним rest/recovery, после — recovery.
 - Минимум 1 rest в неделю.
 - Личные рекорды — ИСТОРИЧЕСКИЕ данные, НЕ текущая форма. Текущий уровень определяй по свежим тренировкам (2-4 недели). Не говори "ты бежал X в прошлом году, значит сейчас легко побьёшь Y".
-- Темпы: easy на 60-90 сек/км медленнее текущего среднего, tempo на 10-20 сек/км быстрее easy, interval ≈ темп 3-5км.
+- Темпы: назначай из рассчитанных темповых зон пользователя (VDOT). Если зон нет — easy на 60-90 сек/км медленнее текущего среднего, tempo на 10-20 сек/км быстрее easy, interval ≈ темп 3-5км.
 - ЦЕЛЬ — ЭТО МАЯК, направление движения, а НЕ задание на эту неделю. Цель влияет на ТИП тренировок (скоростные для PB, объёмные для дистанционных целей), но НЕ на потолок объёма или интенсивности. Каждая неделя должна делать бегуна чуть сильнее: немного больше объём, немного быстрее темп. НЕ пытайся приблизить к цели за одну неделю.
 - ОЦЕНКА ЦЕЛЕЙ: бегун улучшается ~1-3%/мес (новичок ~3-5%). Если цель требует >5% улучшения за оставшееся время — предупреди пользователя и предложи реалистичную промежуточную цель. НЕ строй опасный план ради невозможной цели. Безопасный объём: текущий + max 10-15%.`,
       rules: `ПРАВИЛА:\n- Изменяй план ТОЛЬКО если пользователь явно просит это сделать или соглашается на твоё предложение.\n- При изменении плана СНАЧАЛА поставь блок PLAN_UPDATE с JSON, а ПОСЛЕ него напиши объяснение что и почему ты изменил.\n- Если пользователь просто спрашивает о плане — расскажи СВОИМИ СЛОВАМИ кратко: какой общий объём, что за ключевые тренировки, сколько дней отдыха. НЕ копируй план таблицей или списком.\n- Если пользователь говорит что ему тяжело — посочувствуй, предложи изменения и спроси подтверждение.\n- Математическая точность: дистанция × темп = время. Всегда проверяй цифры.\n- НЕ выдумывай даты — если не уверен в дате, не упоминай её.\n- ССЫЛКИ НА ТРЕНИРОВКИ: когда упоминаешь КОНКРЕТНУЮ тренировку (у которой есть id из данных инструментов), оформляй её как ссылку в формате [Название Xкм](workout:ID). Пример: [Темповая 12.3км](workout:abc-123-def). Используй ТОЛЬКО для конкретных тренировок с известным id. НЕ используй для общих упоминаний типа "твои длительные" или "последние тренировки".`,
@@ -498,7 +568,7 @@ function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, 
 - Race: не частіше 1 разу на 2-3 тижні, перед ним rest/recovery, після — recovery.
 - Мінімум 1 rest на тиждень.
 - Особисті рекорди — ІСТОРИЧНІ дані, НЕ поточна форма. Поточний рівень визначай за свіжими тренуваннями (2-4 тижні). Не кажи "ти біг X минулого року, значить зараз легко побіжиш Y".
-- Темпи: easy на 60-90 сек/км повільніше поточного середнього, tempo на 10-20 сек/км швидше easy, interval ≈ темп 3-5км.
+- Темпи: призначай з розрахованих темпових зон користувача (VDOT). Якщо зон немає — easy на 60-90 сек/км повільніше поточного середнього, tempo на 10-20 сек/км швидше easy, interval ≈ темп 3-5км.
 - ЦІЛЬ — ЦЕ МАЯК, напрямок руху, а НЕ завдання на цей тиждень. Ціль впливає на ТИП тренувань (швидкісні для PB, об'ємні для дистанційних цілей), але НЕ на стелю об'єму чи інтенсивності. Кожен тиждень має робити бігуна трохи сильнішим: трохи більше об'єм, трохи швидший темп. НЕ намагайся наблизити до цілі за один тиждень.
 - ОЦІНКА ЦІЛЕЙ: бігун покращується ~1-3%/міс (новачок ~3-5%). Якщо ціль потребує >5% покращення за час що залишився — попередь користувача і запропонуй реалістичну проміжну ціль. НЕ будуй небезпечний план заради неможливої цілі. Безпечний об'єм: поточний + max 10-15%.`,
       rules: `ПРАВИЛА:\n- Змінюй план ТІЛЬКИ якщо користувач явно просить це зробити або погоджується на твою пропозицію.\n- При зміні плану СПОЧАТКУ постав блок PLAN_UPDATE з JSON, а ПІСЛЯ нього напиши пояснення що і чому ти змінив.\n- Якщо користувач просто запитує про план — розкажи СВОЇМИ СЛОВАМИ коротко: який загальний об'єм, що за ключові тренування, скільки днів відпочинку. НЕ копіюй план таблицею чи списком.\n- Якщо користувач каже що йому важко — поспівчувай, запропонуй зміни і запитай підтвердження.\n- Математична точність: дистанція × темп = час. Завжди перевіряй цифри.\n- НЕ вигадуй дати — якщо не впевнений у даті, не згадуй її.\n- ПОСИЛАННЯ НА ТРЕНУВАННЯ: коли згадуєш КОНКРЕТНЕ тренування (у якого є id з даних інструментів), оформлюй його як посилання у форматі [Назва Xкм](workout:ID). Приклад: [Темпова 12.3км](workout:abc-123-def). Використовуй ТІЛЬКИ для конкретних тренувань з відомим id. НЕ використовуй для загальних згадок типу "твої довгі" або "останні тренування".`,
@@ -536,7 +606,7 @@ function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, 
 - Race: no more than once every 2-3 weeks, rest/recovery before, recovery after.
 - Minimum 1 rest day per week.
 - Personal records are HISTORICAL data, NOT current fitness. Assess current level from recent workouts (2-4 weeks). Never say "you ran X last year so you can easily run Y now".
-- Paces: easy 60-90 sec/km slower than current average, tempo 10-20 sec/km faster than easy, interval ≈ 3-5k pace.
+- Paces: assign from user's calculated pace zones (VDOT). If zones unavailable — easy 60-90 sec/km slower than current average, tempo 10-20 sec/km faster than easy, interval ≈ 3-5k pace.
 - The GOAL is a BEACON, a direction of movement, NOT a task for this week. The goal influences the TYPE of workouts (speed work for PB goals, volume work for distance goals), but NOT the ceiling of volume or intensity. Each week should make the runner slightly stronger: a bit more volume, a bit faster tempo. Do NOT try to bring the runner closer to the goal in one week.
 - GOAL ASSESSMENT: runner improves ~1-3%/month (beginner ~3-5%). If goal requires >5% improvement in remaining time — warn user and suggest a realistic intermediate goal. Do NOT build a dangerous plan for an impossible goal. Safe volume: current + max 10-15%.`,
       rules: `RULES:\n- Only modify the plan if the user explicitly asks or agrees to your suggestion.\n- When modifying the plan, put the PLAN_UPDATE block with JSON FIRST, then write your explanation of what and why you changed.\n- If the user just asks about the plan — summarize IN YOUR OWN WORDS: total volume, key workouts, rest days. Do NOT copy the plan as a table or list.\n- If the user says it's hard — empathize, suggest changes and ask for confirmation.\n- Math accuracy: distance × pace = time. Always verify numbers.\n- Do NOT make up dates — if unsure about a date, don't mention it.\n- WORKOUT LINKS: when mentioning a SPECIFIC workout (that has an id from tool data), format it as a link: [Name Xkm](workout:ID). Example: [Tempo 12.3km](workout:abc-123-def). Use ONLY for specific workouts with a known id. Do NOT use for general mentions like "your long runs" or "recent workouts".`,
@@ -578,7 +648,7 @@ ${predictions && predictions.length > 0 ? formatPredictionsForAI(predictions, la
 ${formatRecordsForAI(records || [], lang)}
 ${p2.recordsNote}
 
-${formatPlanBrief(currentPlan, lang)}
+${paceZonesData ? formatPaceZonesBlock(paceZonesData, lang) + '\n' : ''}${formatPlanBrief(currentPlan, lang)}
 
 ${weeklyVolumes ? formatWeeklyVolumeBlock(weeklyVolumes, lang) : ''}
 
