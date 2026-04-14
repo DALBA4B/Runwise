@@ -8,6 +8,20 @@ interface ZoneRange {
   to: string;
 }
 
+interface SourceWorkout {
+  id?: string;
+  name: string;
+  date: string;
+  vdot?: number;
+  distance?: number;
+  movingTime?: number;
+  type?: string;
+  // decay fields
+  originalVdot?: number;
+  decayedVdot?: number;
+  ageDays?: number;
+}
+
 interface PaceZonesData {
   vdot: number | null;
   level: string;
@@ -30,10 +44,16 @@ interface PaceZonesData {
       date: string | null;
       vdot: number;
     }>;
+    sourceWorkout: SourceWorkout | null;
+    otherGoodWorkouts: SourceWorkout[];
   };
 }
 
-const PaceZonesSection: React.FC = () => {
+interface PaceZonesProps {
+  onWorkoutClick?: (id: string) => void;
+}
+
+const PaceZonesSection: React.FC<PaceZonesProps> = ({ onWorkoutClick }) => {
   const { t } = useTranslation();
   const [data, setData] = useState<PaceZonesData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -87,6 +107,17 @@ const PaceZonesSection: React.FC = () => {
       : `${m}:${s.toString().padStart(2, '0')}`;
   };
 
+  const formatDistance = (meters: number) => {
+    if (meters >= 1000) {
+      const km = meters / 1000;
+      return km % 1 === 0 ? `${km} км` : `${km.toFixed(1)} км`;
+    }
+    return `${meters} м`;
+  };
+
+  const sw = data.details?.sourceWorkout;
+  const isDecay = data.details?.source === 'decay';
+
   return (
     <div className="profile-section">
       <h3 className="section-title">{t('paceZones.title')}</h3>
@@ -121,7 +152,7 @@ const PaceZonesSection: React.FC = () => {
           <div className={`modal-content${modalClosing ? ' modal-content-closing' : ''}`} onClick={e => e.stopPropagation()}>
             <h3>{t('paceZones.title')} — VDOT {data.vdot}</h3>
 
-            {/* All zones as continuous ranges */}
+            {/* All zones */}
             <div className="pace-zones-list">
               {zones.map(z => (
                 <div key={z.key} className="pace-zone-row">
@@ -132,59 +163,115 @@ const PaceZonesSection: React.FC = () => {
               ))}
             </div>
 
-            {/* Calculation details */}
+            {/* Source workout info */}
+            {sw && (
+              <div className="pace-zones-details">
+                <h4>{t('paceZones.sourceWorkoutTitle')}</h4>
+
+                <div className="pace-zones-source-card">
+                  {sw.id && onWorkoutClick ? (
+                    <button className="workout-link-chip" onClick={() => { closeModal(); onWorkoutClick(sw.id!); }}>
+                      <span className="workout-link-icon">{'\u{1F3C3}'}</span>
+                      <span className="workout-link-text">{sw.name || '—'}</span>
+                      <span className="workout-link-arrow">{'\u203A'}</span>
+                    </button>
+                  ) : (
+                    <div className="pace-zones-source-name">{sw.name || '—'}</div>
+                  )}
+                  {sw.date && <div className="pace-zones-source-date">{new Date(sw.date).toLocaleDateString()}</div>}
+
+                  <div className="pace-zones-source-stats">
+                    {sw.distance && (
+                      <div className="pace-zones-detail-row">
+                        <span>{t('paceZones.workoutDistance')}</span>
+                        <span className="detail-value">{formatDistance(sw.distance)}</span>
+                      </div>
+                    )}
+                    {sw.movingTime && (
+                      <div className="pace-zones-detail-row">
+                        <span>{t('paceZones.workoutTime')}</span>
+                        <span className="detail-value">{formatTime(sw.movingTime)}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Status badge */}
+                  <div className={`pace-zones-source-badge ${isDecay ? 'badge-decay' : 'badge-recent'}`}>
+                    {isDecay ? t('paceZones.sourceDecay') : t('paceZones.sourceRecent')}
+                  </div>
+
+                  {/* Decay details */}
+                  {isDecay && sw.originalVdot && sw.decayedVdot && sw.ageDays && (
+                    <div className="pace-zones-decay-info">
+                      {t('paceZones.decayInfo', { days: sw.ageDays, original: sw.originalVdot, current: sw.decayedVdot })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Other good workouts */}
+            {data.details?.otherGoodWorkouts?.length > 0 && (
+              <div className="pace-zones-details">
+                <h4>{t('paceZones.otherGoodWorkouts')}</h4>
+                {data.details.otherGoodWorkouts.map((w, i) => (
+                  <div key={i} className="pace-zones-other-workout">
+                    <div className="pace-zones-other-workout-header">
+                      {w.id && onWorkoutClick ? (
+                        <button className="workout-link-chip" onClick={() => { closeModal(); onWorkoutClick(w.id!); }}>
+                          <span className="workout-link-icon">{'\u{1F3C3}'}</span>
+                          <span className="workout-link-text">{w.name || '—'}</span>
+                          <span className="workout-link-arrow">{'\u203A'}</span>
+                        </button>
+                      ) : (
+                        <span className="pace-zones-other-workout-name">{w.name || '—'}</span>
+                      )}
+                      <span className="pace-zones-other-workout-vdot">VDOT {w.vdot}</span>
+                    </div>
+                    <div className="pace-zones-other-workout-meta">
+                      {w.distance && <span>{formatDistance(w.distance)}</span>}
+                      {w.movingTime && <span> · {formatTime(w.movingTime)}</span>}
+                      {w.date && <span> · {new Date(w.date).toLocaleDateString()}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Stats */}
             {data.details && (
               <div className="pace-zones-details">
-                <h4>{t('paceZones.calculationTitle')}</h4>
-
-                <div className="pace-zones-detail-row">
-                  <span>{t('paceZones.source')}</span>
-                  <span className="detail-value">
-                    {data.details.source === 'records' ? t('paceZones.fromRecords') : data.details.source === 'decay' ? t('paceZones.fromDecay') : t('paceZones.fromWorkouts')}
-                  </span>
-                </div>
-
                 <div className="pace-zones-detail-row">
                   <span>{t('paceZones.weeklyVolume')}</span>
                   <span className="detail-value">{data.details.weeklyKm} {t('units.km')}/{t('paceZones.week')}</span>
                 </div>
-
                 <div className="pace-zones-detail-row">
                   <span>{t('paceZones.workoutsAnalyzed')}</span>
                   <span className="detail-value">{data.details.workoutsCount}</span>
                 </div>
-
-                {data.details.avgPace && (
-                  <div className="pace-zones-detail-row">
-                    <span>{t('paceZones.avgPace')}</span>
-                    <span className="detail-value">{data.details.avgPace} /{t('units.km')}</span>
-                  </div>
-                )}
-
-                {data.details.bestPace && (
-                  <div className="pace-zones-detail-row">
-                    <span>{t('paceZones.bestPace')}</span>
-                    <span className="detail-value">{data.details.bestPace} /{t('units.km')}</span>
-                  </div>
-                )}
-
-                {/* Per-record VDOT breakdown */}
-                {data.details.recordsBreakdown.length > 0 && (
-                  <>
-                    <h4>{t('paceZones.recordsVdot')}</h4>
-                    {data.details.recordsBreakdown.map((r, i) => (
-                      <div key={i} className="pace-zones-detail-row">
-                        <span>
-                          {r.distance} — {formatTime(r.time_seconds)}
-                          {r.date && <span className="detail-date"> ({r.date})</span>}
-                        </span>
-                        <span className="detail-value">VDOT {r.vdot}</span>
-                      </div>
-                    ))}
-                  </>
-                )}
               </div>
             )}
+
+            {/* Per-record VDOT breakdown */}
+            {data.details?.recordsBreakdown.length > 0 && (
+              <div className="pace-zones-details">
+                <h4>{t('paceZones.recordsVdot')}</h4>
+                {data.details.recordsBreakdown.map((r, i) => (
+                  <div key={i} className="pace-zones-detail-row">
+                    <span>
+                      {r.distance} — {formatTime(r.time_seconds)}
+                      {r.date && <span className="detail-date"> ({r.date})</span>}
+                    </span>
+                    <span className="detail-value">VDOT {r.vdot}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Formula explanation */}
+            <div className="pace-zones-formula">
+              {t('paceZones.formulaExplanation')}
+            </div>
 
             <button className="btn btn-full" onClick={closeModal} style={{ marginTop: 16 }}>
               {t('common.done')}

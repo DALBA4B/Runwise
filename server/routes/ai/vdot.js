@@ -123,19 +123,44 @@ function estimateVDOT(recentWorkouts, allWorkouts) {
 
   const recentVdots = recentQuality
     .map(w => ({
+      id: w.id,
       vdot: calculateVDOT(effectiveMovingTime(w), effectiveDistance(w)),
+      distance: effectiveDistance(w),
+      movingTime: effectiveMovingTime(w),
       date: w.date,
-      name: w.name
+      name: w.name,
+      type: w.type
     }))
     .filter(v => v.vdot !== null)
     .sort((a, b) => b.vdot - a.vdot); // лучший первый
 
   if (recentVdots.length > 0) {
     const best = recentVdots[0];
+
+    // Other good workouts (besides the best) — up to 5
+    const otherGood = recentVdots.slice(1, 6).map(w => ({
+      id: w.id,
+      name: w.name,
+      date: w.date,
+      vdot: Math.round(w.vdot * 10) / 10,
+      distance: Math.round(w.distance),
+      movingTime: w.movingTime,
+      type: w.type
+    }));
+
     return {
       vdot: Math.round(best.vdot * 10) / 10,
       source: 'recent',
-      sourceWorkout: { name: best.name, date: best.date, vdot: Math.round(best.vdot * 10) / 10 }
+      sourceWorkout: {
+        id: best.id,
+        name: best.name,
+        date: best.date,
+        vdot: Math.round(best.vdot * 10) / 10,
+        distance: Math.round(best.distance),
+        movingTime: best.movingTime,
+        type: best.type
+      },
+      otherGoodWorkouts: otherGood
     };
   }
 
@@ -156,9 +181,13 @@ function estimateVDOT(recentWorkouts, allWorkouts) {
 
   const allVdots = allQuality
     .map(w => ({
+      id: w.id,
       vdot: calculateVDOT(effectiveMovingTime(w), effectiveDistance(w)),
+      distance: effectiveDistance(w),
+      movingTime: effectiveMovingTime(w),
       date: w.date,
-      name: w.name
+      name: w.name,
+      type: w.type
     }))
     .filter(v => v.vdot !== null)
     .sort((a, b) => b.vdot - a.vdot); // лучший первый
@@ -180,11 +209,15 @@ function estimateVDOT(recentWorkouts, allWorkouts) {
     vdot: decayedVdot,
     source: 'decay',
     sourceWorkout: {
+      id: best.id,
       name: best.name,
       date: best.date,
       originalVdot: Math.round(best.vdot * 10) / 10,
       decayedVdot,
-      ageDays: Math.round(ageDays)
+      ageDays: Math.round(ageDays),
+      distance: Math.round(best.distance),
+      movingTime: best.movingTime,
+      type: best.type
     }
   };
 }

@@ -842,7 +842,7 @@ router.get('/pace-zones', authMiddleware, async (req, res) => {
     twelveWeeksAgo.setDate(twelveWeeksAgo.getDate() - 84);
     const { data: recentWorkouts } = await supabase
       .from('workouts')
-      .select('name, distance, moving_time, average_pace, date, type, manual_distance, manual_moving_time, is_suspicious')
+      .select('id, name, distance, moving_time, average_pace, date, type, manual_distance, manual_moving_time, is_suspicious')
       .eq('user_id', req.user.id)
       .gte('date', twelveWeeksAgo.toISOString())
       .order('date', { ascending: false });
@@ -850,7 +850,7 @@ router.get('/pace-zones', authMiddleware, async (req, res) => {
     // All workouts for fallback (last quality workout with decay)
     const { data: allWorkouts } = await supabase
       .from('workouts')
-      .select('name, distance, moving_time, average_pace, date, type, manual_distance, manual_moving_time, is_suspicious')
+      .select('id, name, distance, moving_time, average_pace, date, type, manual_distance, manual_moving_time, is_suspicious')
       .eq('user_id', req.user.id)
       .order('date', { ascending: false });
 
@@ -924,7 +924,8 @@ router.get('/pace-zones', authMiddleware, async (req, res) => {
         avgPace: fmt(paceStats.avgPace),
         bestPace: fmt(paceStats.bestPace),
         recordsBreakdown,
-        sourceWorkout: estimate.sourceWorkout || null
+        sourceWorkout: estimate.sourceWorkout || null,
+        otherGoodWorkouts: estimate.otherGoodWorkouts || []
       }
     });
   } catch (err) {

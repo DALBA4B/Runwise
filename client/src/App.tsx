@@ -143,7 +143,7 @@ const App: React.FC = () => {
           <AIChat onWorkoutClick={handleWorkoutClick} isActive={currentScreen === 'ai'} />
         </div>
         <div style={{ display: currentScreen === 'profile' ? 'block' : 'none', width: '100%', maxWidth: 420 }}>
-          <Profile onLogout={logout} isActive={currentScreen === 'profile'} />
+          <Profile onLogout={logout} onWorkoutClick={handleWorkoutClick} isActive={currentScreen === 'profile'} />
         </div>
         {currentScreen === 'workout-detail' && selectedWorkoutId && (
           <WorkoutDetail workoutId={selectedWorkoutId} onBack={handleBackFromDetail} />

@@ -28,6 +28,7 @@ interface Goal {
 
 interface ProfileProps {
   onLogout: () => void;
+  onWorkoutClick?: (id: string) => void;
   isActive?: boolean;
 }
 
@@ -38,7 +39,7 @@ function writeCache(key: string, data: any) {
   try { localStorage.setItem(key, JSON.stringify(data)); } catch {}
 }
 
-const Profile: React.FC<ProfileProps> = ({ onLogout, isActive }) => {
+const Profile: React.FC<ProfileProps> = ({ onLogout, onWorkoutClick, isActive }) => {
   const { t } = useTranslation();
   const cached = readCache<{ stats: any; goals: Goal[]; predictions: any[]; syncStatus: any; profile: any; records: PersonalRecord[] }>('rw_profile_cache');
   const [allTimeStats, setAllTimeStats] = useState<any>(cached?.stats || null);
@@ -340,7 +341,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout, isActive }) => {
         </button>
       </div>
 
-      <PaceZonesSection />
+      <PaceZonesSection onWorkoutClick={onWorkoutClick} />
 
       <RecordsSection records={records} setRecords={setRecords} />
 

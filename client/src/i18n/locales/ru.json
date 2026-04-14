@@ -366,15 +366,18 @@
     "interval": "Интервал",
     "repetition": "Повторы",
     "calculationTitle": "Как рассчитано",
-    "source": "Источник данных",
-    "fromRecords": "Личные рекорды",
-    "fromWorkouts": "Тренировки (12 нед.)",
-    "fromDecay": "Старая тренировка (с поправкой)",
+    "sourceWorkoutTitle": "Тренировка-источник",
+    "sourceRecent": "Лучший результат за 12 недель",
+    "sourceDecay": "Результат снижен из-за перерыва",
+    "decayInfo": "Прошло {{days}} дн. без интенсива. Исходный VDOT {{original}} → {{current}}",
+    "workoutDistance": "Дистанция",
+    "workoutTime": "Время",
+    "workoutType": "Тип",
+    "formulaExplanation": "VDOT рассчитан по формуле Дэниелса-Гилберта: дистанция и время тренировки переводятся в показатель VO₂max, из которого определяются темповые зоны.",
     "weeklyVolume": "Объём в неделю",
     "week": "нед",
-    "workoutsAnalyzed": "Тренировок за 4 нед.",
-    "avgPace": "Средний темп",
-    "bestPace": "Лучший темп",
-    "recordsVdot": "VDOT по рекордам"
+    "workoutsAnalyzed": "Тренировок (12 нед.)",
+    "recordsVdot": "VDOT по рекордам",
+    "otherGoodWorkouts": "Другие хорошие тренировки"
   }
 }

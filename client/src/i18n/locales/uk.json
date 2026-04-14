@@ -366,15 +366,18 @@
     "interval": "Інтервал",
     "repetition": "Повтори",
     "calculationTitle": "Як розраховано",
-    "source": "Джерело даних",
-    "fromRecords": "Особисті рекорди",
-    "fromWorkouts": "Тренування (12 тиж.)",
-    "fromDecay": "Старе тренування (з поправкою)",
+    "sourceWorkoutTitle": "Тренування-джерело",
+    "sourceRecent": "Найкращий результат за 12 тижнів",
+    "sourceDecay": "Результат знижено через перерву",
+    "decayInfo": "Минуло {{days}} дн. без інтенсиву. Вихідний VDOT {{original}} → {{current}}",
+    "workoutDistance": "Дистанція",
+    "workoutTime": "Час",
+    "workoutType": "Тип",
+    "formulaExplanation": "VDOT розраховано за формулою Деніелса-Гілберта: дистанція та час тренування перетворюються на показник VO₂max, з якого визначаються темпові зони.",
     "weeklyVolume": "Об'єм на тиждень",
     "week": "тиж",
-    "workoutsAnalyzed": "Тренувань за 4 тиж.",
-    "avgPace": "Середній темп",
-    "bestPace": "Кращий темп",
-    "recordsVdot": "VDOT за рекордами"
+    "workoutsAnalyzed": "Тренувань (12 тиж.)",
+    "recordsVdot": "VDOT за рекордами",
+    "otherGoodWorkouts": "Інші гарні тренування"
   }
 }

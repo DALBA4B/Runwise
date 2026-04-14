@@ -366,15 +366,18 @@
     "interval": "Interval",
     "repetition": "Repetition",
     "calculationTitle": "How it's calculated",
-    "source": "Data source",
-    "fromRecords": "Personal records",
-    "fromWorkouts": "Workouts (12 weeks)",
-    "fromDecay": "Older workout (time-adjusted)",
+    "sourceWorkoutTitle": "Source workout",
+    "sourceRecent": "Best result in last 12 weeks",
+    "sourceDecay": "Result reduced due to inactivity",
+    "decayInfo": "{{days}} days without intense training. Original VDOT {{original}} → {{current}}",
+    "workoutDistance": "Distance",
+    "workoutTime": "Time",
+    "workoutType": "Type",
+    "formulaExplanation": "VDOT is calculated using the Daniels-Gilbert formula: workout distance and time are converted into a VO₂max estimate, which determines your pace zones.",
     "weeklyVolume": "Weekly volume",
     "week": "wk",
-    "workoutsAnalyzed": "Workouts (4 weeks)",
-    "avgPace": "Average pace",
-    "bestPace": "Best pace",
-    "recordsVdot": "VDOT by records"
+    "workoutsAnalyzed": "Workouts (12 wks)",
+    "recordsVdot": "VDOT by records",
+    "otherGoodWorkouts": "Other good workouts"
   }
 }
