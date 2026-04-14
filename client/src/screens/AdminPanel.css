@@ -1,0 +1,281 @@
+/* ============ ADMIN PANEL ============ */
+
+.admin-panel {
+  min-height: 100vh;
+  background: var(--color-bg);
+  color: var(--color-text);
+  padding: 24px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.admin-panel h2 {
+  font-size: 20px;
+  margin-bottom: 20px;
+}
+
+.admin-login {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  max-width: 320px;
+  margin: 0 auto;
+}
+
+.admin-input {
+  width: 100%;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  color: var(--color-text);
+  font-size: 14px;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.admin-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.admin-tab {
+  flex: 1;
+  padding: 10px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.admin-tab.active {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+}
+
+.admin-create-form {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.admin-create-form h3 {
+  font-size: 15px;
+  margin-bottom: 12px;
+  color: var(--color-text-secondary);
+}
+
+.admin-form-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.admin-code-item {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  margin-bottom: 10px;
+}
+
+.admin-code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.admin-code-text {
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: 1px;
+  font-family: monospace;
+}
+
+.admin-code-badge {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.admin-code-badge.active {
+  background: rgba(16, 185, 129, 0.2);
+  color: var(--color-success);
+}
+
+.admin-code-badge.inactive {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--color-danger);
+}
+
+.admin-code-details {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-bottom: 10px;
+}
+
+.btn-sm {
+  padding: 5px 12px !important;
+  font-size: 12px !important;
+}
+
+.admin-activation-item {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.admin-activation-user {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.admin-activation-details {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  flex-wrap: wrap;
+}
+
+.admin-empty {
+  text-align: center;
+  color: var(--color-text-secondary);
+  padding: 32px;
+  font-size: 14px;
+}
+
+.admin-error {
+  color: var(--color-danger);
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+.admin-loading {
+  text-align: center;
+  color: var(--color-text-secondary);
+  padding: 16px;
+}
+
+/* Admin API Stats */
+.admin-api-stats {
+  padding: 4px 0;
+}
+.admin-api-global h3,
+.admin-api-users h3 {
+  font-size: 14px;
+  color: var(--color-text-primary);
+  margin: 0 0 10px 0;
+}
+.admin-api-bar-container {
+  width: 100%;
+  height: 12px;
+  background: var(--color-card-bg);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.admin-api-bar {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.3s ease;
+}
+.admin-api-numbers {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-bottom: 16px;
+}
+.admin-api-users {
+  margin-top: 12px;
+}
+.admin-api-user-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--color-card-bg);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.admin-api-user-id {
+  color: var(--color-text-secondary);
+  font-family: monospace;
+}
+.admin-api-user-count {
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+
+/* Webhook Log */
+.admin-webhook-log {
+  margin-top: 20px;
+}
+.admin-webhook-log h3 {
+  font-size: 14px;
+  color: var(--color-text-primary);
+  margin: 0 0 10px 0;
+}
+.admin-webhook-item {
+  background: var(--color-card-bg);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+}
+.admin-webhook-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.admin-webhook-badge {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.admin-webhook-badge.success {
+  background: rgba(78, 205, 196, 0.2);
+  color: #4ecdc4;
+}
+.admin-webhook-badge.error {
+  background: rgba(255, 68, 68, 0.2);
+  color: #ff4444;
+}
+.admin-webhook-badge.neutral {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text-secondary);
+}
+.admin-webhook-time {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+.admin-webhook-details {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  flex-wrap: wrap;
+}
+.admin-webhook-error {
+  color: #ff4444;
+}

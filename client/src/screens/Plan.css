@@ -1,0 +1,118 @@
+/* ============ PLAN SCREEN ============ */
+.plan-screen {
+}
+
+.plan-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  background-color: var(--color-bg-secondary);
+  padding: var(--spacing-md);
+  border-radius: var(--radius-lg);
+}
+
+.plan-summary-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.plan-summary-value {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
+.plan-summary-label {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.plan-week-label {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-md);
+}
+
+.plan-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.plan-row {
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+  transition: var(--transition);
+}
+
+.plan-row.today {
+  border-color: var(--color-accent);
+  background-color: var(--color-border);
+}
+
+.plan-day-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+}
+
+.plan-day-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.plan-day-badge {
+  font-size: 18px;
+}
+
+.plan-day-type {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+  background-color: var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-sm);
+}
+
+.plan-day-stats {
+  display: flex;
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-sm);
+}
+
+.plan-day-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.plan-day-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.plan-day-stat-label {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-weight: 400;
+}
+
+.plan-day-description {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+}
+
+.plan-empty {
+  text-align: center;
+  padding: var(--spacing-lg);
+}

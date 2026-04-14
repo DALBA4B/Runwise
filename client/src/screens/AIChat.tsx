@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import './AIChat.css';
 import ChatMessage from '../components/ChatMessage';
 import { ai, profile as profileApi } from '../api/api';
 import type { AiPreferences } from '../api/api';

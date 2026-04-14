@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n';
 import { workouts } from '../../api/api';
+import './GoalsSection.css';
 
 interface Goal {
   id: string;

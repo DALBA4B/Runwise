@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import './History.css';
 import MetricCard from '../components/MetricCard';
 import WorkoutRow from '../components/WorkoutRow';
 import { useWorkoutHistory } from '../hooks/useWorkouts';

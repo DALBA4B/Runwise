@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import './Profile.css';
 import MetricCard from '../components/MetricCard';
 import { workouts, strava, profile as profileApi, promo as promoApi } from '../api/api';
 import { formatPace, formatDistance } from '../utils';

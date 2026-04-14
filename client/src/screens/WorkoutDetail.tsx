@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import './WorkoutDetail.css';
 import { workouts, ai, strava } from '../api/api';
 import { formatPace, formatDistance, formatTime, formatDateFull, getTypeLabel, getTypeBadge } from '../utils';
 

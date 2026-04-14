@@ -1,0 +1,158 @@
+/* ============ PROFILE SCREEN ============ */
+.profile-screen {
+}
+
+.profile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-sm);
+}
+
+.profile-header .screen-title {
+  margin-bottom: 0;
+}
+
+.settings-btn {
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  padding: 6px;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: color 0.2s, background-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-btn:active {
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text);
+}
+
+.profile-section {
+  margin-bottom: var(--spacing-lg);
+}
+
+.profile-section .section-title {
+  margin-bottom: var(--spacing-md);
+}
+
+.params-summary {
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  display: flex;
+  gap: var(--spacing-md);
+}
+
+.params-summary-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.params-summary-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+.params-summary-label {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.physical-params-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.param-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.param-label {
+  font-size: 14px;
+  font-weight: 500;
+  min-width: 70px;
+}
+
+.param-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex: 1;
+}
+
+.param-input-wrap .input-field {
+  flex: 1;
+  max-width: 120px;
+}
+
+.param-unit {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  min-width: 30px;
+}
+
+.sync-status {
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+}
+
+.sync-status-text {
+  font-size: 14px;
+  color: var(--color-success);
+  margin-bottom: var(--spacing-md);
+}
+
+.sync-details {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-md);
+}
+
+.sync-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background-color: var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: var(--color-accent);
+  border-radius: var(--radius-sm);
+  transition: width 1s ease-out;
+}
+
+.progress-text {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.profile-footer {
+  text-align: center;
+  padding: var(--spacing-lg);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}

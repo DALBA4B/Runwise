@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import './Plan.css';
 import PlanRow from '../components/PlanRow';
 import { ai } from '../api/api';
 import i18n from '../i18n';

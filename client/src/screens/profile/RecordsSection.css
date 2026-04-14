@@ -1,0 +1,83 @@
+/* ============ RECORDS SECTION ============ */
+
+.records-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.records-empty {
+  animation: fadeInSoft 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 0.1s;
+}
+
+@keyframes fadeInSoft {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.record-item {
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+  transition: opacity 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+              max-height 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+              padding 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.6s ease,
+              box-shadow 0.6s ease;
+  max-height: 200px;
+  overflow: hidden;
+}
+
+.record-removing {
+  opacity: 0;
+  transform: translateX(40px) scale(0.95);
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-color: transparent;
+}
+
+.record-new {
+  animation: recordAppear 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 12px 2px rgba(59, 130, 246, 0.2);
+}
+
+@keyframes recordAppear {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.record-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-xs);
+}
+
+.record-distance {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.record-time {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-accent);
+  margin-bottom: 2px;
+}
+
+.record-date {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { ai } from '../../api/api';
+import './PaceZonesSection.css';
 
 interface ZoneRange {
   from: string;

@@ -1,0 +1,65 @@
+/* ============ HOME SCREEN ============ */
+.home-screen {
+}
+
+.home-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-md);
+}
+
+.home-header .screen-title {
+  margin-bottom: 0;
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  font-size: 22px;
+  cursor: pointer;
+  padding: var(--spacing-xs);
+  border-radius: var(--radius-sm);
+  transition: background-color 0.2s;
+}
+
+.btn-icon:active {
+  background-color: var(--color-bg-secondary);
+}
+
+.week-chart {
+  margin-bottom: var(--spacing-lg);
+}
+
+.ai-block {
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.ai-block-header {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: var(--spacing-md);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.ai-block-content {
+  color: var(--color-text);
+  line-height: 1.6;
+  margin-bottom: var(--spacing-md);
+}
+
+.ai-block-content p {
+  margin-bottom: var(--spacing-md);
+}
+
+.ai-block-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}

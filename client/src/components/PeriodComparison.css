@@ -1,0 +1,57 @@
+/* ============ PERIOD COMPARISON ============ */
+.period-comparison {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.period-comparison-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-sm);
+}
+
+.period-comparison-loading {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.period-comparison-row {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.period-comparison-item {
+  flex: 1;
+  text-align: center;
+}
+
+.period-comparison-label {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  margin-bottom: 2px;
+}
+
+.period-comparison-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.period-comparison-change {
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 2px;
+  color: var(--color-text-secondary);
+}
+
+.period-comparison-change.improved {
+  color: var(--color-success);
+}
+
+.period-comparison-change.worsened {
+  color: var(--color-danger);
+}

@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n';
 import { workouts, strava, promo as promoApi } from '../../api/api';
+import './SettingsModal.css';
 
 const LANGUAGES = [
   { code: 'ru', label: '🇷🇺 Русский' },

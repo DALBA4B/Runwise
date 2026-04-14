@@ -1,0 +1,205 @@
+/* ============ PACE ZONES SECTION ============ */
+
+/* Pace Zones Summary — compact view */
+
+.pace-zones-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.pace-zones-summary-item {
+  flex: 1;
+  min-width: 70px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 4px;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.pace-zones-summary-label {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  margin-bottom: 2px;
+}
+
+.pace-zones-summary-value {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.pace-zones-summary-value.accent {
+  color: var(--color-accent);
+}
+
+/* Pace Zones Modal — detailed view */
+
+.pace-zones-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: var(--spacing-md);
+}
+
+.pace-zone-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.pace-zone-indicator {
+  width: 4px;
+  height: 24px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.pace-zone-label {
+  font-size: 14px;
+  font-weight: 600;
+  flex: 1;
+}
+
+.pace-zone-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.pace-zones-details {
+  margin-top: var(--spacing-md);
+}
+
+.pace-zones-details h4 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+  color: var(--color-text-secondary);
+}
+
+.pace-zones-detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 13px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.pace-zones-detail-row .detail-value {
+  font-weight: 600;
+}
+
+.pace-zones-detail-row .detail-date {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+/* Source workout card */
+.pace-zones-source-card {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin-top: 6px;
+}
+
+.pace-zones-source-name {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.pace-zones-source-date {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-bottom: 8px;
+}
+
+.pace-zones-source-stats {
+  margin-bottom: 8px;
+}
+
+.pace-zones-source-stats .pace-zones-detail-row {
+  border-bottom: none;
+  padding: 3px 0;
+}
+
+.pace-zones-source-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 10px;
+  margin-top: 4px;
+}
+
+.pace-zones-source-badge.badge-recent {
+  background: rgba(76, 175, 80, 0.15);
+  color: #4CAF50;
+}
+
+.pace-zones-source-badge.badge-decay {
+  background: rgba(255, 152, 0, 0.15);
+  color: #FF9800;
+}
+
+.pace-zones-decay-info {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-top: 8px;
+  padding: 8px;
+  background: rgba(255, 152, 0, 0.08);
+  border-radius: var(--radius-sm);
+  line-height: 1.4;
+}
+
+.pace-zones-other-workout {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.pace-zones-other-workout:last-child {
+  border-bottom: none;
+}
+
+.pace-zones-other-workout-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pace-zones-other-workout-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pace-zones-other-workout-vdot {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+.pace-zones-other-workout-meta {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+}
+
+.pace-zones-formula {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-top: var(--spacing-md);
+  padding: 10px;
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-md);
+  line-height: 1.5;
+}

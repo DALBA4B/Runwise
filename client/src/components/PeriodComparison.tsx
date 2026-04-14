@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import './PeriodComparison.css';
 import { formatDistance, formatPace } from '../utils';
 import i18n from '../i18n';
 
