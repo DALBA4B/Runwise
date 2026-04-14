@@ -29,7 +29,7 @@ const PeriodComparison: React.FC<PeriodComparisonProps> = ({ data, loading }) =>
     );
   }
 
-  if (!data) return null;
+  if (!data || !data.current || !data.previous) return null;
 
   const locale = LOCALE_MAP[i18n.language] || 'ru-RU';
   const now = new Date();
