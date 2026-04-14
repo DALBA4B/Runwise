@@ -32,15 +32,13 @@ function renderContent(content: string, onWorkoutClick?: (id: string) => void): 
     parts.push(
       <button
         key={`wl-${workoutId}-${match.index}`}
-        className="workout-link-chip"
+        className="workout-link"
         onClick={(e) => {
           e.stopPropagation();
           onWorkoutClick?.(workoutId);
         }}
       >
-        <span className="workout-link-icon">🏃</span>
-        <span className="workout-link-text">{label}</span>
-        <span className="workout-link-arrow">›</span>
+        {label}
       </button>
     );
 

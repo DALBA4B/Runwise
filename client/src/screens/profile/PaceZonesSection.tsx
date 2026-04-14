@@ -170,10 +170,8 @@ const PaceZonesSection: React.FC<PaceZonesProps> = ({ onWorkoutClick }) => {
 
                 <div className="pace-zones-source-card">
                   {sw.id && onWorkoutClick ? (
-                    <button className="workout-link-chip" onClick={() => { closeModal(); onWorkoutClick(sw.id!); }}>
-                      <span className="workout-link-icon">{'\u{1F3C3}'}</span>
-                      <span className="workout-link-text">{sw.name || '—'}</span>
-                      <span className="workout-link-arrow">{'\u203A'}</span>
+                    <button className="workout-link pace-zones-source-name" onClick={() => { closeModal(); onWorkoutClick(sw.id!); }}>
+                      {sw.name || '—'}
                     </button>
                   ) : (
                     <div className="pace-zones-source-name">{sw.name || '—'}</div>
@@ -218,10 +216,8 @@ const PaceZonesSection: React.FC<PaceZonesProps> = ({ onWorkoutClick }) => {
                   <div key={i} className="pace-zones-other-workout">
                     <div className="pace-zones-other-workout-header">
                       {w.id && onWorkoutClick ? (
-                        <button className="workout-link-chip" onClick={() => { closeModal(); onWorkoutClick(w.id!); }}>
-                          <span className="workout-link-icon">{'\u{1F3C3}'}</span>
-                          <span className="workout-link-text">{w.name || '—'}</span>
-                          <span className="workout-link-arrow">{'\u203A'}</span>
+                        <button className="workout-link pace-zones-other-workout-name" onClick={() => { closeModal(); onWorkoutClick(w.id!); }}>
+                          {w.name || '—'}
                         </button>
                       ) : (
                         <span className="pace-zones-other-workout-name">{w.name || '—'}</span>
