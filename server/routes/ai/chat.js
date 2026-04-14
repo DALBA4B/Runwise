@@ -1,0 +1,258 @@
+const express = require('express');
+const supabase = require('../../supabase');
+const authMiddleware = require('../../middleware/authMiddleware');
+
+const {
+  checkPremium,
+  getDailyMessageCount,
+  getMonthlySummaryContext,
+  getUserGoals,
+  getCurrentPlan,
+  savePlanUpdate,
+  getUserRecords,
+  getUserProfile,
+  getWeeklyVolumes,
+  getRiegelPredictions
+} = require('./context');
+
+const {
+  estimateVDOT,
+  calculatePaceZones
+} = require('./vdot');
+
+const {
+  getAiPrefs,
+  buildChatSystemPrompt,
+  processPlanUpdate
+} = require('./prompts');
+
+const {
+  callDeepSeekWithTools,
+  callDeepSeekStreamWithTools
+} = require('./deepseek');
+
+const router = express.Router();
+
+const DAILY_MESSAGE_LIMIT = 15;
+
+// Helper: load chat context (history + workouts + goals + plan)
+async function loadChatContext(userId, lang = 'ru') {
+  const { data: chatHistoryData } = await supabase
+    .from('chat_messages')
+    .select('role, content')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+    .limit(20);
+
+  const chatHistory = (chatHistoryData || []).map(m => ({
+    role: m.role === 'ai' ? 'assistant' : 'user',
+    content: m.content
+  }));
+
+  const [monthlySummary, goals, currentPlan, userProfile, records, weeklyVolumes, predictions] = await Promise.all([
+    getMonthlySummaryContext(userId),
+    getUserGoals(userId),
+    getCurrentPlan(userId),
+    getUserProfile(userId),
+    getUserRecords(userId),
+    getWeeklyVolumes(userId),
+    getRiegelPredictions(userId)
+  ]);
+
+  // Calculate VDOT and pace zones for chat context (12-week window + decay fallback)
+  const twelveWeeksAgo = new Date();
+  twelveWeeksAgo.setDate(twelveWeeksAgo.getDate() - 84);
+  const { data: recentWorkouts } = await supabase
+    .from('workouts')
+    .select('name, distance, moving_time, average_pace, date, type, manual_distance, manual_moving_time, is_suspicious')
+    .eq('user_id', userId)
+    .gte('date', twelveWeeksAgo.toISOString())
+    .order('date', { ascending: false });
+
+  const { data: allWorkouts } = await supabase
+    .from('workouts')
+    .select('name, distance, moving_time, average_pace, date, type, manual_distance, manual_moving_time, is_suspicious')
+    .eq('user_id', userId)
+    .order('date', { ascending: false });
+
+  const estimate = estimateVDOT(recentWorkouts, allWorkouts);
+  const currentVDOT = estimate.vdot;
+  const paceZones = currentVDOT ? calculatePaceZones(currentVDOT) : null;
+
+  let vdotSource = null;
+  if (estimate.source === 'recent') vdotSource = 'workouts';
+  else if (estimate.source === 'decay') vdotSource = 'decay';
+
+  const paceZonesData = currentVDOT ? { vdot: currentVDOT, source: vdotSource, zones: paceZones } : null;
+
+  const aiPrefs = getAiPrefs(userProfile);
+  const systemPrompt = buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, records, lang, aiPrefs, weeklyVolumes, predictions, paceZonesData);
+
+  return { chatHistory, systemPrompt, currentPlan };
+}
+
+// Helper: trim chat history to max 100 messages per user
+async function trimChatHistory(userId) {
+  const { count } = await supabase
+    .from('chat_messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId);
+
+  if (count && count > 100) {
+    const toDelete = count - 100;
+    const { data: oldMessages } = await supabase
+      .from('chat_messages')
+      .select('id')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true })
+      .limit(toDelete);
+
+    if (oldMessages && oldMessages.length > 0) {
+      const ids = oldMessages.map(m => m.id);
+      await supabase
+        .from('chat_messages')
+        .delete()
+        .in('id', ids);
+    }
+  }
+}
+
+// GET /api/ai/chat/limit — check daily message limit
+router.get('/chat/limit', authMiddleware, async (req, res) => {
+  try {
+    const isPremium = await checkPremium(req.user.id);
+    if (isPremium) {
+      return res.json({ limit: DAILY_MESSAGE_LIMIT, used: 0, remaining: DAILY_MESSAGE_LIMIT, isPremium: true });
+    }
+    const used = await getDailyMessageCount(req.user.id);
+    res.json({ limit: DAILY_MESSAGE_LIMIT, used, remaining: Math.max(0, DAILY_MESSAGE_LIMIT - used), isPremium: false });
+  } catch (err) {
+    console.error('Limit check error:', err.message);
+    res.status(500).json({ error: 'Failed to check limit' });
+  }
+});
+
+// GET /api/ai/chat/history — get chat history
+router.get('/chat/history', authMiddleware, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('chat_messages')
+      .select('id, role, content, created_at')
+      .eq('user_id', req.user.id)
+      .order('created_at', { ascending: true })
+      .limit(100);
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch chat history' });
+  }
+});
+
+// DELETE /api/ai/chat/history — clear chat history
+router.delete('/chat/history', authMiddleware, async (req, res) => {
+  try {
+    await supabase
+      .from('chat_messages')
+      .delete()
+      .eq('user_id', req.user.id);
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to clear history' });
+  }
+});
+
+// POST /api/ai/chat — AI chat with tool use support
+router.post('/chat', authMiddleware, async (req, res) => {
+  try {
+    const { message, lang } = req.body;
+    if (!message) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    // Check daily limit (skip for premium users)
+    const isPremium = await checkPremium(req.user.id);
+    if (!isPremium) {
+      const used = await getDailyMessageCount(req.user.id);
+      if (used >= DAILY_MESSAGE_LIMIT) {
+        return res.status(429).json({ error: 'Daily message limit reached', limit: DAILY_MESSAGE_LIMIT, used, remaining: 0 });
+      }
+    }
+
+    const { chatHistory, systemPrompt, currentPlan } = await loadChatContext(req.user.id, lang || 'ru');
+    const reply = await callDeepSeekWithTools(systemPrompt, message, req.user.id, 4000, chatHistory);
+    const { textReply, planUpdated } = await processPlanUpdate(reply, req.user.id, currentPlan, savePlanUpdate);
+
+    await supabase.from('chat_messages').insert([
+      { user_id: req.user.id, role: 'user', content: message },
+      { user_id: req.user.id, role: 'ai', content: textReply }
+    ]);
+
+    // Trim history to max 100 messages
+    await trimChatHistory(req.user.id);
+
+    res.json({ reply: textReply, planUpdated });
+  } catch (err) {
+    console.error('AI chat error:', err.response?.data || err.message);
+    res.status(500).json({ error: 'AI request failed' });
+  }
+});
+
+// POST /api/ai/chat/stream — SSE streaming AI chat with tool use
+router.post('/chat/stream', authMiddleware, async (req, res) => {
+  try {
+    const { message, lang } = req.body;
+    if (!message) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    // Check daily limit (skip for premium users)
+    const isPremiumUser = await checkPremium(req.user.id);
+    if (!isPremiumUser) {
+      const used = await getDailyMessageCount(req.user.id);
+      if (used >= DAILY_MESSAGE_LIMIT) {
+        return res.status(429).json({ error: 'Daily message limit reached', limit: DAILY_MESSAGE_LIMIT, used, remaining: 0 });
+      }
+    }
+
+    const { chatHistory, systemPrompt, currentPlan } = await loadChatContext(req.user.id, lang || 'ru');
+
+    // Set SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    // Use tool-aware streaming: tool call rounds are buffered, final response is streamed in real time
+    const fullReply = await callDeepSeekStreamWithTools(systemPrompt, message, req.user.id, res, 4000, chatHistory);
+
+    // Process plan updates (fullReply already streamed to client, client strips PLAN_UPDATE blocks)
+    const { textReply, planUpdated } = await processPlanUpdate(fullReply, req.user.id, currentPlan, savePlanUpdate);
+
+    // Save clean messages (without PLAN_UPDATE block) to history
+    await supabase.from('chat_messages').insert([
+      { user_id: req.user.id, role: 'user', content: message },
+      { user_id: req.user.id, role: 'ai', content: textReply }
+    ]);
+
+    // Trim history to max 100 messages
+    await trimChatHistory(req.user.id);
+
+    // Send meta event and close
+    res.write(`data: [DONE]\n\n`);
+    res.write(`data: ${JSON.stringify({ meta: { planUpdated } })}\n\n`);
+    res.end();
+  } catch (err) {
+    console.error('AI chat stream error:', err.response?.data || err.message);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'AI request failed' });
+    } else {
+      res.write(`data: [DONE]\n\n`);
+      res.write(`data: ${JSON.stringify({ meta: { planUpdated: false } })}\n\n`);
+      res.end();
+    }
+  }
+});
+
+module.exports = router;
