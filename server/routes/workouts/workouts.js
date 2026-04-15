@@ -129,31 +129,48 @@ router.get('/stats', authMiddleware, async (req, res) => {
   }
 });
 
-// GET /api/workouts/weekly — daily km for last 7 days
+// GET /api/workouts/weekly — daily km for current week (timezone-aware)
 router.get('/weekly', authMiddleware, async (req, res) => {
   try {
-    const now = new Date();
-    const dayOfWeek = now.getDay();
-    const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-    const monday = new Date(now);
-    monday.setDate(monday.getDate() - daysFromMonday);
-    monday.setHours(0, 0, 0, 0);
+    // Use timezone offset from client, default to Moscow (UTC+3)
+    const tzOffset = parseInt(req.query.tz) || 3;
 
-    const anomalyFields = state.hasAnomalyColumns ? ', is_suspicious, manual_distance' : '';
+    // Get current date in user's timezone
+    const nowUtc = new Date();
+    const nowLocal = new Date(nowUtc.getTime() + tzOffset * 60 * 60 * 1000);
+
+    // Find Monday of current week
+    const dayOfWeek = nowLocal.getUTCDay(); // 0=Sun, 1=Mon...
+    const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    const monday = new Date(nowLocal);
+    monday.setUTCDate(monday.getUTCDate() - daysFromMonday);
+    monday.setUTCHours(0, 0, 0, 0);
+
+    const mondayStr = monday.toISOString().split('T')[0];
+
+    // Sunday of this week
+    const sunday = new Date(monday);
+    sunday.setUTCDate(sunday.getUTCDate() + 6);
+    const sundayStr = sunday.toISOString().split('T')[0];
+
+    const anomalyFields = state.hasAnomalyColumns ? ', is_suspicious, user_verified, manual_distance' : '';
     let { data, error } = await supabase
       .from('workouts')
       .select('distance, date' + anomalyFields)
       .eq('user_id', req.user.id)
-      .gte('date', monday.toISOString())
+      .gte('date', mondayStr)
+      .lte('date', sundayStr + 'T23:59:59')
       .order('date', { ascending: true });
 
+    // Fallback if anomaly columns missing
     if (error && error.message && (error.message.includes('is_suspicious') || error.message.includes('manual_'))) {
       state.hasAnomalyColumns = false;
       const fb = await supabase
         .from('workouts')
         .select('distance, date')
         .eq('user_id', req.user.id)
-        .gte('date', monday.toISOString())
+        .gte('date', mondayStr)
+        .lte('date', sundayStr + 'T23:59:59')
         .order('date', { ascending: true });
       if (fb.error) throw fb.error;
       data = fb.data;
@@ -161,18 +178,23 @@ router.get('/weekly', authMiddleware, async (req, res) => {
       throw error;
     }
 
+    const getEffectiveDist = (w) => (state.hasAnomalyColumns && w.manual_distance) ? w.manual_distance : (w.distance || 0);
+
+    // Group by day (Mon-Sun), use manual distance if corrected
+    const dayNames = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
     const days = [];
-    const dayLabels = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
     for (let i = 0; i < 7; i++) {
       const d = new Date(monday);
-      d.setDate(d.getDate() + i);
-      const dateStr = d.toISOString().split('T')[0];
-      const dayWorkouts = (data || []).filter(w => w.date && w.date.startsWith(dateStr));
-      const km = dayWorkouts.reduce((s, w) => {
-        const dist = (state.hasAnomalyColumns && w.manual_distance) ? w.manual_distance : (w.distance || 0);
-        return s + dist / 1000;
-      }, 0);
-      days.push({ day: dayLabels[i], km: Math.round(km * 100) / 100 });
+      d.setUTCDate(d.getUTCDate() + i);
+      const dayStr = d.toISOString().split('T')[0];
+      const dayWorkouts = data.filter(w => w.date && w.date.startsWith(dayStr));
+      const totalKm = dayWorkouts.reduce((sum, w) => sum + getEffectiveDist(w), 0) / 1000;
+
+      days.push({
+        date: dayStr,
+        day: dayNames[i],
+        km: Math.round(totalKm * 100) / 100
+      });
     }
 
     res.json(days);
@@ -182,61 +204,65 @@ router.get('/weekly', authMiddleware, async (req, res) => {
   }
 });
 
-// GET /api/workouts/comparison — compare current week vs previous
+// GET /api/workouts/comparison — current vs previous month (same day cutoff)
 router.get('/comparison', authMiddleware, async (req, res) => {
   try {
     const now = new Date();
-    const dayOfWeek = now.getDay();
-    const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    const dayOfMonth = now.getDate();
 
-    const thisMonday = new Date(now);
-    thisMonday.setDate(thisMonday.getDate() - daysFromMonday);
-    thisMonday.setHours(0, 0, 0, 0);
+    // Current month: 1st to today
+    const curStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const curEnd = new Date(now.getFullYear(), now.getMonth(), dayOfMonth, 23, 59, 59).toISOString();
 
-    const prevMonday = new Date(thisMonday);
-    prevMonday.setDate(prevMonday.getDate() - 7);
+    // Previous month: 1st to same day number (clamped to last day of prev month)
+    const lastDayPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0).getDate();
+    const prevDay = Math.min(dayOfMonth, lastDayPrevMonth);
+    const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
+    const prevEnd = new Date(now.getFullYear(), now.getMonth() - 1, prevDay, 23, 59, 59).toISOString();
 
-    const anomalyFields = state.hasAnomalyColumns ? ', is_suspicious, manual_distance, manual_moving_time' : '';
-    let { data, error } = await supabase
-      .from('workouts')
-      .select('distance, moving_time, average_pace, date' + anomalyFields)
-      .eq('user_id', req.user.id)
-      .gte('date', prevMonday.toISOString())
-      .order('date', { ascending: true });
+    const anomalyFields = state.hasAnomalyColumns ? ', is_suspicious, user_verified, manual_distance, manual_moving_time' : '';
+    const selectFields = 'distance, moving_time, average_pace' + anomalyFields;
 
-    if (error && error.message && (error.message.includes('is_suspicious') || error.message.includes('manual_'))) {
+    let [curRes, prevRes] = await Promise.all([
+      supabase.from('workouts').select(selectFields).eq('user_id', req.user.id).gte('date', curStart).lte('date', curEnd),
+      supabase.from('workouts').select(selectFields).eq('user_id', req.user.id).gte('date', prevStart).lte('date', prevEnd)
+    ]);
+
+    // Fallback if anomaly columns missing
+    const hasColError = (e) => e && e.message && (e.message.includes('is_suspicious') || e.message.includes('manual_'));
+    if (hasColError(curRes.error) || hasColError(prevRes.error)) {
       state.hasAnomalyColumns = false;
-      const fb = await supabase
-        .from('workouts')
-        .select('distance, moving_time, average_pace, date')
-        .eq('user_id', req.user.id)
-        .gte('date', prevMonday.toISOString())
-        .order('date', { ascending: true });
-      if (fb.error) throw fb.error;
-      data = fb.data;
-    } else if (error) {
-      throw error;
+      [curRes, prevRes] = await Promise.all([
+        supabase.from('workouts').select('distance, moving_time, average_pace').eq('user_id', req.user.id).gte('date', curStart).lte('date', curEnd),
+        supabase.from('workouts').select('distance, moving_time, average_pace').eq('user_id', req.user.id).gte('date', prevStart).lte('date', prevEnd)
+      ]);
     }
 
-    const getEffDist = (w) => (state.hasAnomalyColumns && w.manual_distance) ? w.manual_distance : (w.distance || 0);
-    const getEffTime = (w) => (state.hasAnomalyColumns && w.manual_moving_time) ? w.manual_moving_time : (w.moving_time || 0);
+    if (curRes.error) throw curRes.error;
+    if (prevRes.error) throw prevRes.error;
 
-    const thisWeek = (data || []).filter(w => new Date(w.date) >= thisMonday);
-    const prevWeek = (data || []).filter(w => new Date(w.date) >= prevMonday && new Date(w.date) < thisMonday);
+    const getEffectiveDist = (w) => (state.hasAnomalyColumns && w.manual_distance) ? w.manual_distance : (w.distance || 0);
 
-    const calcStats = (workouts) => ({
-      distance: workouts.reduce((s, w) => s + getEffDist(w), 0),
-      time: workouts.reduce((s, w) => s + getEffTime(w), 0),
-      runs: workouts.length,
-      avgPace: workouts.length > 0
-        ? Math.round(workouts.reduce((s, w) => s + (w.average_pace || 0), 0) / workouts.length)
-        : 0
-    });
+    const calcStats = (data) => {
+      const distance = data.reduce((s, w) => s + getEffectiveDist(w), 0);
+      const workoutCount = data.length;
+      const paces = data.filter(w => w.average_pace > 0).map(w => w.average_pace);
+      const avgPace = paces.length > 0 ? Math.round(paces.reduce((a, b) => a + b, 0) / paces.length) : 0;
+      return { distance, workoutCount, avgPace };
+    };
 
-    res.json({
-      thisWeek: calcStats(thisWeek),
-      prevWeek: calcStats(prevWeek)
-    });
+    const current = calcStats(curRes.data || []);
+    const previous = calcStats(prevRes.data || []);
+
+    const pctChange = (cur, prev) => prev === 0 ? (cur > 0 ? 100 : 0) : Math.round(((cur - prev) / prev) * 1000) / 10;
+
+    const changes = {
+      distance: pctChange(current.distance, previous.distance),
+      workoutCount: pctChange(current.workoutCount, previous.workoutCount),
+      avgPace: previous.avgPace === 0 ? 0 : Math.round(((current.avgPace - previous.avgPace) / previous.avgPace) * 1000) / 10
+    };
+
+    res.json({ current, previous, changes, dayOfMonth });
   } catch (err) {
     console.error('Comparison error:', err.message);
     res.status(500).json({ error: 'Failed to fetch comparison' });
@@ -320,17 +346,27 @@ router.get('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// PATCH /api/workouts/:id — update workout (manual corrections)
+// PATCH /api/workouts/:id — verify or edit workout (manual corrections)
 router.patch('/:id', authMiddleware, async (req, res) => {
   try {
-    const allowedFields = ['manual_distance', 'manual_moving_time', 'user_verified', 'is_suspicious'];
-    const updates = {};
-    for (const key of allowedFields) {
-      if (req.body[key] !== undefined) updates[key] = req.body[key];
+    if (!state.hasAnomalyColumns) {
+      return res.status(400).json({ error: 'Anomaly columns not in DB yet. Run the SQL migration first.' });
     }
 
-    if (Object.keys(updates).length === 0) {
-      return res.status(400).json({ error: 'Nothing to update' });
+    const { action, manual_distance, manual_moving_time } = req.body;
+
+    if (!action || !['verify', 'edit'].includes(action)) {
+      return res.status(400).json({ error: 'Invalid action. Use "verify" or "edit".' });
+    }
+
+    const updates = { user_verified: true };
+
+    if (action === 'edit') {
+      if (manual_distance == null || manual_moving_time == null) {
+        return res.status(400).json({ error: 'manual_distance and manual_moving_time required for edit' });
+      }
+      updates.manual_distance = Math.round(manual_distance);
+      updates.manual_moving_time = Math.round(manual_moving_time);
     }
 
     const { data, error } = await supabase
@@ -342,6 +378,8 @@ router.patch('/:id', authMiddleware, async (req, res) => {
       .single();
 
     if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Workout not found' });
+
     res.json(data);
   } catch (err) {
     console.error('Patch workout error:', err.message);
