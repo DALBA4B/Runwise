@@ -7,15 +7,15 @@ const {
   effectiveDistance,
   effectivePace,
   getUserRecords,
-  getUserProfile
+  getUserProfile,
+  getRecentPaceStats
 } = require('./context');
 
 const {
   calculateVDOT,
   estimateVDOT,
   calculatePaceZones,
-  getRunnerLevel,
-  getRecentPaceStats
+  getRunnerLevel
 } = require('./vdot');
 
 const {

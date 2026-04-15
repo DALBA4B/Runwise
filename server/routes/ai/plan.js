@@ -9,14 +9,14 @@ const {
   effectivePace,
   getUserGoals,
   getUserRecords,
-  getUserProfile
+  getUserProfile,
+  getRecentPaceStats
 } = require('./context');
 
 const {
   estimateVDOT,
   calculatePaceZones,
   getRunnerLevel,
-  getRecentPaceStats,
   ensurePaceField,
   formatZonesForPrompt
 } = require('./vdot');
