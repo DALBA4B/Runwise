@@ -12,7 +12,9 @@ const {
   getUserRecords,
   getUserProfile,
   getWeeklyVolumes,
-  getRiegelPredictions
+  getRiegelPredictions,
+  getActiveMacroPlan,
+  computeMacroPlanWithActuals
 } = require('./context');
 
 const {
@@ -23,7 +25,8 @@ const {
 const {
   getAiPrefs,
   buildChatSystemPrompt,
-  processPlanUpdate
+  processPlanUpdate,
+  processMacroPlanUpdate
 } = require('./prompts');
 
 const {
@@ -49,15 +52,19 @@ async function loadChatContext(userId, lang = 'ru') {
     content: m.content
   }));
 
-  const [monthlySummary, goals, currentPlan, userProfile, records, weeklyVolumes, predictions] = await Promise.all([
+  const [monthlySummary, goals, currentPlan, userProfile, records, weeklyVolumes, predictions, rawMacroPlan] = await Promise.all([
     getMonthlySummaryContext(userId),
     getUserGoals(userId),
     getCurrentPlan(userId),
     getUserProfile(userId),
     getUserRecords(userId),
     getWeeklyVolumes(userId),
-    getRiegelPredictions(userId)
+    getRiegelPredictions(userId),
+    getActiveMacroPlan(userId)
   ]);
+
+  // Compute actuals for macro plan if it exists
+  const macroPlan = rawMacroPlan ? await computeMacroPlanWithActuals(userId, rawMacroPlan) : null;
 
   // Calculate VDOT and pace zones for chat context (12-week window + decay fallback)
   const twelveWeeksAgo = new Date();
@@ -86,7 +93,7 @@ async function loadChatContext(userId, lang = 'ru') {
   const paceZonesData = currentVDOT ? { vdot: currentVDOT, source: vdotSource, zones: paceZones } : null;
 
   const aiPrefs = getAiPrefs(userProfile);
-  const systemPrompt = buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, records, lang, aiPrefs, weeklyVolumes, predictions, paceZonesData);
+  const systemPrompt = buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, records, lang, aiPrefs, weeklyVolumes, predictions, paceZonesData, macroPlan);
 
   return { chatHistory, systemPrompt, currentPlan };
 }
@@ -182,7 +189,8 @@ router.post('/chat', authMiddleware, async (req, res) => {
 
     const { chatHistory, systemPrompt, currentPlan } = await loadChatContext(req.user.id, lang || 'ru');
     const reply = await callDeepSeekWithTools(systemPrompt, message, req.user.id, 4000, chatHistory);
-    const { textReply, planUpdated } = await processPlanUpdate(reply, req.user.id, currentPlan, savePlanUpdate);
+    const { textReply: afterPlan, planUpdated } = await processPlanUpdate(reply, req.user.id, currentPlan, savePlanUpdate);
+    const { textReply, macroPlanUpdated, macroPlanAction } = await processMacroPlanUpdate(afterPlan, req.user.id);
 
     await supabase.from('chat_messages').insert([
       { user_id: req.user.id, role: 'user', content: message },
@@ -192,7 +200,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     // Trim history to max 100 messages
     await trimChatHistory(req.user.id);
 
-    res.json({ reply: textReply, planUpdated });
+    res.json({ reply: textReply, planUpdated, macroPlanUpdated: macroPlanUpdated || false, macroPlanAction });
   } catch (err) {
     console.error('AI chat error:', err.response?.data || err.message);
     res.status(500).json({ error: 'AI request failed' });
@@ -228,9 +236,10 @@ router.post('/chat/stream', authMiddleware, async (req, res) => {
     const fullReply = await callDeepSeekStreamWithTools(systemPrompt, message, req.user.id, res, 4000, chatHistory);
 
     // Process plan updates (fullReply already streamed to client, client strips PLAN_UPDATE blocks)
-    const { textReply, planUpdated } = await processPlanUpdate(fullReply, req.user.id, currentPlan, savePlanUpdate);
+    const { textReply: afterPlan, planUpdated } = await processPlanUpdate(fullReply, req.user.id, currentPlan, savePlanUpdate);
+    const { textReply, macroPlanUpdated, macroPlanAction } = await processMacroPlanUpdate(afterPlan, req.user.id);
 
-    // Save clean messages (without PLAN_UPDATE block) to history
+    // Save clean messages (without PLAN_UPDATE / MACRO_PLAN_UPDATE blocks) to history
     await supabase.from('chat_messages').insert([
       { user_id: req.user.id, role: 'user', content: message },
       { user_id: req.user.id, role: 'ai', content: textReply }
@@ -241,7 +250,7 @@ router.post('/chat/stream', authMiddleware, async (req, res) => {
 
     // Send meta event and close
     res.write(`data: [DONE]\n\n`);
-    res.write(`data: ${JSON.stringify({ meta: { planUpdated } })}\n\n`);
+    res.write(`data: ${JSON.stringify({ meta: { planUpdated, macroPlanUpdated: macroPlanUpdated || false, macroPlanAction } })}\n\n`);
     res.end();
   } catch (err) {
     console.error('AI chat stream error:', err.response?.data || err.message);

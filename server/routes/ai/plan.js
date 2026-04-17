@@ -9,7 +9,9 @@ const {
   effectivePace,
   getUserGoals,
   getUserRecords,
-  getUserProfile
+  getUserProfile,
+  getActiveMacroPlan,
+  computeMacroPlanWithActuals
 } = require('./context');
 
 const {
@@ -26,7 +28,8 @@ const {
   formatGoalsForAI,
   formatRecordsForAI,
   formatProfileForAI,
-  getAiPrefs
+  getAiPrefs,
+  formatMacroPlanForAI
 } = require('./prompts');
 
 const { callDeepSeek } = require('./deepseek');
@@ -85,11 +88,15 @@ router.post('/generate-plan', authMiddleware, async (req, res) => {
       return d >= twelveWeeksBeforeAnchor && d < anchor;
     });
 
-    const [goals, records, userProfile] = await Promise.all([
+    const [goals, records, userProfile, rawMacroPlan] = await Promise.all([
       getUserGoals(req.user.id),
       getUserRecords(req.user.id),
-      getUserProfile(req.user.id)
+      getUserProfile(req.user.id),
+      getActiveMacroPlan(req.user.id)
     ]);
+
+    // Compute macro plan context if exists
+    const macroPlan = rawMacroPlan ? await computeMacroPlanWithActuals(req.user.id, rawMacroPlan) : null;
 
     // Calculate weekly distances from 4 calendar weeks (Mon-Sun) before anchor
     const weeklyDistances = [];
@@ -393,6 +400,8 @@ ${formatGoalsForAI(goals, lang)}
 ${gp.userRecords}:
 ${formatRecordsForAI(records, lang)}
 ${gp.recordsNote}
+
+${macroPlan ? formatMacroPlanForAI(macroPlan, lang) + '\nВАЖНО: Генерируй недельный план В КОНТЕКСТЕ макро-плана. Уважай текущую фазу и целевой объём недели из макро-плана. Если макро-план говорит что это неделя базовой фазы с объёмом 35 км — строй план на ~35 км с акцентом на аэробную работу.\n' : ''}
 
 ${gp.rules}
 

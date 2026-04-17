@@ -161,7 +161,7 @@ export const ai = {
   chatStream: async (
     message: string,
     onChunk: (text: string) => void,
-    onDone: (meta: { planUpdated: boolean }) => void,
+    onDone: (meta: { planUpdated: boolean; macroPlanUpdated?: boolean; macroPlanAction?: string }) => void,
     onThinking?: () => void
   ): Promise<void> => {
     const token = getToken();
@@ -243,6 +243,8 @@ export const ai = {
     body: JSON.stringify({ lang: getLang() })
   }),
   getPlan: () => request('/api/ai/plan'),
+  getMacroPlan: () => request('/api/ai/macro-plan'),
+  deleteMacroPlan: () => request('/api/ai/macro-plan', { method: 'DELETE' }),
   weeklyAnalysis: () => request('/api/ai/weekly-analysis', {
     method: 'POST',
     body: JSON.stringify({ lang: getLang() })

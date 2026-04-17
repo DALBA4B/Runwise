@@ -172,19 +172,30 @@ const AIChat: React.FC<AIChatProps> = ({ onWorkoutClick, isActive }) => {
     let firstChunk = true;
     let fullContent = '';
 
-    // Strip ===PLAN_UPDATE===...===END_PLAN_UPDATE=== block from displayed text
+    // Strip ===PLAN_UPDATE===...===END_PLAN_UPDATE=== and ===MACRO_PLAN_UPDATE===...===END_MACRO_PLAN_UPDATE=== blocks from displayed text
     const stripPlanBlock = (text: string) => {
-      const planStart = text.indexOf('===PLAN_UPDATE===');
-      if (planStart === -1) return text;
-      const planEnd = text.indexOf('===END_PLAN_UPDATE===');
-      if (planEnd !== -1) {
-        // Full block found — remove it and keep text before + after
-        const before = text.substring(0, planStart);
-        const after = text.substring(planEnd + '===END_PLAN_UPDATE==='.length);
-        return (before + after).trim();
+      let result = text;
+      // Strip weekly plan block
+      const planStart = result.indexOf('===PLAN_UPDATE===');
+      if (planStart !== -1) {
+        const planEnd = result.indexOf('===END_PLAN_UPDATE===');
+        if (planEnd !== -1) {
+          result = result.substring(0, planStart) + result.substring(planEnd + '===END_PLAN_UPDATE==='.length);
+        } else {
+          result = result.substring(0, planStart);
+        }
       }
-      // Block started but not closed yet — hide from ===PLAN_UPDATE=== onwards
-      return text.substring(0, planStart).trim();
+      // Strip macro plan block
+      const macroStart = result.indexOf('===MACRO_PLAN_UPDATE===');
+      if (macroStart !== -1) {
+        const macroEnd = result.indexOf('===END_MACRO_PLAN_UPDATE===');
+        if (macroEnd !== -1) {
+          result = result.substring(0, macroStart) + result.substring(macroEnd + '===END_MACRO_PLAN_UPDATE==='.length);
+        } else {
+          result = result.substring(0, macroStart);
+        }
+      }
+      return result.trim();
     };
 
     try {
@@ -208,7 +219,7 @@ const AIChat: React.FC<AIChatProps> = ({ onWorkoutClick, isActive }) => {
           fullContent += chunk;
           const displayContent = stripPlanBlock(fullContent);
           // Show "updating plan" indicator when plan block starts streaming
-          if (fullContent.includes('===PLAN_UPDATE===')) {
+          if (fullContent.includes('===PLAN_UPDATE===') || fullContent.includes('===MACRO_PLAN_UPDATE===')) {
             setUpdatingPlan(true);
           }
           setMessages(prev =>
@@ -217,7 +228,7 @@ const AIChat: React.FC<AIChatProps> = ({ onWorkoutClick, isActive }) => {
             )
           );
         },
-        (meta: { planUpdated: boolean }) => {
+        (meta: { planUpdated: boolean; macroPlanUpdated?: boolean; macroPlanAction?: string }) => {
           setUpdatingPlan(false);
           setThinking(false);
           // Final cleanup: strip plan block from displayed message
@@ -237,6 +248,21 @@ const AIChat: React.FC<AIChatProps> = ({ onWorkoutClick, isActive }) => {
               timestamp: new Date()
             };
             setMessages(prev => [...prev, systemMsg]);
+          }
+          if (meta.macroPlanUpdated) {
+            // Clear cached macro plan so Plan screen fetches fresh data
+            try { localStorage.removeItem('rw_macro_plan_cache'); } catch {}
+            const macroMsg: Message = {
+              id: (Date.now() + 3).toString(),
+              role: 'system',
+              content: meta.macroPlanAction === 'created'
+                ? t('chat.macroPlanCreated')
+                : meta.macroPlanAction === 'deleted'
+                  ? t('chat.macroPlanDeleted')
+                  : t('chat.macroPlanUpdated'),
+              timestamp: new Date()
+            };
+            setMessages(prev => [...prev, macroMsg]);
           }
         },
         () => {

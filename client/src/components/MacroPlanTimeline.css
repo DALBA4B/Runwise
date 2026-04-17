@@ -1,0 +1,271 @@
+/* ============ MACRO PLAN TIMELINE ============ */
+
+.macro-plan {
+  margin-bottom: var(--spacing-lg);
+}
+
+.macro-plan-header {
+  background-color: var(--color-bg-secondary);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.macro-plan-goal {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+}
+
+.macro-plan-goal-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.macro-plan-goal-target {
+  font-size: 14px;
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.macro-plan-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.macro-plan-phase-current {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  color: #fff;
+}
+
+.macro-plan-phase-current.phase-base { background-color: var(--color-accent); }
+.macro-plan-phase-current.phase-build { background-color: var(--color-warning); }
+.macro-plan-phase-current.phase-peak { background-color: var(--color-danger); }
+.macro-plan-phase-current.phase-taper { background-color: var(--color-success); }
+
+/* Timeline scroll container */
+.macro-plan-timeline-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: var(--spacing-sm);
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.macro-plan-timeline-wrap::-webkit-scrollbar {
+  height: 4px;
+}
+
+.macro-plan-timeline-wrap::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.macro-plan-timeline-wrap::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 2px;
+}
+
+.macro-plan-timeline {
+  display: flex;
+  gap: 3px;
+  padding: var(--spacing-xs) 0;
+  min-width: max-content;
+}
+
+/* Individual week block */
+.macro-week {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.macro-week:active {
+  transform: scale(0.92);
+}
+
+.macro-week-block {
+  width: 32px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  position: relative;
+  transition: var(--transition);
+}
+
+.macro-week-block.phase-base { background-color: var(--color-accent); }
+.macro-week-block.phase-build { background-color: var(--color-warning); }
+.macro-week-block.phase-peak { background-color: var(--color-danger); }
+.macro-week-block.phase-taper { background-color: var(--color-success); }
+
+/* Past weeks — opacity based on compliance */
+.macro-week-block.past { opacity: 0.5; }
+.macro-week-block.past.compliance-high { opacity: 1; }
+.macro-week-block.past.compliance-mid { opacity: 0.75; }
+.macro-week-block.past.compliance-low { opacity: 0.45; }
+
+/* Current week highlight */
+.macro-week-block.current {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+  transform: scale(1.1);
+  z-index: 1;
+}
+
+/* Future weeks — slightly muted */
+.macro-week-block.future {
+  opacity: 0.65;
+}
+
+.macro-week-num {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.macro-week-km {
+  font-size: 8px;
+  line-height: 1;
+  opacity: 0.85;
+}
+
+/* Month labels above timeline */
+.macro-plan-months {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 2px;
+  min-width: max-content;
+}
+
+.macro-month-label {
+  font-size: 10px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  text-transform: uppercase;
+  text-align: center;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* Phase legend */
+.macro-plan-legend {
+  display: flex;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.macro-plan-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--color-text-secondary);
+}
+
+.macro-plan-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.macro-plan-legend-dot.phase-base { background-color: var(--color-accent); }
+.macro-plan-legend-dot.phase-build { background-color: var(--color-warning); }
+.macro-plan-legend-dot.phase-peak { background-color: var(--color-danger); }
+.macro-plan-legend-dot.phase-taper { background-color: var(--color-success); }
+
+/* Week detail tooltip/card */
+.macro-week-detail {
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+  margin-top: var(--spacing-sm);
+  animation: fadeSlideUp 0.25s ease;
+}
+
+.macro-week-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+}
+
+.macro-week-detail-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.macro-week-detail-phase {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  color: #fff;
+  font-weight: 500;
+}
+
+.macro-week-detail-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--spacing-sm);
+}
+
+.macro-week-detail-stat {
+  text-align: center;
+}
+
+.macro-week-detail-stat-value {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.macro-week-detail-stat-value.good { color: var(--color-success); }
+.macro-week-detail-stat-value.warn { color: var(--color-warning); }
+.macro-week-detail-stat-value.bad { color: var(--color-danger); }
+
+.macro-week-detail-stat-label {
+  font-size: 10px;
+  color: var(--color-text-secondary);
+}
+
+.macro-week-detail-notes {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-top: var(--spacing-sm);
+  line-height: 1.4;
+}
+
+.macro-week-detail-sessions {
+  display: flex;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+  margin-top: var(--spacing-sm);
+}
+
+.macro-session-tag {
+  font-size: 10px;
+  padding: 2px 6px;
+  background-color: var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+}
+
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}

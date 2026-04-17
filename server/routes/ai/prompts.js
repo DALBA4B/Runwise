@@ -486,7 +486,7 @@ ${l.note}`;
 }
 
 // Helper: build chat system prompt
-function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, records, lang = 'ru', aiPrefs = null, weeklyVolumes = null, predictions = null, paceZonesData = null) {
+function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, records, lang = 'ru', aiPrefs = null, weeklyVolumes = null, predictions = null, paceZonesData = null, macroPlan = null) {
   const today = new Date();
   const dayNamesMap = {
     ru: ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'],
@@ -534,6 +534,37 @@ function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, 
 - ЦЕЛЬ — ЭТО МАЯК, направление движения, а НЕ задание на эту неделю. Цель влияет на ТИП тренировок (скоростные для PB, объёмные для дистанционных целей), но НЕ на потолок объёма или интенсивности. Каждая неделя должна делать бегуна чуть сильнее: немного больше объём, немного быстрее темп. НЕ пытайся приблизить к цели за одну неделю.
 - ОЦЕНКА ЦЕЛЕЙ: бегун улучшается ~1-3%/мес (новичок ~3-5%). Если цель требует >5% улучшения за оставшееся время — предупреди пользователя и предложи реалистичную промежуточную цель. НЕ строй опасный план ради невозможной цели. Безопасный объём: текущий + max 10-15%.`,
       rules: `ПРАВИЛА:\n- Изменяй план ТОЛЬКО если пользователь явно просит это сделать или соглашается на твоё предложение.\n- При изменении плана СНАЧАЛА поставь блок PLAN_UPDATE с JSON, а ПОСЛЕ него напиши объяснение что и почему ты изменил.\n- Если пользователь просто спрашивает о плане — расскажи СВОИМИ СЛОВАМИ кратко: какой общий объём, что за ключевые тренировки, сколько дней отдыха. НЕ копируй план таблицей или списком.\n- Если пользователь говорит что ему тяжело — посочувствуй, предложи изменения и спроси подтверждение.\n- Математическая точность: дистанция × темп = время. Всегда проверяй цифры.\n- НЕ выдумывай даты — если не уверен в дате, не упоминай её.\n- GPS-АНОМАЛИИ: если у тренировки поле gps_anomaly = true — ОБЯЗАТЕЛЬНО предупреди пользователя что данные этой тренировки ненадёжны (GPS сбоил). НЕ хвали темп/дистанцию такой тренировки, они могут быть некорректными. Скажи об этом прямо.\n- ССЫЛКИ НА ТРЕНИРОВКИ: когда упоминаешь КОНКРЕТНУЮ тренировку (у которой есть id из данных инструментов), оформляй её как ссылку в формате [Название Xкм](workout:ID). Пример: [Темповая 12.3км](workout:abc-123-def). Используй ТОЛЬКО для конкретных тренировок с известным id. НЕ используй для общих упоминаний типа "твои длительные" или "последние тренировки".`,
+      macroPlanCapability: `ВОЗМОЖНОСТЬ СОЗДАНИЯ МАКРО-ПЛАНА:
+Если пользователь просит составить долгосрочный план подготовки к забегу/цели, ты МОЖЕШЬ создать макро-план (периодизация на несколько недель/месяцев).
+Научная основа периодизации (Daniels, Pfitzinger, Lydiard):
+- Базовая фаза (~40% от общего числа недель): развитие аэробной базы, плавное наращивание объёма, 80%+ лёгкого бега
+- Фаза развития (~30%): темповые/пороговые работы, удержание объёма
+- Пиковая фаза (~20%): специфичная интенсивность под цель, лёгкое снижение объёма
+- Подводка (~10%, мин 1-2 недели): -30-50% объёма, сохранение коротких интенсивных вставок
+- Рост объёма: максимум 10% в неделю (правило Дэниелса)
+- Каждые 3-4 недели: разгрузочная неделя (-20-30% объёма) для адаптации
+- Если выполнение плана < 80% 2+ недели подряд — предложи скорректировать оставшийся план
+
+ФОРМАТ: блок MACRO_PLAN_UPDATE ставь ПЕРВЫМ в ответе:
+===MACRO_PLAN_UPDATE===
+{"action":"create","goal_type":"pb_21k","goal_target_value":5400,"race_date":"2026-10-15","weeks":[{"week_number":1,"start_date":"2026-04-20","phase":"base","target_volume_km":30,"key_sessions_count":2,"key_session_types":["long","easy"],"notes":"Наращивание базы"},...]}
+===END_MACRO_PLAN_UPDATE===
+
+Для корректировки существующего плана:
+===MACRO_PLAN_UPDATE===
+{"action":"update","updated_weeks":[{"week_number":5,"target_volume_km":30,"notes":"Снижение после болезни"},{"week_number":6,"target_volume_km":33,"notes":"Плавное возвращение"}]}
+===END_MACRO_PLAN_UPDATE===
+
+Для удаления макро-плана:
+===MACRO_PLAN_UPDATE===
+{"action":"delete"}
+===END_MACRO_PLAN_UPDATE===
+
+ПРАВИЛА МАКРО-ПЛАНА:
+- start_date каждой недели = понедельник, начиная с ближайшего понедельника
+- Каждая неделя ОБЯЗАТЕЛЬНО содержит: week_number, start_date, phase, target_volume_km, key_sessions_count, key_session_types, notes
+- Объём плана базируется на ТЕКУЩЕМ уровне бегуна (недельные объёмы из данных), НЕ на желаемом
+- При создании макро-плана учитывай текущий недельный объём как стартовую точку`,
       toolsSection: `ДОСТУПНЫЕ ИНСТРУМЕНТЫ:
 У тебя есть инструменты для доступа к данным пользователя. Используй их АКТИВНО когда нужны конкретные данные:
 - Тренировки за период (get_workouts_by_date_range) — последние тренировки, что было на прошлой неделе и т.д.
@@ -542,6 +573,8 @@ function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, 
 - Статистика периода (get_period_stats) — объём, среднее за любой период
 - Личные рекорды (get_personal_records_history) — ЛР на стандартных дистанциях
 - Текущий план (get_current_plan) — полный план на неделю с описанием каждого дня
+- Макро-план (get_macro_plan) — долгосрочный план с фазами и выполнением по неделям
+- Обновить макро-план (update_macro_plan) — изменить будущие недели макро-плана
 
 В промпте только краткая сводка за 30 дней. Для конкретных данных о тренировках, рекордах и плане — используй инструменты.
 НЕ вызывай инструменты для приветствий, общих вопросов о беге или советов.`
@@ -572,6 +605,33 @@ function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, 
 - ЦІЛЬ — ЦЕ МАЯК, напрямок руху, а НЕ завдання на цей тиждень. Ціль впливає на ТИП тренувань (швидкісні для PB, об'ємні для дистанційних цілей), але НЕ на стелю об'єму чи інтенсивності. Кожен тиждень має робити бігуна трохи сильнішим: трохи більше об'єм, трохи швидший темп. НЕ намагайся наблизити до цілі за один тиждень.
 - ОЦІНКА ЦІЛЕЙ: бігун покращується ~1-3%/міс (новачок ~3-5%). Якщо ціль потребує >5% покращення за час що залишився — попередь користувача і запропонуй реалістичну проміжну ціль. НЕ будуй небезпечний план заради неможливої цілі. Безпечний об'єм: поточний + max 10-15%.`,
       rules: `ПРАВИЛА:\n- Змінюй план ТІЛЬКИ якщо користувач явно просить це зробити або погоджується на твою пропозицію.\n- При зміні плану СПОЧАТКУ постав блок PLAN_UPDATE з JSON, а ПІСЛЯ нього напиши пояснення що і чому ти змінив.\n- Якщо користувач просто запитує про план — розкажи СВОЇМИ СЛОВАМИ коротко: який загальний об'єм, що за ключові тренування, скільки днів відпочинку. НЕ копіюй план таблицею чи списком.\n- Якщо користувач каже що йому важко — поспівчувай, запропонуй зміни і запитай підтвердження.\n- Математична точність: дистанція × темп = час. Завжди перевіряй цифри.\n- НЕ вигадуй дати — якщо не впевнений у даті, не згадуй її.\n- GPS-АНОМАЛІЇ: якщо у тренування поле gps_anomaly = true — ОБОВ'ЯЗКОВО попередь користувача що дані цього тренування ненадійні (GPS збоїв). НЕ хвали темп/дистанцію такого тренування, вони можуть бути некоректними. Скажи про це прямо.\n- ПОСИЛАННЯ НА ТРЕНУВАННЯ: коли згадуєш КОНКРЕТНЕ тренування (у якого є id з даних інструментів), оформлюй його як посилання у форматі [Назва Xкм](workout:ID). Приклад: [Темпова 12.3км](workout:abc-123-def). Використовуй ТІЛЬКИ для конкретних тренувань з відомим id. НЕ використовуй для загальних згадок типу "твої довгі" або "останні тренування".`,
+      macroPlanCapability: `МОЖЛИВІСТЬ СТВОРЕННЯ МАКРО-ПЛАНУ:
+Якщо користувач просить скласти довгостроковий план підготовки до забігу/цілі, ти МОЖЕШ створити макро-план (періодизація на кілька тижнів/місяців).
+Наукова основа періодизації (Daniels, Pfitzinger, Lydiard):
+- Базова фаза (~40%): розвиток аеробної бази, плавне нарощування об'єму, 80%+ легкого бігу
+- Фаза розвитку (~30%): темпові/порогові роботи, утримання об'єму
+- Пікова фаза (~20%): специфічна інтенсивність під ціль, легке зниження об'єму
+- Підводка (~10%, мін 1-2 тижні): -30-50% об'єму, збереження коротких інтенсивних вставок
+- Зростання об'єму: максимум 10% на тиждень
+- Кожні 3-4 тижні: розвантажувальний тиждень (-20-30% об'єму)
+- Якщо виконання плану < 80% 2+ тижні поспіль — запропонуй скоригувати план
+
+ФОРМАТ: блок MACRO_PLAN_UPDATE став ПЕРШИМ у відповіді:
+===MACRO_PLAN_UPDATE===
+{"action":"create","goal_type":"pb_21k","goal_target_value":5400,"race_date":"2026-10-15","weeks":[{"week_number":1,"start_date":"2026-04-20","phase":"base","target_volume_km":30,"key_sessions_count":2,"key_session_types":["long","easy"],"notes":"Нарощування бази"},...]}
+===END_MACRO_PLAN_UPDATE===
+
+Для коригування:
+===MACRO_PLAN_UPDATE===
+{"action":"update","updated_weeks":[{"week_number":5,"target_volume_km":30,"notes":"Зниження після хвороби"}]}
+===END_MACRO_PLAN_UPDATE===
+
+Для видалення макро-плану:
+===MACRO_PLAN_UPDATE===
+{"action":"delete"}
+===END_MACRO_PLAN_UPDATE===
+
+ПРАВИЛА: start_date = понеділок, кожна неделя містить week_number, start_date, phase, target_volume_km, key_sessions_count, key_session_types, notes. Об'єм базується на ПОТОЧНОМУ рівні бігуна.`,
       toolsSection: `ДОСТУПНІ ІНСТРУМЕНТИ:
 У тебе є інструменти для доступу до даних користувача. Використовуй їх АКТИВНО коли потрібні конкретні дані:
 - Тренування за період (get_workouts_by_date_range) — останні тренування, що було минулого тижня тощо
@@ -580,6 +640,8 @@ function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, 
 - Статистика періоду (get_period_stats) — об'єм, середнє за будь-який період
 - Особисті рекорди (get_personal_records_history) — ОР на стандартних дистанціях
 - Поточний план (get_current_plan) — повний план на тиждень з описом кожного дня
+- Макро-план (get_macro_plan) — довгостроковий план з фазами та виконанням по тижнях
+- Оновити макро-план (update_macro_plan) — змінити майбутні тижні макро-плану
 
 У промпті лише коротке зведення за 30 днів. Для конкретних даних про тренування, рекорди і план — використовуй інструменти.
 НЕ викликай інструменти для привітань, загальних питань про біг або порад.`
@@ -610,6 +672,33 @@ function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, 
 - The GOAL is a BEACON, a direction of movement, NOT a task for this week. The goal influences the TYPE of workouts (speed work for PB goals, volume work for distance goals), but NOT the ceiling of volume or intensity. Each week should make the runner slightly stronger: a bit more volume, a bit faster tempo. Do NOT try to bring the runner closer to the goal in one week.
 - GOAL ASSESSMENT: runner improves ~1-3%/month (beginner ~3-5%). If goal requires >5% improvement in remaining time — warn user and suggest a realistic intermediate goal. Do NOT build a dangerous plan for an impossible goal. Safe volume: current + max 10-15%.`,
       rules: `RULES:\n- Only modify the plan if the user explicitly asks or agrees to your suggestion.\n- When modifying the plan, put the PLAN_UPDATE block with JSON FIRST, then write your explanation of what and why you changed.\n- If the user just asks about the plan — summarize IN YOUR OWN WORDS: total volume, key workouts, rest days. Do NOT copy the plan as a table or list.\n- If the user says it's hard — empathize, suggest changes and ask for confirmation.\n- Math accuracy: distance × pace = time. Always verify numbers.\n- Do NOT make up dates — if unsure about a date, don't mention it.\n- GPS ANOMALIES: if a workout has gps_anomaly = true — you MUST warn the user that this workout's data is unreliable (GPS glitch). Do NOT praise pace/distance of such workout, they may be incorrect. Say it directly.\n- WORKOUT LINKS: when mentioning a SPECIFIC workout (that has an id from tool data), format it as a link: [Name Xkm](workout:ID). Example: [Tempo 12.3km](workout:abc-123-def). Use ONLY for specific workouts with a known id. Do NOT use for general mentions like "your long runs" or "recent workouts".`,
+      macroPlanCapability: `MACRO PLAN CAPABILITY:
+If the user asks to create a long-term training plan for a race/goal, you CAN create a macro plan (periodization over weeks/months).
+Scientific periodization (Daniels, Pfitzinger, Lydiard):
+- Base phase (~40% of total weeks): aerobic development, gradual volume build, 80%+ easy running
+- Build phase (~30%): tempo/threshold work, maintain volume
+- Peak phase (~20%): race-specific intensity, slight volume reduction
+- Taper phase (~10%, min 1-2 weeks): -30-50% volume, maintain short intensity bursts
+- Volume increase: max 10% per week (Daniels rule)
+- Every 3-4 weeks: deload week (-20-30% volume) for adaptation
+- If compliance < 80% for 2+ consecutive weeks: suggest adjusting remaining plan
+
+FORMAT: place MACRO_PLAN_UPDATE block FIRST in your response:
+===MACRO_PLAN_UPDATE===
+{"action":"create","goal_type":"pb_21k","goal_target_value":5400,"race_date":"2026-10-15","weeks":[{"week_number":1,"start_date":"2026-04-20","phase":"base","target_volume_km":30,"key_sessions_count":2,"key_session_types":["long","easy"],"notes":"Base building"},...]}
+===END_MACRO_PLAN_UPDATE===
+
+For adjustments:
+===MACRO_PLAN_UPDATE===
+{"action":"update","updated_weeks":[{"week_number":5,"target_volume_km":30,"notes":"Reduced after illness"}]}
+===END_MACRO_PLAN_UPDATE===
+
+For deletion:
+===MACRO_PLAN_UPDATE===
+{"action":"delete"}
+===END_MACRO_PLAN_UPDATE===
+
+RULES: start_date = Monday, each week must include week_number, start_date, phase, target_volume_km, key_sessions_count, key_session_types, notes. Volume based on runner's CURRENT level.`,
       toolsSection: `AVAILABLE TOOLS:
 You have tools to access user workout data. Use them ACTIVELY when specific data is needed:
 - Workouts by date range (get_workouts_by_date_range) — recent workouts, what happened last week, etc.
@@ -618,6 +707,8 @@ You have tools to access user workout data. Use them ACTIVELY when specific data
 - Period stats (get_period_stats) — volume, averages for any period
 - Personal records (get_personal_records_history) — PRs for standard distances
 - Current plan (get_current_plan) — full weekly plan with each day's description
+- Macro plan (get_macro_plan) — long-term plan with phases and weekly compliance
+- Update macro plan (update_macro_plan) — modify future weeks of the macro plan
 
 The prompt only contains a brief 30-day summary. For specific data about workouts, records and plan — use tools.
 Do NOT call tools for greetings, general running questions or advice.`
@@ -650,6 +741,8 @@ ${p2.recordsNote}
 
 ${paceZonesData ? formatPaceZonesBlock(paceZonesData, lang) + '\n' : ''}${formatPlanBrief(currentPlan, lang)}
 
+${macroPlan ? formatMacroPlanForAI(macroPlan, lang) : ''}
+
 ${weeklyVolumes ? formatWeeklyVolumeBlock(weeklyVolumes, lang) : ''}
 
 ${p2.toolsSection}
@@ -657,6 +750,8 @@ ${p2.toolsSection}
 ${p2.methodology}
 
 ${p2.planUpdate}
+
+${p2.macroPlanCapability}
 
 ${p2.formatExample(dayExample)}
 
@@ -731,6 +826,242 @@ async function processPlanUpdate(reply, userId, currentPlan, savePlanUpdateFn) {
   return { textReply, planUpdated };
 }
 
+// Helper: format macro plan summary for AI system prompt
+function formatMacroPlanForAI(macroPlan, lang = 'ru') {
+  if (!macroPlan) return '';
+
+  const weeks = typeof macroPlan.weeks === 'string' ? JSON.parse(macroPlan.weeks) : macroPlan.weeks;
+  const currentWeek = macroPlan.current_week || 1;
+
+  const goalNames = {
+    ru: { pb_5k: 'ЛР 5 км', pb_10k: 'ЛР 10 км', pb_21k: 'ЛР полумарафон', pb_42k: 'ЛР марафон', monthly_distance: 'Месячный объём', weekly_distance: 'Недельный объём' },
+    uk: { pb_5k: 'ОР 5 км', pb_10k: 'ОР 10 км', pb_21k: 'ОР півмарафон', pb_42k: 'ОР марафон', monthly_distance: "Місячний об'єм", weekly_distance: "Тижневий об'єм" },
+    en: { pb_5k: 'PB 5K', pb_10k: 'PB 10K', pb_21k: 'PB half marathon', pb_42k: 'PB marathon', monthly_distance: 'Monthly volume', weekly_distance: 'Weekly volume' }
+  };
+  const names = goalNames[lang] || goalNames.ru;
+  const goalName = names[macroPlan.goal_type] || macroPlan.goal_type;
+
+  // Format target time
+  const tv = macroPlan.goal_target_value;
+  let targetStr;
+  if (['pb_5k', 'pb_10k', 'pb_21k', 'pb_42k'].includes(macroPlan.goal_type)) {
+    const h = Math.floor(tv / 3600);
+    const m = Math.floor((tv % 3600) / 60);
+    const s = Math.round(tv % 60);
+    targetStr = h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}` : `${m}:${s.toString().padStart(2, '0')}`;
+  } else {
+    targetStr = tv >= 1000 ? `${(tv / 1000).toFixed(1)} km` : `${tv}`;
+  }
+
+  // Phase breakdown
+  const phaseLabels = {
+    ru: { base: 'Базовая', build: 'Развитие', peak: 'Пиковая', taper: 'Подводка' },
+    uk: { base: 'Базова', build: 'Розвиток', peak: 'Пікова', taper: 'Підводка' },
+    en: { base: 'Base', build: 'Build', peak: 'Peak', taper: 'Taper' }
+  };
+  const pLabels = phaseLabels[lang] || phaseLabels.ru;
+
+  // Group weeks by phase
+  const phases = [];
+  let currentPhase = null;
+  let phaseStart = 0;
+  for (let i = 0; i < weeks.length; i++) {
+    if (weeks[i].phase !== currentPhase) {
+      if (currentPhase !== null) {
+        phases.push({ phase: currentPhase, from: phaseStart + 1, to: i });
+      }
+      currentPhase = weeks[i].phase;
+      phaseStart = i;
+    }
+  }
+  if (currentPhase !== null) {
+    phases.push({ phase: currentPhase, from: phaseStart + 1, to: weeks.length });
+  }
+  const phaseStr = phases.map(p => `${pLabels[p.phase] || p.phase} (wk ${p.from}-${p.to})`).join(', ');
+
+  // Current phase
+  const cw = weeks[currentWeek - 1];
+  const currentPhaseName = cw ? (pLabels[cw.phase] || cw.phase) : '?';
+
+  // Recent compliance (last 3 past weeks)
+  const pastWeeks = weeks.filter(w => w.compliance_pct != null);
+  const recentCompliance = pastWeeks.slice(-3).map(w =>
+    `Wk${w.week_number}: ${w.compliance_pct}% (${w.actual_volume_km || 0}/${w.target_volume_km}km)`
+  ).join(', ');
+
+  // Current & next week info
+  const thisWeekInfo = cw ? `${cw.target_volume_km} km, ${cw.key_sessions_count} key (${(cw.key_session_types || []).join(', ')})` : '';
+  const nextWeek = weeks[currentWeek];
+  const nextWeekInfo = nextWeek ? `${nextWeek.target_volume_km} km, ${nextWeek.key_sessions_count} key (${(nextWeek.key_session_types || []).join(', ')})` : '';
+
+  const headers = {
+    ru: 'МАКРО-ПЛАН ТРЕНИРОВОК (долгосрочная периодизация)',
+    uk: 'МАКРО-ПЛАН ТРЕНУВАНЬ (довгострокова періодизація)',
+    en: 'MACRO TRAINING PLAN (long-term periodization)'
+  };
+
+  let result = `${headers[lang] || headers.ru}:\n`;
+  result += `Goal: ${goalName} ${targetStr}`;
+  if (macroPlan.race_date) result += `, race ${macroPlan.race_date}`;
+  result += ` (${macroPlan.total_weeks} weeks total, currently week ${currentWeek})\n`;
+  result += `Phases: ${phaseStr}\n`;
+  result += `Current phase: ${currentPhaseName} (week ${currentWeek})\n`;
+  if (recentCompliance) result += `Recent compliance: ${recentCompliance}\n`;
+  if (thisWeekInfo) result += `This week (${currentWeek}): ${thisWeekInfo}\n`;
+  if (nextWeekInfo) result += `Next week (${currentWeek + 1}): ${nextWeekInfo}\n`;
+
+  return result;
+}
+
+// Helper: process macro plan update from AI reply
+async function processMacroPlanUpdate(reply, userId) {
+  let textReply = reply;
+  let macroPlanUpdated = false;
+  let macroPlanAction = null;
+
+  const hasStart = reply.includes('===MACRO_PLAN_UPDATE===');
+  const hasEnd = reply.includes('===END_MACRO_PLAN_UPDATE===');
+
+  if (!hasStart) {
+    return { textReply, macroPlanUpdated, macroPlanAction };
+  }
+
+  const supabase = require('../../supabase');
+
+  // Extract the block (use last match if multiple)
+  let jsonStr = null;
+  if (hasEnd) {
+    const allMatches = [...reply.matchAll(/===MACRO_PLAN_UPDATE===\s*([\s\S]*?)\s*===END_MACRO_PLAN_UPDATE===/g)];
+    if (allMatches.length > 0) {
+      jsonStr = allMatches[allMatches.length - 1][1].trim();
+    }
+    textReply = reply.replace(/===MACRO_PLAN_UPDATE===[\s\S]*?===END_MACRO_PLAN_UPDATE===/g, '').trim();
+  } else {
+    const partialMatch = reply.match(/===MACRO_PLAN_UPDATE===\s*([\s\S]*)/);
+    if (partialMatch) {
+      jsonStr = partialMatch[1].trim();
+    }
+    textReply = reply.replace(/===MACRO_PLAN_UPDATE===[\s\S]*/, '').trim();
+  }
+
+  if (!jsonStr) {
+    return { textReply, macroPlanUpdated, macroPlanAction };
+  }
+
+  try {
+    // Try to extract JSON object from the block
+    const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.warn('[MacroPlanUpdate] No JSON object found in block');
+      return { textReply, macroPlanUpdated, macroPlanAction };
+    }
+
+    const payload = JSON.parse(jsonMatch[0]);
+    const action = payload.action;
+
+    if (action === 'create') {
+      // Validate required fields
+      if (!payload.goal_type || !payload.weeks || !Array.isArray(payload.weeks) || payload.weeks.length === 0) {
+        console.warn('[MacroPlanUpdate] Invalid create payload — missing fields');
+        return { textReply, macroPlanUpdated, macroPlanAction };
+      }
+
+      // Cancel any existing active plan
+      await supabase
+        .from('macro_plans')
+        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('status', 'active');
+
+      // Insert new macro plan
+      const { error } = await supabase
+        .from('macro_plans')
+        .insert({
+          user_id: userId,
+          goal_type: payload.goal_type,
+          goal_target_value: payload.goal_target_value || 0,
+          race_date: payload.race_date || null,
+          total_weeks: payload.weeks.length,
+          weeks: JSON.stringify(payload.weeks),
+          status: 'active'
+        });
+
+      if (error) {
+        console.error('[MacroPlanUpdate] Insert error:', error.message);
+        return { textReply, macroPlanUpdated, macroPlanAction };
+      }
+
+      macroPlanUpdated = true;
+      macroPlanAction = 'created';
+      console.log(`[MacroPlanUpdate] Created macro plan: ${payload.goal_type}, ${payload.weeks.length} weeks`);
+
+    } else if (action === 'update') {
+      if (!payload.updated_weeks || !Array.isArray(payload.updated_weeks)) {
+        console.warn('[MacroPlanUpdate] Invalid update payload');
+        return { textReply, macroPlanUpdated, macroPlanAction };
+      }
+
+      // Load existing plan
+      const { data: existing } = await supabase
+        .from('macro_plans')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .limit(1)
+        .single();
+
+      if (!existing) {
+        console.warn('[MacroPlanUpdate] No active plan to update');
+        return { textReply, macroPlanUpdated, macroPlanAction };
+      }
+
+      let weeks = typeof existing.weeks === 'string' ? JSON.parse(existing.weeks) : [...existing.weeks];
+
+      for (const update of payload.updated_weeks) {
+        const idx = weeks.findIndex(w => w.week_number === update.week_number);
+        if (idx === -1) continue;
+        const w = { ...weeks[idx] };
+        if (update.target_volume_km !== undefined) w.target_volume_km = update.target_volume_km;
+        if (update.key_sessions_count !== undefined) w.key_sessions_count = update.key_sessions_count;
+        if (update.key_session_types !== undefined) w.key_session_types = update.key_session_types;
+        if (update.phase !== undefined) w.phase = update.phase;
+        if (update.notes !== undefined) w.notes = update.notes;
+        weeks[idx] = w;
+      }
+
+      const { error } = await supabase
+        .from('macro_plans')
+        .update({ weeks: JSON.stringify(weeks), updated_at: new Date().toISOString() })
+        .eq('id', existing.id);
+
+      if (error) {
+        console.error('[MacroPlanUpdate] Update error:', error.message);
+        return { textReply, macroPlanUpdated, macroPlanAction };
+      }
+
+      macroPlanUpdated = true;
+      macroPlanAction = 'updated';
+      console.log(`[MacroPlanUpdate] Updated ${payload.updated_weeks.length} weeks`);
+
+    } else if (action === 'delete') {
+      await supabase
+        .from('macro_plans')
+        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('status', 'active');
+
+      macroPlanUpdated = true;
+      macroPlanAction = 'deleted';
+      console.log('[MacroPlanUpdate] Macro plan cancelled');
+    }
+
+  } catch (parseErr) {
+    console.error('[MacroPlanUpdate] Parse error:', parseErr.message);
+  }
+
+  return { textReply, macroPlanUpdated, macroPlanAction };
+}
+
 module.exports = {
   getLangInstruction,
   getGoalLabels,
@@ -744,5 +1075,7 @@ module.exports = {
   getAiPrefs,
   buildPersonalityBlock,
   buildChatSystemPrompt,
-  processPlanUpdate
+  processPlanUpdate,
+  formatMacroPlanForAI,
+  processMacroPlanUpdate
 };

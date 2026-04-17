@@ -121,6 +121,25 @@ CREATE TABLE IF NOT EXISTS promo_activations (
 
 CREATE INDEX IF NOT EXISTS idx_promo_activations_user ON promo_activations(user_id);
 
+-- Macro training plans (long-term periodization)
+CREATE TABLE IF NOT EXISTS macro_plans (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  goal_type TEXT NOT NULL,
+  goal_target_value REAL NOT NULL,
+  race_date DATE,
+  total_weeks INTEGER NOT NULL,
+  weeks JSONB NOT NULL,
+  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'completed', 'cancelled')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Only one active macro plan per user
+CREATE UNIQUE INDEX IF NOT EXISTS idx_macro_plans_active
+  ON macro_plans(user_id) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS idx_macro_plans_user ON macro_plans(user_id);
+
 -- Enable Row Level Security (optional, since we use service key on backend)
 -- ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 -- ALTER TABLE workouts ENABLE ROW LEVEL SECURITY;

@@ -310,6 +310,99 @@ function getRecentPaceStats(workouts) {
   return { avgPace, avgEasyPace, bestPace, count: paces.length };
 }
 
+// Helper: get active macro plan for user
+async function getActiveMacroPlan(userId) {
+  const { data } = await supabase
+    .from('macro_plans')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .limit(1)
+    .single();
+
+  return data || null;
+}
+
+// Helper: compute plan-vs-fact actuals for past weeks of a macro plan
+async function computeMacroPlanWithActuals(userId, macroPlan) {
+  if (!macroPlan || !macroPlan.weeks || macroPlan.weeks.length === 0) {
+    return { ...macroPlan, current_week: 1 };
+  }
+
+  const weeks = typeof macroPlan.weeks === 'string'
+    ? JSON.parse(macroPlan.weeks)
+    : macroPlan.weeks;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const firstStart = new Date(weeks[0].start_date);
+  const diffDays = Math.floor((today - firstStart) / (1000 * 60 * 60 * 24));
+  const currentWeek = Math.max(1, Math.min(Math.floor(diffDays / 7) + 1, weeks.length));
+
+  // Find range of past weeks to query workouts
+  const pastWeeks = weeks.filter(w => {
+    const weekEnd = new Date(w.start_date);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    return weekEnd <= today;
+  });
+
+  if (pastWeeks.length === 0) {
+    return { ...macroPlan, weeks, current_week: currentWeek };
+  }
+
+  // Single query for all past weeks' workouts
+  const planStart = pastWeeks[0].start_date;
+  const lastPastWeekEnd = new Date(pastWeeks[pastWeeks.length - 1].start_date);
+  lastPastWeekEnd.setDate(lastPastWeekEnd.getDate() + 7);
+
+  const { data: workouts } = await supabase
+    .from('workouts')
+    .select('distance, moving_time, date, manual_distance, manual_moving_time')
+    .eq('user_id', userId)
+    .gte('date', planStart)
+    .lt('date', lastPastWeekEnd.toISOString())
+    .order('date', { ascending: true });
+
+  const allWorkouts = workouts || [];
+
+  // Bucket workouts by week
+  const enrichedWeeks = weeks.map(w => {
+    const weekStart = new Date(w.start_date);
+    const weekEnd = new Date(w.start_date);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+
+    if (weekEnd > today) {
+      // Future or current week — no actuals
+      return { ...w };
+    }
+
+    const weekWorkouts = allWorkouts.filter(wr => {
+      const d = new Date(wr.date);
+      return d >= weekStart && d < weekEnd;
+    });
+
+    const actualKm = weekWorkouts.reduce((s, wr) => s + effectiveDistance(wr) / 1000, 0);
+    const actualSessions = weekWorkouts.length;
+    const compliance = w.target_volume_km > 0
+      ? Math.min(Math.round((actualKm / w.target_volume_km) * 100), 200)
+      : 100;
+
+    return {
+      ...w,
+      actual_volume_km: Math.round(actualKm * 10) / 10,
+      actual_sessions: actualSessions,
+      compliance_pct: compliance
+    };
+  });
+
+  return {
+    ...macroPlan,
+    weeks: enrichedWeeks,
+    current_week: currentWeek
+  };
+}
+
 module.exports = {
   toLocalDateStr,
   formatPace,
@@ -327,5 +420,7 @@ module.exports = {
   getUserProfile,
   getWeeklyVolumes,
   getRiegelPredictions,
-  getRecentPaceStats
+  getRecentPaceStats,
+  getActiveMacroPlan,
+  computeMacroPlanWithActuals
 };

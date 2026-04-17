@@ -1,5 +1,5 @@
 const supabase = require('../../supabase');
-const { formatPace, effectiveDistance, effectiveMovingTime, effectivePace } = require('./context');
+const { formatPace, effectiveDistance, effectiveMovingTime, effectivePace, getActiveMacroPlan, computeMacroPlanWithActuals } = require('./context');
 
 // ============ AI TOOLS FOR CHAT ============
 
@@ -90,6 +90,46 @@ const AI_TOOLS = [
       parameters: {
         type: 'object',
         properties: {}
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_macro_plan',
+      description: 'Get the user\'s long-term macro training plan with periodization phases (base/build/peak/taper) and plan-vs-fact comparison for past weeks. Use when user asks about their long-term plan, training phases, macro plan progress, or when you need periodization context.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_macro_plan',
+      description: 'Update future weeks of the macro training plan. Use when the AI decides to adjust the plan based on user request or performance deviation. Can only modify future weeks (current week and beyond).',
+      parameters: {
+        type: 'object',
+        properties: {
+          updated_weeks: {
+            type: 'array',
+            description: 'Array of week objects to update. Each must include week_number and the fields to change.',
+            items: {
+              type: 'object',
+              properties: {
+                week_number: { type: 'number', description: 'Week number to update (1-based)' },
+                target_volume_km: { type: 'number', description: 'New target volume in km' },
+                key_sessions_count: { type: 'number', description: 'Number of key sessions' },
+                key_session_types: { type: 'array', items: { type: 'string' }, description: 'Types of key sessions (e.g. tempo, long, interval)' },
+                phase: { type: 'string', enum: ['base', 'build', 'peak', 'taper'], description: 'Training phase' },
+                notes: { type: 'string', description: 'Notes for this week' }
+              },
+              required: ['week_number']
+            }
+          }
+        },
+        required: ['updated_weeks']
       }
     }
   }
@@ -350,6 +390,82 @@ async function toolGetCurrentPlan(userId) {
   };
 }
 
+// Tool executor: get macro plan with actuals
+async function toolGetMacroPlan(userId) {
+  const macroPlan = await getActiveMacroPlan(userId);
+  if (!macroPlan) {
+    return { message: 'No active macro training plan' };
+  }
+
+  const enriched = await computeMacroPlanWithActuals(userId, macroPlan);
+  return {
+    id: enriched.id,
+    goal_type: enriched.goal_type,
+    goal_target_value: enriched.goal_target_value,
+    race_date: enriched.race_date,
+    total_weeks: enriched.total_weeks,
+    current_week: enriched.current_week,
+    status: enriched.status,
+    weeks: enriched.weeks
+  };
+}
+
+// Tool executor: update future weeks of macro plan
+async function toolUpdateMacroPlan(userId, args) {
+  const { updated_weeks } = args;
+  if (!updated_weeks || !Array.isArray(updated_weeks) || updated_weeks.length === 0) {
+    return { error: 'updated_weeks array is required' };
+  }
+
+  const macroPlan = await getActiveMacroPlan(userId);
+  if (!macroPlan) {
+    return { error: 'No active macro plan to update' };
+  }
+
+  const enriched = await computeMacroPlanWithActuals(userId, macroPlan);
+  const currentWeek = enriched.current_week;
+  let weeks = typeof enriched.weeks === 'string' ? JSON.parse(enriched.weeks) : [...enriched.weeks];
+
+  let updatedCount = 0;
+  for (const update of updated_weeks) {
+    const idx = weeks.findIndex(w => w.week_number === update.week_number);
+    if (idx === -1 || update.week_number < currentWeek) continue;
+
+    const w = { ...weeks[idx] };
+    if (update.target_volume_km !== undefined) w.target_volume_km = update.target_volume_km;
+    if (update.key_sessions_count !== undefined) w.key_sessions_count = update.key_sessions_count;
+    if (update.key_session_types !== undefined) w.key_session_types = update.key_session_types;
+    if (update.phase !== undefined) w.phase = update.phase;
+    if (update.notes !== undefined) w.notes = update.notes;
+    // Remove computed actuals from stored data
+    delete w.actual_volume_km;
+    delete w.actual_sessions;
+    delete w.compliance_pct;
+    weeks[idx] = w;
+    updatedCount++;
+  }
+
+  if (updatedCount === 0) {
+    return { error: 'No future weeks were updated (can only modify current or future weeks)' };
+  }
+
+  // Clean actuals from all weeks before saving
+  const cleanWeeks = weeks.map(w => {
+    const { actual_volume_km, actual_sessions, compliance_pct, ...clean } = w;
+    return clean;
+  });
+
+  const { error } = await supabase
+    .from('macro_plans')
+    .update({ weeks: JSON.stringify(cleanWeeks), updated_at: new Date().toISOString() })
+    .eq('id', macroPlan.id)
+    .eq('user_id', userId);
+
+  if (error) throw error;
+
+  return { success: true, updated_weeks_count: updatedCount };
+}
+
 // Central tool dispatcher
 async function executeTool(userId, toolName, args) {
   switch (toolName) {
@@ -365,6 +481,10 @@ async function executeTool(userId, toolName, args) {
       return await toolGetPersonalRecords(userId);
     case 'get_current_plan':
       return await toolGetCurrentPlan(userId);
+    case 'get_macro_plan':
+      return await toolGetMacroPlan(userId);
+    case 'update_macro_plan':
+      return await toolUpdateMacroPlan(userId, args);
     default:
       return { error: `Unknown tool: ${toolName}` };
   }

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import './Plan.css';
 import PlanRow from '../components/PlanRow';
+import MacroPlanTimeline from '../components/MacroPlanTimeline';
 import { ai } from '../api/api';
 import i18n from '../i18n';
 
@@ -36,15 +37,35 @@ const Plan: React.FC<PlanProps> = ({ isActive }) => {
   const [loading, setLoading] = useState(!cached);
   const [generating, setGenerating] = useState(false);
 
+  const macroCached = readCache<any>('rw_macro_plan_cache');
+  const [macroPlan, setMacroPlan] = useState<any>(macroCached || null);
+
   const mountedRef = useRef(true);
+
+  const fetchMacroPlan = async () => {
+    try {
+      const data = await ai.getMacroPlan();
+      if (data.macroPlan) {
+        setMacroPlan(data.macroPlan);
+        writeCache('rw_macro_plan_cache', data.macroPlan);
+      } else {
+        setMacroPlan(null);
+        localStorage.removeItem('rw_macro_plan_cache');
+      }
+    } catch (err) {
+      console.error('Failed to fetch macro plan:', err);
+    }
+  };
 
   useEffect(() => {
     fetchPlan();
+    fetchMacroPlan();
   }, []);
 
   useEffect(() => {
     if (!mountedRef.current && isActive) {
       fetchPlan();
+      fetchMacroPlan();
     }
     mountedRef.current = false;
   }, [isActive]);
@@ -108,6 +129,8 @@ const Plan: React.FC<PlanProps> = ({ isActive }) => {
   return (
     <div className="screen plan-screen">
       <h2 className="screen-title">📋 {t('plan.title')}</h2>
+
+      {macroPlan && <MacroPlanTimeline macroPlan={macroPlan} />}
 
       {plan ? (
         <>
