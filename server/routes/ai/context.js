@@ -47,20 +47,34 @@ async function checkPremium(userId) {
   return false;
 }
 
-// Helper: count user messages sent today
+// Helper: count user messages sent today (from daily_usage table, not affected by chat clearing)
 async function getDailyMessageCount(userId) {
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
+  const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
 
-  const { count, error } = await supabase
-    .from('chat_messages')
-    .select('id', { count: 'exact', head: true })
+  const { data, error } = await supabase
+    .from('daily_usage')
+    .select('message_count')
     .eq('user_id', userId)
-    .eq('role', 'user')
-    .gte('created_at', todayStart.toISOString());
+    .eq('date', today)
+    .maybeSingle();
 
   if (error) throw error;
-  return count || 0;
+  return data?.message_count || 0;
+}
+
+// Helper: increment daily message counter (upsert into daily_usage)
+async function incrementDailyMessageCount(userId) {
+  const today = new Date().toISOString().slice(0, 10);
+
+  const current = await getDailyMessageCount(userId);
+  const { error } = await supabase
+    .from('daily_usage')
+    .upsert(
+      { user_id: userId, date: today, message_count: current + 1 },
+      { onConflict: 'user_id,date' }
+    );
+
+  if (error) throw error;
 }
 
 // Helper: get last N months of workouts for AI context
@@ -411,6 +425,7 @@ module.exports = {
   effectivePace,
   checkPremium,
   getDailyMessageCount,
+  incrementDailyMessageCount,
   getWorkoutsContext,
   getMonthlySummaryContext,
   getUserGoals,

@@ -5,6 +5,7 @@ const authMiddleware = require('../../middleware/authMiddleware');
 const {
   checkPremium,
   getDailyMessageCount,
+  incrementDailyMessageCount,
   getMonthlySummaryContext,
   getUserGoals,
   getCurrentPlan,
@@ -196,6 +197,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
       { user_id: req.user.id, role: 'user', content: message },
       { user_id: req.user.id, role: 'ai', content: textReply }
     ]);
+    await incrementDailyMessageCount(req.user.id);
 
     // Trim history to max 100 messages
     await trimChatHistory(req.user.id);
@@ -244,6 +246,7 @@ router.post('/chat/stream', authMiddleware, async (req, res) => {
       { user_id: req.user.id, role: 'user', content: message },
       { user_id: req.user.id, role: 'ai', content: textReply }
     ]);
+    await incrementDailyMessageCount(req.user.id);
 
     // Trim history to max 100 messages
     await trimChatHistory(req.user.id);

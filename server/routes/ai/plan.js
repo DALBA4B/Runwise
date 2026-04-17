@@ -11,14 +11,14 @@ const {
   getUserRecords,
   getUserProfile,
   getActiveMacroPlan,
-  computeMacroPlanWithActuals
+  computeMacroPlanWithActuals,
+  getRecentPaceStats
 } = require('./context');
 
 const {
   estimateVDOT,
   calculatePaceZones,
   getRunnerLevel,
-  getRecentPaceStats,
   ensurePaceField,
   formatZonesForPrompt
 } = require('./vdot');
