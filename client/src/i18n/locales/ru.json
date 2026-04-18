@@ -138,6 +138,7 @@
     "phase_build": "Развитие",
     "phase_peak": "Пиковая",
     "phase_taper": "Подводка",
+    "phase_race": "Старт",
     "targetVolume": "План",
     "actualVolume": "Факт",
     "compliance": "Выполнение",
@@ -152,6 +153,20 @@
     "created": "Программа подготовки создана!",
     "updated": "Программа подготовки обновлена!",
     "deleted": "Программа подготовки отменена."
+  },
+  "macroPlanView": {
+    "backToWeek": "К неделе",
+    "perMonth": "За месяц",
+    "daysUnit": "дн",
+    "trainings": "Тренировок",
+    "rest": "Отдыха",
+    "weekN": "Неделя {{n}}",
+    "now": "Сейчас",
+    "next": "Следующая",
+    "ofMonth": "от месяца",
+    "outOf": "из",
+    "weekWorkouts": "Тренировки недели",
+    "viewProgram": "Программа"
   },
   "chat": {
     "title": "AI Тренер",

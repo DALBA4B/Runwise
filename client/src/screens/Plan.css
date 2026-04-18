@@ -2,6 +2,37 @@
 .plan-screen {
 }
 
+.plan-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-md);
+}
+
+.plan-header-row .screen-title {
+  margin-bottom: 0;
+}
+
+.plan-program-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(59, 130, 246, 0.11);
+  color: var(--color-accent);
+  border: none;
+  border-radius: 99px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.plan-program-btn:active {
+  background: rgba(59, 130, 246, 0.2);
+}
+
 .plan-summary {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;

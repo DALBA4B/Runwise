@@ -1,0 +1,592 @@
+/* ============ MACRO PLAN VIEW (full-screen) ============ */
+
+.mpv {
+  padding-bottom: 20px;
+}
+
+/* ── TOPBAR ── */
+.mpv-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 0 14px;
+}
+
+.mpv-top-title {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+
+.mpv-top-back {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-accent);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.mpv-top-back svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ── GOAL CARD ── */
+.mpv-goal {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  padding: 16px;
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.mpv-goal::after {
+  content: '';
+  position: absolute;
+  top: -60px;
+  right: -60px;
+  width: 180px;
+  height: 180px;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.07) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.mpv-goal-row1 {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 13px;
+}
+
+.mpv-goal-name {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  margin-bottom: 3px;
+}
+
+.mpv-goal-meta {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.mpv-goal-time {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--color-accent);
+  letter-spacing: -1px;
+  line-height: 1;
+  margin-bottom: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mpv-goal-until {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  text-align: right;
+}
+
+.mpv-goal-row2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.mpv-phase-tag {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 99px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.mpv-phase-tag::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+
+.mpv-phase-tag.phase-base {
+  color: var(--color-accent);
+  background: rgba(59, 130, 246, 0.11);
+}
+.mpv-phase-tag.phase-base::before { background: var(--color-accent); }
+
+.mpv-phase-tag.phase-build {
+  color: var(--color-warning);
+  background: rgba(245, 158, 11, 0.11);
+}
+.mpv-phase-tag.phase-build::before { background: var(--color-warning); }
+
+.mpv-phase-tag.phase-peak {
+  color: var(--color-danger);
+  background: rgba(239, 68, 68, 0.11);
+}
+.mpv-phase-tag.phase-peak::before { background: var(--color-danger); }
+
+.mpv-phase-tag.phase-taper {
+  color: var(--color-success);
+  background: rgba(16, 185, 129, 0.11);
+}
+.mpv-phase-tag.phase-taper::before { background: var(--color-success); }
+
+.mpv-phase-tag.phase-race {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.11);
+}
+.mpv-phase-tag.phase-race::before { background: #ffffff; }
+
+.mpv-goal-wn {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+/* ── PHASE TRACK ── */
+.mpv-track {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  margin-bottom: 6px;
+}
+
+.mpv-seg {
+  flex: 1;
+  border-radius: 2px;
+  transition: transform 0.12s;
+}
+
+.mpv-seg:first-child { border-radius: 4px 2px 2px 4px; }
+.mpv-seg:last-child { border-radius: 2px 4px 4px 2px; }
+
+.mpv-seg.phase-base { background: var(--color-accent); }
+.mpv-seg.phase-build { background: var(--color-warning); }
+.mpv-seg.phase-peak { background: var(--color-danger); }
+.mpv-seg.phase-taper { background: var(--color-success); }
+.mpv-seg.phase-race { background: #ffffff; }
+
+.mpv-seg.is-done { opacity: 0.35; }
+.mpv-seg.is-future { opacity: 0.25; }
+.mpv-seg.is-now { opacity: 1; }
+.mpv-seg.is-now.phase-base { box-shadow: 0 0 7px var(--color-accent); }
+.mpv-seg.is-now.phase-build { box-shadow: 0 0 7px var(--color-warning); }
+.mpv-seg.is-now.phase-peak { box-shadow: 0 0 7px var(--color-danger); }
+.mpv-seg.is-now.phase-taper { box-shadow: 0 0 7px var(--color-success); }
+.mpv-seg.is-now.phase-race { box-shadow: 0 0 7px #ffffff; }
+
+.mpv-track-ends {
+  display: flex;
+  justify-content: space-between;
+}
+
+.mpv-track-ends span {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.mpv-track-legend {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.mpv-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.mpv-legend-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.mpv-legend-dot.phase-base { background: var(--color-accent); }
+.mpv-legend-dot.phase-build { background: var(--color-warning); }
+.mpv-legend-dot.phase-peak { background: var(--color-danger); }
+.mpv-legend-dot.phase-taper { background: var(--color-success); }
+.mpv-legend-dot.phase-race { background: var(--color-danger); }
+
+/* ── MONTH STATS STRIP ── */
+.mpv-mstats {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  display: flex;
+  margin-bottom: 4px;
+}
+
+.mpv-ms-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 13px 8px;
+  gap: 3px;
+  position: relative;
+}
+
+.mpv-ms-item + .mpv-ms-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 18%;
+  bottom: 18%;
+  width: 1px;
+  background: var(--color-border);
+}
+
+.mpv-ms-val {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--color-accent);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.mpv-ms-unit {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  margin-left: 1px;
+}
+
+.mpv-ms-lbl {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+/* ── MONTH NAV ── */
+.mpv-mnav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0 8px;
+}
+
+.mpv-mnav-btn {
+  width: 32px;
+  height: 32px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  font-size: 18px;
+  color: var(--color-accent);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.mpv-mnav-btn:disabled {
+  color: var(--color-text-secondary);
+  opacity: 0.4;
+  cursor: default;
+}
+
+.mpv-mnav-btn:not(:disabled):active {
+  background: var(--color-border);
+}
+
+.mpv-mnav-title {
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* ── PHASE SEPARATOR ── */
+.mpv-ph-sep {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0 6px;
+}
+
+.mpv-ph-sep-line {
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+
+.mpv-ph-sep-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.mpv-ph-sep-label.phase-base { color: var(--color-accent); }
+.mpv-ph-sep-label.phase-build { color: var(--color-warning); }
+.mpv-ph-sep-label.phase-peak { color: var(--color-danger); }
+.mpv-ph-sep-label.phase-taper { color: var(--color-success); }
+.mpv-ph-sep-label.phase-race { color: var(--color-danger); }
+
+/* ── WEEK CARD ── */
+.mpv-wk {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  margin-bottom: 8px;
+  overflow: hidden;
+  position: relative;
+  animation: mpvUp 0.25s ease both;
+}
+
+@keyframes mpvUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.mpv-wk.is-past { opacity: 0.42; }
+
+.mpv-wk.is-now {
+  border-color: rgba(59, 130, 246, 0.3);
+  background: linear-gradient(160deg, #161d2e 0%, var(--color-bg-secondary) 100%);
+  box-shadow: 0 4px 24px rgba(59, 130, 246, 0.07);
+}
+
+.mpv-wk-strip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+}
+
+.mpv-wk.is-now .mpv-wk-strip { background: var(--color-accent); }
+.mpv-wk.is-next .mpv-wk-strip { background: var(--color-border); }
+
+.mpv-wk-nbg {
+  position: absolute;
+  right: 10px;
+  bottom: -10px;
+  font-size: 72px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -4px;
+  color: rgba(255, 255, 255, 0.027);
+  pointer-events: none;
+  user-select: none;
+}
+
+.mpv-wk-body { padding: 15px 14px 14px 15px; }
+
+.mpv-wk-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 11px;
+}
+
+.mpv-wk-id {
+  font-size: 15px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 4px;
+}
+
+.mpv-badge-now {
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(59, 130, 246, 0.11);
+  color: var(--color-accent);
+  padding: 2px 9px;
+  border-radius: 99px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mpv-badge-pulse {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  animation: mpvBlink 1.8s ease infinite;
+}
+
+@keyframes mpvBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+
+.mpv-badge-next {
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-text-secondary);
+  padding: 2px 9px;
+  border-radius: 99px;
+}
+
+.mpv-wk-date {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.mpv-wk-km {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.mpv-wk-km-val {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-accent);
+  letter-spacing: -0.5px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.mpv-wk-km-unit {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.mpv-wk-month-pct {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* month progress bar in week card */
+.mpv-month-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.mpv-month-bar-track {
+  flex: 1;
+  height: 3px;
+  background: var(--color-border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.mpv-month-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--color-accent);
+  opacity: 0.45;
+}
+
+.mpv-month-bar-label {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  min-width: 82px;
+  text-align: right;
+}
+
+/* comment */
+.mpv-wk-comment {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  line-height: 1.55;
+  font-weight: 400;
+}
+
+/* workouts toggle */
+.mpv-wo-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid var(--color-border);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-accent);
+  cursor: pointer;
+  user-select: none;
+  background: none;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  width: 100%;
+  text-align: left;
+}
+
+.mpv-wo-toggle svg {
+  width: 15px;
+  height: 15px;
+  color: var(--color-text-secondary);
+  transition: transform 0.22s;
+}
+
+.mpv-wo-toggle.open svg { transform: rotate(180deg); }
+
+.mpv-wo-wrap {
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 0.3s ease;
+}
+
+.mpv-wo-wrap.open { max-height: 700px; }
+
+.mpv-wo-list {
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.mpv-wo-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+
+.mpv-wo-day {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  min-width: 26px;
+}
+
+.mpv-wo-info { flex: 1; }
+
+.mpv-wo-name {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.mpv-wo-desc {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.mpv-wo-km {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}

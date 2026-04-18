@@ -10,10 +10,11 @@ import Plan from './screens/Plan';
 import AIChat from './screens/AIChat';
 import Profile from './screens/Profile';
 import WorkoutDetail from './screens/WorkoutDetail';
+import MacroPlanView from './components/MacroPlanView';
 import AdminPanel from './screens/AdminPanel';
 import './App.css';
 
-type Screen = 'home' | 'history' | 'plan' | 'ai' | 'profile' | 'workout-detail';
+type Screen = 'home' | 'history' | 'plan' | 'ai' | 'profile' | 'workout-detail' | 'macro-plan';
 
 const SCREEN_ORDER: Record<string, number> = {
   home: 0,
@@ -21,7 +22,8 @@ const SCREEN_ORDER: Record<string, number> = {
   plan: 2,
   ai: 3,
   profile: 4,
-  'workout-detail': 5
+  'workout-detail': 5,
+  'macro-plan': 2.5
 };
 
 const App: React.FC = () => {
@@ -36,6 +38,9 @@ const App: React.FC = () => {
   const [animClass, setAnimClass] = useState('screen-enter');
   const prevScreenRef = useRef<Screen>('home');
 
+  const [macroPlan, setMacroPlan] = useState<any>(() => {
+    try { const raw = localStorage.getItem('rw_macro_plan_cache'); return raw ? JSON.parse(raw) : null; } catch { return null; }
+  });
   const callbackCalledRef = useRef(false);
 
   useEffect(() => {
@@ -119,6 +124,13 @@ const App: React.FC = () => {
   };
 
   const handleNavigate = (screen: any) => {
+    if (screen === 'macro-plan') {
+      // Refresh macroPlan from cache before navigating
+      try {
+        const raw = localStorage.getItem('rw_macro_plan_cache');
+        if (raw) setMacroPlan(JSON.parse(raw));
+      } catch {}
+    }
     navigateTo(screen as Screen);
   };
 
@@ -137,7 +149,7 @@ const App: React.FC = () => {
           <History onWorkoutClick={handleWorkoutClick} isActive={currentScreen === 'history'} />
         </div>
         <div style={{ display: currentScreen === 'plan' ? 'block' : 'none', width: '100%', maxWidth: 420 }}>
-          <Plan isActive={currentScreen === 'plan'} />
+          <Plan isActive={currentScreen === 'plan'} onNavigate={handleNavigate} />
         </div>
         <div style={{ display: currentScreen === 'ai' ? 'block' : 'none', width: '100%', maxWidth: 420 }}>
           <AIChat onWorkoutClick={handleWorkoutClick} isActive={currentScreen === 'ai'} />
@@ -145,6 +157,11 @@ const App: React.FC = () => {
         <div style={{ display: currentScreen === 'profile' ? 'block' : 'none', width: '100%', maxWidth: 420 }}>
           <Profile onLogout={logout} onWorkoutClick={handleWorkoutClick} isActive={currentScreen === 'profile'} />
         </div>
+        {currentScreen === 'macro-plan' && macroPlan && (
+          <div style={{ width: '100%', maxWidth: 420 }}>
+            <MacroPlanView macroPlan={macroPlan} onBack={() => navigateTo('plan')} />
+          </div>
+        )}
         {currentScreen === 'workout-detail' && selectedWorkoutId && (
           <WorkoutDetail workoutId={selectedWorkoutId} onBack={handleBackFromDetail} />
         )}
@@ -166,7 +183,7 @@ const App: React.FC = () => {
           <span className="nav-label">{t('nav.history')}</span>
         </button>
         <button
-          className={`nav-item ${currentScreen === 'plan' ? 'active' : ''}`}
+          className={`nav-item ${currentScreen === 'plan' || currentScreen === 'macro-plan' ? 'active' : ''}`}
           onClick={() => navigateTo('plan')}
         >
           <span className="nav-icon">📋</span>

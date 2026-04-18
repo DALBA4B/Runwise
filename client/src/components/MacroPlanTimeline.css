@@ -49,6 +49,7 @@
 .macro-plan-phase-current.phase-build { background-color: var(--color-warning); }
 .macro-plan-phase-current.phase-peak { background-color: var(--color-danger); }
 .macro-plan-phase-current.phase-taper { background-color: var(--color-success); }
+.macro-plan-phase-current.phase-race { background-color: var(--color-danger); }
 
 /* Timeline scroll container */
 .macro-plan-timeline-wrap {
@@ -112,6 +113,7 @@
 .macro-week-block.phase-build { background-color: var(--color-warning); }
 .macro-week-block.phase-peak { background-color: var(--color-danger); }
 .macro-week-block.phase-taper { background-color: var(--color-success); }
+.macro-week-block.phase-race { background-color: var(--color-danger); }
 
 /* Past weeks — opacity based on compliance */
 .macro-week-block.past { opacity: 0.5; }
@@ -188,6 +190,7 @@
 .macro-plan-legend-dot.phase-build { background-color: var(--color-warning); }
 .macro-plan-legend-dot.phase-peak { background-color: var(--color-danger); }
 .macro-plan-legend-dot.phase-taper { background-color: var(--color-success); }
+.macro-plan-legend-dot.phase-race { background-color: var(--color-danger); }
 
 /* Week detail tooltip/card */
 .macro-week-detail {

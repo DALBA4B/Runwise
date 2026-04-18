@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import './Plan.css';
 import PlanRow from '../components/PlanRow';
-import MacroPlanTimeline from '../components/MacroPlanTimeline';
 import { ai } from '../api/api';
 import i18n from '../i18n';
 
@@ -27,9 +26,10 @@ function writeCache(key: string, data: any) {
 
 interface PlanProps {
   isActive?: boolean;
+  onNavigate?: (screen: string) => void;
 }
 
-const Plan: React.FC<PlanProps> = ({ isActive }) => {
+const Plan: React.FC<PlanProps> = ({ isActive, onNavigate }) => {
   const { t } = useTranslation();
   const cached = readCache<{ plan: PlanDay[]; weekStart: string }>('rw_plan_cache');
   const [plan, setPlan] = useState<PlanDay[] | null>(cached?.plan || null);
@@ -128,9 +128,17 @@ const Plan: React.FC<PlanProps> = ({ isActive }) => {
 
   return (
     <div className="screen plan-screen">
-      <h2 className="screen-title">📋 {t('plan.title')}</h2>
-
-      {macroPlan && <MacroPlanTimeline macroPlan={macroPlan} />}
+      <div className="plan-header-row">
+        <h2 className="screen-title">📋 {t('plan.title')}</h2>
+        {macroPlan && onNavigate && (
+          <button className="plan-program-btn" onClick={() => onNavigate('macro-plan')}>
+            {t('macroPlanView.viewProgram')}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+          </button>
+        )}
+      </div>
 
       {plan ? (
         <>

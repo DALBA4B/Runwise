@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Runwise — Программа</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+:root {
+  --bg:        #111318;
+  --card:      #191c24;
+  --card-hi:   #1c2030;
+  --border:    #242838;
+  --border2:   #2d3347;
+  --text:      #dde2ec;
+  --sub:       #606880;
+  --soft:      #8b95aa;
+  --accent:    #4f8ff7;
+  --accent-bg: rgba(79,143,247,0.11);
+  --c-base:    #4f8ff7;
+  --c-build:   #e8a23a;
+  --c-peak:    #9b7ff4;
+  --c-taper:   #3ecf8e;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  justify-content: center;
+}
+
+.app {
+  width: 100%;
+  max-width: 430px;
+  min-height: 100vh;
+  padding-bottom: 88px;
+}
+
+/* ── TOPBAR ── */
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 16px 14px;
+}
+.top-title { font-size: 21px; font-weight: 700; letter-spacing: -0.3px; }
+.top-back {
+  font-size: 14px; font-weight: 500; color: var(--accent);
+  cursor: pointer; display: flex; align-items: center; gap: 3px;
+}
+.top-back svg { width: 16px; height: 16px; }
+
+/* ── GOAL CARD ── */
+.goal {
+  margin: 0 14px 10px;
+  background: var(--card);
+  border: 1px solid var(--border2);
+  border-radius: 18px;
+  padding: 16px;
+  position: relative;
+  overflow: hidden;
+}
+.goal::after {
+  content: '';
+  position: absolute; top: -60px; right: -60px;
+  width: 180px; height: 180px;
+  background: radial-gradient(circle, rgba(79,143,247,0.07) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.g-row1 { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 13px; }
+
+.g-name { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 3px; }
+.g-meta { font-size: 13px; color: var(--sub); }
+
+.g-time {
+  font-size: 26px; font-weight: 700; color: var(--accent);
+  letter-spacing: -1px; line-height: 1; margin-bottom: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.g-until { font-size: 12px; color: var(--sub); text-align: right; }
+
+.g-row2 { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+
+.ph-tag {
+  font-size: 13px; font-weight: 600; color: var(--accent);
+  background: var(--accent-bg);
+  padding: 5px 12px; border-radius: 99px;
+  display: flex; align-items: center; gap: 5px;
+}
+.ph-tag::before { content:''; width:5px; height:5px; border-radius:50%; background:var(--accent); }
+.g-wn { font-size: 13px; color: var(--sub); }
+
+/* track */
+.track { display: flex; gap: 2px; height: 5px; margin-bottom: 6px; }
+.seg {
+  flex: 1; border-radius: 1px; cursor: pointer;
+  transition: transform 0.12s;
+}
+.seg:first-child { border-radius: 3px 1px 1px 3px; }
+.seg:last-child  { border-radius: 1px 3px 3px 1px; }
+.seg:hover { transform: scaleY(2); }
+.seg.ph-base  { background: var(--c-base); }
+.seg.ph-build { background: var(--c-build); }
+.seg.ph-peak  { background: var(--c-peak); }
+.seg.ph-taper { background: var(--c-taper); }
+.seg.is-done   { opacity: 0.22; }
+.seg.is-future { opacity: 0.15; }
+.seg.is-now    { opacity: 1; }
+.seg.is-now.ph-base  { box-shadow: 0 0 7px var(--c-base); }
+.seg.is-now.ph-build { box-shadow: 0 0 7px var(--c-build); }
+.seg.is-now.ph-peak  { box-shadow: 0 0 7px var(--c-peak); }
+.seg.is-now.ph-taper { box-shadow: 0 0 7px var(--c-taper); }
+
+.track-ends { display: flex; justify-content: space-between; }
+.track-ends span { font-size: 11px; color: var(--sub); }
+
+.track-legend { display: flex; gap: 12px; margin-top: 8px; }
+.tl-item { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--sub); font-weight: 500; }
+.tl-dot  { width: 7px; height: 7px; border-radius: 50%; }
+
+/* ── MONTH STATS STRIP ── */
+.mstats {
+  margin: 0 14px 4px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  display: flex;
+}
+
+.ms-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 13px 8px;
+  gap: 3px;
+  position: relative;
+}
+
+.ms-item + .ms-item::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 18%; bottom: 18%;
+  width: 1px;
+  background: var(--border);
+}
+
+.ms-val {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.ms-val .ms-unit {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--sub);
+  margin-left: 1px;
+}
+.ms-lbl { font-size: 12px; color: var(--sub); font-weight: 500; }
+
+/* ── MONTH NAV ── */
+.mnav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px 8px;
+}
+
+.mb {
+  width: 32px; height: 32px;
+  background: var(--card);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  font-size: 18px;
+  color: var(--accent);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s;
+}
+.mb:disabled { color: var(--sub); opacity: 0.4; cursor: default; }
+.mb:not(:disabled):active { background: var(--card-hi); }
+
+.mnav-title { font-size: 16px; font-weight: 700; text-align: center; }
+
+/* ── WEEKS ── */
+.weeks { padding: 0 14px; display: flex; flex-direction: column; }
+
+.ph-sep {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 0 6px;
+}
+.ph-sep-line { flex: 1; height: 1px; background: var(--border); }
+.ph-sep-label {
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 1px; text-transform: uppercase;
+}
+
+/* ── WEEK CARD ── */
+.wk {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  margin-bottom: 8px;
+  overflow: hidden;
+  position: relative;
+  animation: up 0.25s ease both;
+}
+@keyframes up {
+  from { opacity:0; transform:translateY(8px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+
+.wk.is-past { opacity: 0.42; }
+
+/* CURRENT WEEK — stands out */
+.wk.is-now {
+  border-color: rgba(79,143,247,0.3);
+  background: linear-gradient(160deg, #161d2e 0%, #191c24 100%);
+  box-shadow: 0 4px 24px rgba(79,143,247,0.07);
+}
+
+.wk-strip {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+}
+.wk.is-now  .wk-strip { background: var(--accent); }
+.wk.is-next .wk-strip { background: var(--border2); }
+
+.wk-nbg {
+  position: absolute; right: 10px; bottom: -10px;
+  font-size: 72px; font-weight: 800; line-height: 1;
+  letter-spacing: -4px;
+  color: rgba(255,255,255,0.027);
+  pointer-events: none; user-select: none;
+}
+
+.wk-body { padding: 15px 14px 14px 15px; }
+
+/* head */
+.wk-head {
+  display: flex; justify-content: space-between;
+  align-items: flex-start; margin-bottom: 11px;
+}
+
+.wk-id {
+  font-size: 15px; font-weight: 700;
+  display: flex; align-items: center; gap: 7px;
+  margin-bottom: 4px;
+}
+
+.badge-now {
+  font-size: 11px; font-weight: 700;
+  background: var(--accent-bg); color: var(--accent);
+  padding: 2px 9px; border-radius: 99px;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.badge-pulse {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--accent);
+  animation: bl 1.8s ease infinite;
+}
+@keyframes bl { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+.badge-next {
+  font-size: 11px; font-weight: 600;
+  background: rgba(255,255,255,0.05); color: var(--sub);
+  padding: 2px 9px; border-radius: 99px;
+}
+
+.wk-date { font-size: 13px; color: var(--sub); }
+
+.wk-km { text-align: right; flex-shrink: 0; }
+.wk-km-val {
+  font-size: 24px; font-weight: 700; color: var(--accent);
+  letter-spacing: -0.5px; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.wk-km-unit { font-size: 14px; font-weight: 500; color: var(--sub); }
+.wk-month-pct { font-size: 12px; color: var(--sub); margin-top: 3px; font-variant-numeric: tabular-nums; }
+
+/* month progress bar */
+.month-bar-wrap {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+}
+.month-bar-track {
+  flex: 1; height: 3px; background: var(--border);
+  border-radius: 2px; overflow: hidden;
+}
+.month-bar-fill {
+  height: 100%; border-radius: 2px;
+  background: var(--accent); opacity: 0.45;
+}
+.month-bar-label {
+  font-size: 12px; color: var(--sub); white-space: nowrap;
+  font-variant-numeric: tabular-nums; min-width: 82px; text-align: right;
+}
+
+/* comment */
+.wk-comment {
+  font-size: 14px; color: var(--soft);
+  line-height: 1.55; font-weight: 400;
+}
+
+/* workouts */
+.wo-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-top: 12px; margin-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 13px; font-weight: 600;
+  color: var(--accent); cursor: pointer; user-select: none;
+}
+.wo-toggle svg { width: 15px; height: 15px; color: var(--sub); transition: transform 0.22s; }
+.wo-toggle.open svg { transform: rotate(180deg); }
+
+.wo-wrap { overflow: hidden; max-height: 0; transition: max-height 0.3s ease; }
+.wo-wrap.open { max-height: 700px; }
+
+.wo-list { padding-top: 10px; display: flex; flex-direction: column; gap: 7px; }
+
+.wo-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid var(--border); border-radius: 12px;
+}
+.wo-day { font-size: 12px; font-weight: 700; color: var(--sub); min-width: 26px; }
+.wo-info { flex: 1; }
+.wo-name { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+.wo-desc { font-size: 12px; color: var(--sub); }
+.wo-km   { font-size: 13px; color: var(--soft); font-weight: 500; }
+
+/* ── BOTTOM NAV ── */
+.bnav {
+  position: fixed; bottom: 0; left: 50%;
+  transform: translateX(-50%);
+  width: 100%; max-width: 430px;
+  background: rgba(17,19,24,0.97);
+  backdrop-filter: blur(14px);
+  border-top: 1px solid var(--border);
+  display: flex; padding: 10px 0 22px; z-index: 50;
+}
+.bni {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; gap: 3px;
+  color: var(--sub); font-size: 11px; font-weight: 500; cursor: pointer;
+}
+.bni.active { color: var(--accent); }
+.bni-ico { font-size: 20px; }
+
+.tip {
+  position: fixed; background: var(--card-hi);
+  border: 1px solid var(--border2); border-radius: 8px;
+  padding: 4px 10px; font-size: 12px; color: var(--text);
+  pointer-events: none; opacity: 0;
+  transition: opacity 0.12s; z-index: 999; white-space: nowrap;
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="top">
+    <div class="top-title">📋 Программа подготовки</div>
+    <div class="top-back">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+      К неделе
+    </div>
+  </div>
+
+  <!-- GOAL -->
+  <div class="goal">
+    <div class="g-row1">
+      <div>
+        <div class="g-name">Полумарафон</div>
+        <div class="g-meta">Апрель – Октябрь 2026</div>
+      </div>
+      <div>
+        <div class="g-time">1:30:00</div>
+        <div class="g-until">26 нед. до старта</div>
+      </div>
+    </div>
+    <div class="g-row2">
+      <div class="ph-tag">Базовая фаза</div>
+      <div class="g-wn">нед. 1 из 27</div>
+    </div>
+    <div class="track" id="track"></div>
+    <div class="track-ends"><span>Апр 2026</span><span>Ноя 2026</span></div>
+    <div class="track-legend">
+      <div class="tl-item"><div class="tl-dot" style="background:var(--c-base)"></div>База</div>
+      <div class="tl-item"><div class="tl-dot" style="background:var(--c-build)"></div>Развитие</div>
+      <div class="tl-item"><div class="tl-dot" style="background:var(--c-peak)"></div>Пик</div>
+      <div class="tl-item"><div class="tl-dot" style="background:var(--c-taper)"></div>Подводка</div>
+    </div>
+  </div>
+
+  <!-- MONTH STATS -->
+  <div class="mstats" id="mstats"></div>
+
+  <!-- MONTH NAV -->
+  <div class="mnav">
+    <button class="mb" id="pBtn" onclick="go(-1)">‹</button>
+    <div class="mnav-title" id="mTitle">Июнь 2026</div>
+    <button class="mb" id="nBtn" onclick="go(1)">›</button>
+  </div>
+
+  <div class="weeks" id="weeks"></div>
+</div>
+
+<div class="bnav">
+  <div class="bni"><div class="bni-ico">🏠</div>Главная</div>
+  <div class="bni"><div class="bni-ico">📅</div>История</div>
+  <div class="bni active"><div class="bni-ico">📋</div>План</div>
+  <div class="bni"><div class="bni-ico">🤖</div>AI</div>
+  <div class="bni"><div class="bni-ico">👤</div>Профиль</div>
+</div>
+
+<div class="tip" id="tip"></div>
+
+<script>
+const MN = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+const NOW = 9, MIN_M = 3, MAX_M = 9;
+let month = 6;
+
+const PH_LABEL = { base:'Базовый блок', build:'Развитие', peak:'Пик', taper:'Подводка' };
+const PH_COLOR = { base:'var(--c-base)', build:'var(--c-build)', peak:'var(--c-peak)', taper:'var(--c-taper)' };
+
+const W = [
+  { id:1,  m:3, ph:'base',  km:35, d:'31 мар – 6 апр',   rest:2, train:5, past:true,  comment:'Первая неделя. Всё на лёгком пульсе — просто привыкаем к режиму.' },
+  { id:2,  m:3, ph:'base',  km:38, d:'7 – 13 апр',       rest:2, train:5, past:true,  comment:'Плавно добавляем объём. Длинная до 16 км — держи пульс в аэробной зоне.' },
+  { id:3,  m:4, ph:'base',  km:42, d:'14 – 20 апр',      rest:2, train:5, past:true,  comment:'Первая темповая работа 20 мин. Остальное — лёгко. Не торопись в качество.' },
+  { id:4,  m:4, ph:'base',  km:44, d:'21 – 27 апр',      rest:2, train:5, past:true,  comment:'Длинная 20 км. Следи за темпом — он должен даваться легко.' },
+  { id:5,  m:4, ph:'base',  km:40, d:'28 апр – 4 май',   rest:2, train:5, past:true,  comment:'Разгрузочная неделя −10%. Организм адаптируется — не мешай ему.' },
+  { id:6,  m:5, ph:'build', km:50, d:'5 – 11 май',       rest:2, train:5, past:true,  comment:'Заходим в развитие. Объём прыгает, появляется настоящий темп.' },
+  { id:7,  m:5, ph:'build', km:54, d:'12 – 18 май',      rest:2, train:5, past:true,  comment:'Первые интервалы 6×800 м. Темп 4:45/км. Длинная 28 км.' },
+  { id:8,  m:5, ph:'build', km:56, d:'19 – 25 май',      rest:2, train:5, past:true,  comment:'Двойные качественные за неделю. Темп уже 4:35/км — работаем серьёзно.' },
+  {
+    id:9,  m:6, ph:'build', km:58, d:'1 – 7 июн', rest:2, train:5, now:true,
+    comment:'Максимальный объём блока развития. Длинная 29 км в аэробной зоне. Не гони темп на длинной — важен километраж.',
+    wo:[
+      { day:'Пн', name:'Восстановительный', desc:'6 км · пульс ≤130', km:'6 км' },
+      { day:'Ср', name:'Темповый',          desc:'10 км + 30 мин @ 5:00/км', km:'10 км' },
+      { day:'Чт', name:'Силовая ОФП',       desc:'Беговая гимнастика + плиометрика', km:'—' },
+      { day:'Сб', name:'Длинная',           desc:'29 км · пульс 140–152', km:'29 км' },
+    ]
+  },
+  {
+    id:10, m:6, ph:'build', km:55, d:'8 – 14 июн', rest:2, train:5, next:true,
+    comment:'Небольшая разгрузка −5%, но качество не теряем. Интервалы 8×600 м и фартлек в пятницу по ощущению.',
+    wo:[
+      { day:'Пн', name:'Восстановительный', desc:'7 км · пульс ≤130', km:'7 км' },
+      { day:'Ср', name:'Интервальный',      desc:'8×600 м / 4:50 + разминка', km:'10 км' },
+      { day:'Пт', name:'Фартлек',           desc:'45 мин · по ощущению', km:'8 км' },
+      { day:'Вс', name:'Длинная',           desc:'29 км · пульс 145', km:'29 км' },
+    ]
+  },
+  { id:11, m:6, ph:'build', km:60, d:'15 – 21 июн', rest:2, train:5, comment:'Новый пик объёма. Две качественные работы за неделю — готовься морально.' },
+  { id:12, m:6, ph:'build', km:58, d:'22 – 28 июн', rest:2, train:5, comment:'Завершаем блок развития. Чуть снижаем — следующий месяц будет тяжелее.' },
+  { id:13, m:7, ph:'peak',  km:62, d:'29 июн – 5 июл', rest:2, train:5, comment:'Заход в пик. Нагрузка настоящая — важно спать 8+ часов и следить за питанием.' },
+  { id:14, m:7, ph:'peak',  km:64, d:'6 – 12 июл',    rest:2, train:5, comment:'Середина пикового блока. Темп на интервалах 4:30/км. Длинная 30 км.' },
+  { id:15, m:7, ph:'peak',  km:65, d:'13 – 19 июл',   rest:2, train:5, comment:'Пиковая нагрузка всего цикла. Тяжело — это нормально. Держись.' },
+  { id:16, m:7, ph:'peak',  km:60, d:'20 – 26 июл',   rest:3, train:4, comment:'Разгрузка после пика. Ноги должны ожить — это сигнал что план работает.' },
+  { id:17, m:8, ph:'peak',  km:63, d:'27 июл – 2 авг', rest:2, train:5, comment:'Второй пиковый блок. Специфические работы — темп полумарафона 4:16/км.' },
+  { id:18, m:8, ph:'peak',  km:66, d:'3 – 9 авг',      rest:2, train:5, comment:'Максимальная специфика. Темп тренировок по целевому соревновательному.' },
+  { id:19, m:8, ph:'peak',  km:68, d:'10 – 16 авг',    rest:2, train:5, comment:'Абсолютный пик цикла. 68 км. После этого — только вниз. Ты справишься.' },
+  { id:20, m:8, ph:'peak',  km:55, d:'17 – 23 авг',    rest:3, train:4, comment:'Разгрузка перед подводкой −20%. Тело начинает суперкомпенсацию.' },
+  { id:21, m:9, ph:'taper', km:50, d:'24 – 30 авг',    rest:3, train:4, comment:'Подводка началась. Объём снижается, но скоростная работа остаётся.' },
+  { id:22, m:9, ph:'taper', km:42, d:'31 авг – 6 сен', rest:3, train:4, comment:'Продолжаем снижение. Не паникуй от лёгкости — это и есть цель подводки.' },
+  { id:23, m:9, ph:'taper', km:35, d:'7 – 13 сен',     rest:4, train:3, comment:'Ноги оживают. Короткий темповый бег для поддержки остроты.' },
+  { id:24, m:9, ph:'taper', km:28, d:'14 – 20 сен',    rest:4, train:3, comment:'Финальный шлиф. Чувствуешь лёгкость и желание бежать — отлично.' },
+  { id:25, m:9, ph:'taper', km:22, d:'21 – 27 сен',    rest:4, train:3, comment:'Почти всё. Береги ноги, не делай ничего нового.' },
+  { id:26, m:9, ph:'taper', km:14, d:'28 сен – 4 окт', rest:5, train:2, comment:'Только лёгкие пробежки. Никаких экспериментов с едой или снаряжением.' },
+  { id:27, m:9, ph:'taper', km:8,  d:'5 окт 🏁',       rest:5, train:2, comment:'Неделя старта. Лёгкая пробежка в понедельник, отдых, вера в себя. Ты готов.' },
+];
+
+function monthStats(m) {
+  const ws = W.filter(w => w.m === m);
+  return {
+    km:    ws.reduce((s,w) => s + w.km, 0),
+    train: ws.reduce((s,w) => s + (w.train||5), 0),
+    rest:  ws.reduce((s,w) => s + (w.rest||2), 0),
+  };
+}
+
+function monthTotal(m) { return W.filter(w => w.m === m).reduce((s,w) => s+w.km, 0); }
+
+function monthCumulative(wId, m) {
+  return W.filter(w => w.m === m && w.id <= wId).reduce((s,w) => s+w.km, 0);
+}
+
+function renderStats() {
+  const s = monthStats(month);
+  document.getElementById('mstats').innerHTML = `
+    <div class="ms-item">
+      <div class="ms-val">${s.km}<span class="ms-unit">км</span></div>
+      <div class="ms-lbl">За месяц</div>
+    </div>
+    <div class="ms-item">
+      <div class="ms-val">${s.train}<span class="ms-unit">дн</span></div>
+      <div class="ms-lbl">Тренировок</div>
+    </div>
+    <div class="ms-item">
+      <div class="ms-val">${s.rest}<span class="ms-unit">дн</span></div>
+      <div class="ms-lbl">Отдыха</div>
+    </div>
+  `;
+}
+
+function buildTrack() {
+  const track = document.getElementById('track');
+  const tip = document.getElementById('tip');
+  W.forEach(w => {
+    const s = document.createElement('div');
+    const state = w.id < NOW ? 'is-done' : w.id === NOW ? 'is-now' : 'is-future';
+    s.className = `seg ph-${w.ph} ${state}`;
+    s.addEventListener('mouseenter', () => { tip.textContent = `Н${w.id} · ${w.km} км`; tip.style.opacity = '1'; });
+    s.addEventListener('mousemove', e => { tip.style.left = e.clientX+10+'px'; tip.style.top = e.clientY-30+'px'; });
+    s.addEventListener('mouseleave', () => { tip.style.opacity = '0'; });
+    track.appendChild(s);
+  });
+}
+
+function render() {
+  const el = document.getElementById('weeks');
+  el.innerHTML = '';
+  const ws = W.filter(w => w.m === month);
+  const total = monthTotal(month);
+  let lastPh = null;
+
+  ws.forEach((w, i) => {
+    if (w.ph !== lastPh) {
+      lastPh = w.ph;
+      const sep = document.createElement('div');
+      sep.className = 'ph-sep';
+      sep.innerHTML = `<div class="ph-sep-line"></div><span class="ph-sep-label" style="color:${PH_COLOR[w.ph]}">${PH_LABEL[w.ph]}</span><div class="ph-sep-line"></div>`;
+      el.appendChild(sep);
+    }
+
+    const cumKm  = monthCumulative(w.id, month);
+    const cumPct = Math.round(cumKm / total * 100);
+    const volPct = Math.round(w.km / total * 100);
+
+    let badge = '';
+    if (w.now)  badge = `<span class="badge-now"><span class="badge-pulse"></span>Сейчас</span>`;
+    if (w.next) badge = `<span class="badge-next">Следующая</span>`;
+
+    let woHtml = '';
+    if ((w.now || w.next) && w.wo) {
+      const wid = `wo${w.id}`, tid = `tg${w.id}`;
+      const rows = w.wo.map(r => `
+        <div class="wo-row">
+          <div class="wo-day">${r.day}</div>
+          <div class="wo-info">
+            <div class="wo-name">${r.name}</div>
+            <div class="wo-desc">${r.desc}</div>
+          </div>
+          <div class="wo-km">${r.km}</div>
+        </div>`).join('');
+      woHtml = `
+        <div class="wo-toggle" id="${tid}" onclick="tog('${wid}','${tid}')">
+          Тренировки недели
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <div class="wo-wrap" id="${wid}"><div class="wo-list">${rows}</div></div>`;
+    }
+
+    const card = document.createElement('div');
+    card.className = `wk${w.past?' is-past':''}${w.now?' is-now':''}${w.next?' is-next':''}`;
+    card.style.animationDelay = `${i * 0.045}s`;
+
+    card.innerHTML = `
+      <div class="wk-strip"></div>
+      <div class="wk-nbg">${w.id}</div>
+      <div class="wk-body">
+        <div class="wk-head">
+          <div>
+            <div class="wk-id">Неделя ${w.id} ${badge}</div>
+            <div class="wk-date">${w.d}</div>
+          </div>
+          <div class="wk-km">
+            <div class="wk-km-val">${w.km}<span class="wk-km-unit"> км</span></div>
+            <div class="wk-month-pct">${volPct}% от месяца</div>
+          </div>
+        </div>
+        <div class="month-bar-wrap">
+          <div class="month-bar-track">
+            <div class="month-bar-fill" style="width:${cumPct}%"></div>
+          </div>
+          <div class="month-bar-label">${cumKm} из ${total} км</div>
+        </div>
+        ${w.comment ? `<div class="wk-comment">${w.comment}</div>` : ''}
+        ${woHtml}
+      </div>`;
+
+    el.appendChild(card);
+  });
+}
+
+function tog(wid, tid) {
+  document.getElementById(wid).classList.toggle('open');
+  document.getElementById(tid).classList.toggle('open');
+}
+
+function go(d) {
+  month = Math.max(MIN_M, Math.min(MAX_M, month + d));
+  document.getElementById('mTitle').textContent = MN[month] + ' 2026';
+  document.getElementById('pBtn').disabled = month === MIN_M;
+  document.getElementById('nBtn').disabled = month === MAX_M;
+  renderStats();
+  render();
+}
+
+buildTrack();
+renderStats();
+render();
+document.getElementById('pBtn').disabled = month === MIN_M;
+document.getElementById('nBtn').disabled = month === MAX_M;
+</script>
+</body>
+</html>
