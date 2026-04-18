@@ -138,6 +138,7 @@
     "phase_build": "Розвиток",
     "phase_peak": "Пікова",
     "phase_taper": "Підводка",
+    "phase_race": "Старт",
     "targetVolume": "План",
     "actualVolume": "Факт",
     "compliance": "Виконання",
@@ -152,6 +153,9 @@
     "created": "Програму підготовки створено!",
     "updated": "Програму підготовки оновлено!",
     "deleted": "Програму підготовки скасовано."
+  },
+  "macroPlanView": {
+    "viewProgram": "Програма"
   },
   "chat": {
     "title": "AI Тренер",

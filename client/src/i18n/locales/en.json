@@ -138,6 +138,7 @@
     "phase_build": "Build",
     "phase_peak": "Peak",
     "phase_taper": "Taper",
+    "phase_race": "Race",
     "targetVolume": "Plan",
     "actualVolume": "Actual",
     "compliance": "Compliance",
@@ -152,6 +153,9 @@
     "created": "Training program created!",
     "updated": "Training program updated!",
     "deleted": "Training program cancelled."
+  },
+  "macroPlanView": {
+    "viewProgram": "Program"
   },
   "chat": {
     "title": "AI Coach",

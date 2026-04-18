@@ -219,7 +219,7 @@
 .mpv-legend-dot.phase-build { background: var(--color-warning); }
 .mpv-legend-dot.phase-peak { background: var(--color-danger); }
 .mpv-legend-dot.phase-taper { background: var(--color-success); }
-.mpv-legend-dot.phase-race { background: var(--color-danger); }
+.mpv-legend-dot.phase-race { background: #ffffff; }
 
 /* ── MONTH STATS STRIP ── */
 .mpv-mstats {
@@ -336,7 +336,7 @@
 .mpv-ph-sep-label.phase-build { color: var(--color-warning); }
 .mpv-ph-sep-label.phase-peak { color: var(--color-danger); }
 .mpv-ph-sep-label.phase-taper { color: var(--color-success); }
-.mpv-ph-sep-label.phase-race { color: var(--color-danger); }
+.mpv-ph-sep-label.phase-race { color: #ffffff; }
 
 /* ── WEEK CARD ── */
 .mpv-wk {
