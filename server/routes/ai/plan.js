@@ -29,12 +29,86 @@ const {
   formatRecordsForAI,
   formatProfileForAI,
   getAiPrefs,
-  formatMacroPlanForAI
+  formatMacroPlanForAI,
+  getPhaseInstructions
 } = require('./prompts');
 
 const { callDeepSeek } = require('./deepseek');
 
 const router = express.Router();
+
+// Build rich macro plan context for weekly plan generation
+function buildMacroPlanContext(macroPlan, lang) {
+  if (!macroPlan || !macroPlan.current_week) return '';
+
+  const currentWeekData = macroPlan.weeks.find(w => w.week_number === macroPlan.current_week);
+  if (!currentWeekData) return formatMacroPlanForAI(macroPlan, lang);
+
+  const completedWeeks = macroPlan.weeks.filter(w => w.actual_volume_km !== undefined);
+  const recent3 = completedWeeks.slice(-3);
+
+  const labels = {
+    ru: {
+      title: 'КОНТЕКСТ МАКРО-ПЛАНА (учитывай при генерации)',
+      phase: 'Текущая фаза',
+      targetVolume: 'Целевой объём этой недели',
+      orientir: '(ориентир — адаптируй под контекст бегуна)',
+      keySessions: 'Ключевые тренировки',
+      weekFocus: 'Фокус недели',
+      recentCompliance: 'Выполнение последних недель',
+      phaseInstructions: 'ИНСТРУКЦИИ ПО ФАЗЕ',
+      adaptNote: 'Целевой объём — ориентир. Если по данным видно что бегун не готов (низкое выполнение, признаки усталости) или наоборот в отличной форме — адаптируй объём и интенсивность. Но типы ключевых тренировок и фаза должны соответствовать макро-плану.',
+      weekLabel: 'Нед'
+    },
+    uk: {
+      title: 'КОНТЕКСТ МАКРО-ПЛАНУ (враховуй при генерації)',
+      phase: 'Поточна фаза',
+      targetVolume: 'Цільовий об\'єм цього тижня',
+      orientir: '(орієнтир — адаптуй під контекст бігуна)',
+      keySessions: 'Ключові тренування',
+      weekFocus: 'Фокус тижня',
+      recentCompliance: 'Виконання останніх тижнів',
+      phaseInstructions: 'ІНСТРУКЦІЇ ПО ФАЗІ',
+      adaptNote: 'Цільовий об\'єм — орієнтир. Якщо за даними видно що бігун не готовий (низьке виконання, ознаки втоми) або навпаки у відмінній формі — адаптуй об\'єм та інтенсивність. Але типи ключових тренувань і фаза мають відповідати макро-плану.',
+      weekLabel: 'Тиж'
+    },
+    en: {
+      title: 'MACRO PLAN CONTEXT (consider when generating)',
+      phase: 'Current phase',
+      targetVolume: 'Target volume this week',
+      orientir: '(guideline — adapt to runner\'s context)',
+      keySessions: 'Key sessions',
+      weekFocus: 'Week focus',
+      recentCompliance: 'Recent compliance',
+      phaseInstructions: 'PHASE INSTRUCTIONS',
+      adaptNote: 'Target volume is a guideline. If data shows the runner isn\'t ready (low compliance, fatigue signs) or is in great shape — adapt volume and intensity accordingly. But key workout types and phase must match the macro plan.',
+      weekLabel: 'Wk'
+    }
+  };
+
+  const l = labels[lang] || labels.ru;
+
+  const complianceStr = recent3.length > 0
+    ? recent3.map(w =>
+        `${l.weekLabel}${w.week_number}: ${w.compliance_pct}% (${Math.round(w.actual_volume_km)}/${w.target_volume_km}km)`
+      ).join(', ')
+    : '';
+
+  return `${formatMacroPlanForAI(macroPlan, lang)}
+
+${l.title}:
+${l.phase}: ${currentWeekData.phase}
+${l.targetVolume}: ${currentWeekData.target_volume_km} km ${l.orientir}
+${l.keySessions}: ${currentWeekData.key_sessions_count} (${(currentWeekData.key_session_types || []).join(', ')})
+${l.weekFocus}: ${currentWeekData.notes || ''}
+${complianceStr ? l.recentCompliance + ': ' + complianceStr : ''}
+
+${l.phaseInstructions}:
+${getPhaseInstructions(currentWeekData.phase, lang)}
+
+${l.adaptNote}
+`;
+}
 
 // POST /api/ai/generate-plan — generate weekly training plan
 router.post('/generate-plan', authMiddleware, async (req, res) => {
@@ -401,7 +475,7 @@ ${gp.userRecords}:
 ${formatRecordsForAI(records, lang)}
 ${gp.recordsNote}
 
-${macroPlan ? formatMacroPlanForAI(macroPlan, lang) + '\nВАЖНО: Генерируй недельный план В КОНТЕКСТЕ макро-плана. Уважай текущую фазу и целевой объём недели из макро-плана. Если макро-план говорит что это неделя базовой фазы с объёмом 35 км — строй план на ~35 км с акцентом на аэробную работу.\n' : ''}
+${macroPlan ? buildMacroPlanContext(macroPlan, lang) : ''}
 
 ${gp.rules}
 

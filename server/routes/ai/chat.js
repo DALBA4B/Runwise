@@ -15,7 +15,10 @@ const {
   getWeeklyVolumes,
   getRiegelPredictions,
   getActiveMacroPlan,
-  computeMacroPlanWithActuals
+  computeMacroPlanWithActuals,
+  analyzeTrainingStability,
+  assessMarathonGoalRealism,
+  analyzeRecentCompliance
 } = require('./context');
 
 const {
@@ -93,8 +96,39 @@ async function loadChatContext(userId, lang = 'ru') {
 
   const paceZonesData = currentVDOT ? { vdot: currentVDOT, source: vdotSource, zones: paceZones } : null;
 
+  // Analyze training stability (last 12 weeks)
+  const stabilityData = await analyzeTrainingStability(userId, 12);
+
+  // Assess marathon goal realism if user has marathon goal
+  let goalRealism = null;
+  const marathonGoal = goals.find(g => g.type === 'pb_42k');
+  if (marathonGoal && currentVDOT && marathonGoal.deadline) {
+    const weeksUntilRace = Math.ceil((new Date(marathonGoal.deadline) - new Date()) / (1000 * 60 * 60 * 24 * 7));
+    if (weeksUntilRace > 0) {
+      goalRealism = assessMarathonGoalRealism(currentVDOT, marathonGoal.target_value, weeksUntilRace);
+    }
+  }
+
+  // Analyze macro plan compliance trends
+  const complianceData = macroPlan ? analyzeRecentCompliance(macroPlan) : null;
+
   const aiPrefs = getAiPrefs(userProfile);
-  const systemPrompt = buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, records, lang, aiPrefs, weeklyVolumes, predictions, paceZonesData, macroPlan);
+  const systemPrompt = buildChatSystemPrompt(
+    monthlySummary,
+    goals,
+    currentPlan,
+    userProfile,
+    records,
+    lang,
+    aiPrefs,
+    weeklyVolumes,
+    predictions,
+    paceZonesData,
+    macroPlan,
+    stabilityData,
+    goalRealism,
+    complianceData
+  );
 
   return { chatHistory, systemPrompt, currentPlan };
 }

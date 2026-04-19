@@ -417,6 +417,193 @@ async function computeMacroPlanWithActuals(userId, macroPlan) {
   };
 }
 
+/**
+ * Анализ стабильности тренировок за последние N недель
+ * @param {string} userId
+ * @param {number} weeksCount - количество недель для анализа (по умолчанию 12)
+ * @returns {object} { isStable, avgVolume, volumeStdDev, gapWeeks, consistency }
+ */
+async function analyzeTrainingStability(userId, weeksCount = 12) {
+  const since = new Date();
+  since.setDate(since.getDate() - weeksCount * 7);
+
+  const { data: workouts } = await supabase
+    .from('workouts')
+    .select('date, distance, manual_distance')
+    .eq('user_id', userId)
+    .gte('date', since.toISOString())
+    .order('date', { ascending: true });
+
+  if (!workouts || workouts.length === 0) {
+    return {
+      isStable: false,
+      avgVolume: 0,
+      volumeStdDev: 0,
+      gapWeeks: weeksCount,
+      consistency: 0,
+      weeklyVolumes: []
+    };
+  }
+
+  // Разбить на недели
+  const weeklyVolumes = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  for (let w = 0; w < weeksCount; w++) {
+    const weekEnd = new Date(today);
+    weekEnd.setDate(weekEnd.getDate() - w * 7);
+    const weekStart = new Date(weekEnd);
+    weekStart.setDate(weekStart.getDate() - 7);
+
+    const weekWorkouts = workouts.filter(wr => {
+      const d = new Date(wr.date);
+      return d >= weekStart && d < weekEnd;
+    });
+
+    const totalKm = weekWorkouts.reduce((s, wr) => s + effectiveDistance(wr) / 1000, 0);
+    weeklyVolumes.push(Math.round(totalKm * 10) / 10);
+  }
+
+  weeklyVolumes.reverse(); // от старой к новой
+
+  // Средний объём
+  const avgVolume = weeklyVolumes.reduce((a, b) => a + b, 0) / weeklyVolumes.length;
+
+  // Стандартное отклонение
+  const variance = weeklyVolumes.reduce((sum, v) => sum + Math.pow(v - avgVolume, 2), 0) / weeklyVolumes.length;
+  const volumeStdDev = Math.sqrt(variance);
+
+  // Количество недель с нулевым объёмом (пропуски)
+  const gapWeeks = weeklyVolumes.filter(v => v === 0).length;
+
+  // Коэффициент вариации (CV) — мера стабильности
+  // CV < 0.3 = стабильно, 0.3-0.5 = умеренно, >0.5 = нестабильно
+  const cv = avgVolume > 0 ? volumeStdDev / avgVolume : 1;
+
+  // Consistency score (0-100): учитывает CV и пропуски
+  const gapPenalty = (gapWeeks / weeksCount) * 50; // до 50% штрафа за пропуски
+  const cvScore = Math.max(0, 100 - cv * 100); // чем меньше CV, тем выше балл
+  const consistency = Math.max(0, Math.round(cvScore - gapPenalty));
+
+  // Стабильность: consistency > 60 и пропусков < 25%
+  const isStable = consistency > 60 && gapWeeks < weeksCount * 0.25;
+
+  return {
+    isStable,
+    avgVolume: Math.round(avgVolume * 10) / 10,
+    volumeStdDev: Math.round(volumeStdDev * 10) / 10,
+    gapWeeks,
+    consistency,
+    weeklyVolumes,
+    coefficientOfVariation: Math.round(cv * 100) / 100
+  };
+}
+
+/**
+ * Оценка реалистичности цели марафона
+ * @param {number} currentVDOT - текущий VDOT пользователя
+ * @param {number} targetTimeSeconds - целевое время марафона в секундах
+ * @param {number} weeksAvailable - количество недель до забега
+ * @returns {object} { isRealistic, currentPrediction, requiredImprovement, recommendedTime }
+ */
+function assessMarathonGoalRealism(currentVDOT, targetTimeSeconds, weeksAvailable) {
+  if (!currentVDOT || !targetTimeSeconds || !weeksAvailable) {
+    return { isRealistic: null, currentPrediction: null, requiredImprovement: null, recommendedTime: null };
+  }
+
+  // Формула Дэниелса для предсказания времени марафона по VDOT
+  // Упрощённая версия: marathon pace (sec/km) ≈ функция от VDOT
+  // Используем обратную формулу из vdot.js
+  const { calculatePaceZones } = require('./vdot');
+  const zones = calculatePaceZones(currentVDOT);
+  
+  if (!zones || !zones.marathon) {
+    return { isRealistic: null, currentPrediction: null, requiredImprovement: null, recommendedTime: null };
+  }
+
+  // Текущее предсказание времени марафона (42.195 км)
+  const currentMarathonPace = zones.marathon; // сек/км
+  const currentPrediction = Math.round(currentMarathonPace * 42.195);
+
+  // Целевой темп
+  const targetPace = targetTimeSeconds / 42.195;
+
+  // Требуемое улучшение темпа (сек/км)
+  const paceImprovement = currentMarathonPace - targetPace;
+
+  // Требуемое улучшение VDOT
+  // Примерно: 1 единица VDOT ≈ 3-5 сек/км улучшения марафонского темпа
+  const requiredVDOTImprovement = paceImprovement / 4; // грубая оценка
+
+  // Реалистичное улучшение VDOT за доступное время
+  // Средний прогресс: 1-3% в месяц, возьмём 2% как среднее
+  const monthsAvailable = weeksAvailable / 4.33;
+  const realisticVDOTGain = currentVDOT * 0.02 * monthsAvailable;
+
+  // Рекомендуемый VDOT через N месяцев
+  const recommendedVDOT = currentVDOT + realisticVDOTGain;
+  const recommendedZones = calculatePaceZones(recommendedVDOT);
+  const recommendedTime = recommendedZones ? Math.round(recommendedZones.marathon * 42.195) : null;
+
+  // Требуемый месячный прогресс
+  const requiredMonthlyImprovement = (requiredVDOTImprovement / currentVDOT) / monthsAvailable;
+
+  // Реалистично если требуется <5% улучшения в месяц
+  const isRealistic = requiredMonthlyImprovement < 0.05;
+
+  return {
+    isRealistic,
+    currentPrediction,
+    targetTime: targetTimeSeconds,
+    requiredImprovement: Math.round(requiredMonthlyImprovement * 100 * 10) / 10, // % в месяц
+    recommendedTime,
+    currentVDOT: Math.round(currentVDOT * 10) / 10,
+    recommendedVDOT: Math.round(recommendedVDOT * 10) / 10,
+    weeksAvailable,
+    paceImprovementNeeded: Math.round(paceImprovement)
+  };
+}
+
+// Analyze macro plan compliance trends
+function analyzeRecentCompliance(macroPlan) {
+  if (!macroPlan?.weeks) return null;
+
+  const completedWeeks = macroPlan.weeks.filter(w => w.compliance_pct !== undefined);
+  if (completedWeeks.length === 0) return null;
+
+  const recent = completedWeeks.slice(-4);
+  const avgCompliance = Math.round(recent.reduce((s, w) => s + w.compliance_pct, 0) / recent.length);
+
+  // Trend: is compliance improving or declining
+  const trend = recent.length >= 2
+    ? recent[recent.length - 1].compliance_pct - recent[0].compliance_pct
+    : 0;
+
+  // Count consecutive low/high compliance weeks (from the end)
+  let consecutiveLow = 0;
+  for (let i = completedWeeks.length - 1; i >= 0; i--) {
+    if (completedWeeks[i].compliance_pct < 80) consecutiveLow++;
+    else break;
+  }
+
+  let consecutiveHigh = 0;
+  for (let i = completedWeeks.length - 1; i >= 0; i--) {
+    if (completedWeeks[i].compliance_pct > 115) consecutiveHigh++;
+    else break;
+  }
+
+  return {
+    avgCompliance,
+    trend,
+    consecutiveLow,
+    consecutiveHigh,
+    needsAdjustment: consecutiveLow >= 2 || consecutiveHigh >= 2,
+    weeksCompleted: completedWeeks.length,
+    totalWeeks: macroPlan.weeks.length
+  };
+}
+
 module.exports = {
   toLocalDateStr,
   formatPace,
@@ -437,5 +624,8 @@ module.exports = {
   getRiegelPredictions,
   getRecentPaceStats,
   getActiveMacroPlan,
-  computeMacroPlanWithActuals
+  computeMacroPlanWithActuals,
+  analyzeTrainingStability,
+  assessMarathonGoalRealism,
+  analyzeRecentCompliance
 };
