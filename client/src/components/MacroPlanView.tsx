@@ -156,17 +156,6 @@ const MacroPlanView: React.FC<MacroPlanViewProps> = ({ macroPlan, onBack }) => {
       .reduce((s, w) => s + w.target_volume_km, 0);
   };
 
-  // Track opened workout sections
-  const [openWorkouts, setOpenWorkouts] = useState<Set<number>>(new Set());
-  const toggleWorkouts = (weekNum: number) => {
-    setOpenWorkouts(prev => {
-      const next = new Set(prev);
-      if (next.has(weekNum)) next.delete(weekNum);
-      else next.add(weekNum);
-      return next;
-    });
-  };
-
   // Format date range for a week
   const formatWeekDate = (w: MacroPlanWeek): string => {
     const start = new Date(w.start_date);
@@ -188,11 +177,6 @@ const MacroPlanView: React.FC<MacroPlanViewProps> = ({ macroPlan, onBack }) => {
     if (w.week_number === currentWeek) return 'now';
     if (w.week_number === currentWeek + 1) return 'next';
     return 'future';
-  };
-
-  // Check if week has workout details
-  const hasWorkoutDetails = (w: MacroPlanWeek): boolean => {
-    return w.key_session_types && w.key_session_types.length > 0;
   };
 
   // Detect month boundaries within this phase for month labels
@@ -307,9 +291,6 @@ const MacroPlanView: React.FC<MacroPlanViewProps> = ({ macroPlan, onBack }) => {
           const prevWeek = i > 0 ? activeGroup.weeks[i - 1] : null;
           const monthLabel = getMonthLabel(w, prevWeek);
 
-          const isOpen = openWorkouts.has(w.week_number);
-          const showWo = (status === 'now' || status === 'next') && hasWorkoutDetails(w);
-
           return (
             <React.Fragment key={w.week_number}>
               {/* Month label when month changes */}
@@ -365,31 +346,14 @@ const MacroPlanView: React.FC<MacroPlanViewProps> = ({ macroPlan, onBack }) => {
                     <div className="mpv-wk-comment">{w.notes}</div>
                   )}
 
-                  {showWo && (
-                    <>
-                      <button
-                        className={`mpv-wo-toggle${isOpen ? ' open' : ''}`}
-                        onClick={() => toggleWorkouts(w.week_number)}
-                      >
-                        {t('macroPlanView.weekWorkouts')}
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M6 9l6 6 6-6" />
-                        </svg>
-                      </button>
-                      <div className={`mpv-wo-wrap${isOpen ? ' open' : ''}`}>
-                        <div className="mpv-wo-list">
-                          {w.key_session_types.map((session, si) => (
-                            <div key={si} className="mpv-wo-row">
-                              <div className="mpv-wo-day">{si + 1}</div>
-                              <div className="mpv-wo-info">
-                                <div className="mpv-wo-name">{session}</div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </>
+                  {w.key_session_types && w.key_session_types.length > 0 && (
+                    <div className="mpv-wk-tags">
+                      {w.key_session_types.map((session, si) => (
+                        <span key={si} className={`mpv-wk-tag type-${session}`}>{session}</span>
+                      ))}
+                    </div>
                   )}
+
                 </div>
               </div>
             </React.Fragment>

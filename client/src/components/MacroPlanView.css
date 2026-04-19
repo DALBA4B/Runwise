@@ -628,3 +628,67 @@
   color: var(--color-text-secondary);
   font-weight: 500;
 }
+
+/* ── WORKOUT TYPE TAGS ── */
+.mpv-wk-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border);
+}
+
+.mpv-wk-tag {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 99px;
+  text-transform: capitalize;
+  letter-spacing: 0.2px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+
+.mpv-wk-tag.type-long {
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--color-accent);
+  border-color: rgba(59, 130, 246, 0.2);
+}
+
+.mpv-wk-tag.type-tempo {
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--color-warning);
+  border-color: rgba(245, 158, 11, 0.2);
+}
+
+.mpv-wk-tag.type-interval {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--color-danger);
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.mpv-wk-tag.type-fartlek {
+  background: rgba(168, 85, 247, 0.1);
+  color: #a855f7;
+  border-color: rgba(168, 85, 247, 0.2);
+}
+
+.mpv-wk-tag.type-easy {
+  background: rgba(16, 185, 129, 0.08);
+  color: var(--color-success);
+  border-color: rgba(16, 185, 129, 0.15);
+}
+
+.mpv-wk-tag.type-recovery {
+  background: rgba(16, 185, 129, 0.06);
+  color: var(--color-success);
+  border-color: rgba(16, 185, 129, 0.12);
+}
+
+.mpv-wk-tag.type-race {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--color-danger);
+  border-color: rgba(239, 68, 68, 0.25);
+}
