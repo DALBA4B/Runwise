@@ -309,9 +309,47 @@
   font-size: 16px;
   font-weight: 700;
   text-align: center;
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
 
-/* ── PHASE SEPARATOR ── */
+.mpv-mnav-phase-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mpv-mnav-phase-dot.phase-base { background: var(--color-accent); }
+.mpv-mnav-phase-dot.phase-build { background: var(--color-warning); }
+.mpv-mnav-phase-dot.phase-peak { background: var(--color-danger); }
+.mpv-mnav-phase-dot.phase-taper { background: var(--color-success); }
+.mpv-mnav-phase-dot.phase-race { background: #ffffff; }
+
+/* ── MONTH LABEL (inside phase) ── */
+.mpv-month-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0 6px;
+}
+
+.mpv-month-label-line {
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+  opacity: 0.5;
+}
+
+.mpv-month-label-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+/* ── PHASE SEPARATOR (legacy, kept for compatibility) ── */
 .mpv-ph-sep {
   display: flex;
   align-items: center;

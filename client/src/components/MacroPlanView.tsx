@@ -32,6 +32,13 @@ interface MacroPlanViewProps {
   onBack: () => void;
 }
 
+interface PhaseGroup {
+  phase: string;
+  weeks: MacroPlanWeek[];
+  totalKm: number;
+  avgKm: number;
+}
+
 const LOCALE_MAP: Record<string, string> = { ru: 'ru-RU', uk: 'uk-UA', en: 'en-US' };
 
 const GOAL_NAMES: Record<string, Record<string, string>> = {
@@ -44,12 +51,6 @@ const PHASE_LABELS: Record<string, Record<string, string>> = {
   ru: { base: 'Базовый блок', build: 'Развитие', peak: 'Пик', taper: 'Подводка', race: 'Старт' },
   uk: { base: 'Базовий блок', build: 'Розвиток', peak: 'Пік', taper: 'Підведення', race: 'Старт' },
   en: { base: 'Base', build: 'Build', peak: 'Peak', taper: 'Taper', race: 'Race' }
-};
-
-const MONTH_NAMES: Record<string, string[]> = {
-  ru: ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'],
-  uk: ['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'],
-  en: ['January','February','March','April','May','June','July','August','September','October','November','December']
 };
 
 const MONTH_SHORT: Record<string, string[]> = {
@@ -70,7 +71,6 @@ function formatTime(seconds: number): string {
 const MacroPlanView: React.FC<MacroPlanViewProps> = ({ macroPlan, onBack }) => {
   const { t } = useTranslation();
   const lang = i18n.language || 'ru';
-  const locale = LOCALE_MAP[lang] || 'ru-RU';
   const weeks = macroPlan.weeks;
   const currentWeek = macroPlan.current_week;
 
@@ -95,59 +95,63 @@ const MacroPlanView: React.FC<MacroPlanViewProps> = ({ macroPlan, onBack }) => {
   const currentWeekData = weeks.find(w => w.week_number === currentWeek);
   const currentPhase = currentWeekData?.phase || 'base';
 
-  // Unique phases
+  // Unique phases for legend
   const phases = Array.from(new Set(weeks.map(w => w.phase)));
 
-  // Group weeks by month index (0-11)
-  const weeksByMonth = useMemo(() => {
-    const grouped: Record<number, MacroPlanWeek[]> = {};
+  // Group weeks by phase (consecutive groups — same phase stays together)
+  const phaseGroups: PhaseGroup[] = useMemo(() => {
+    const groups: PhaseGroup[] = [];
+    let current: PhaseGroup | null = null;
+
     weeks.forEach(w => {
-      const m = new Date(w.start_date).getMonth();
-      if (!grouped[m]) grouped[m] = [];
-      grouped[m].push(w);
+      if (!current || current.phase !== w.phase) {
+        if (current) groups.push(current);
+        current = { phase: w.phase, weeks: [w], totalKm: w.target_volume_km, avgKm: 0 };
+      } else {
+        current.weeks.push(w);
+        current.totalKm += w.target_volume_km;
+      }
     });
-    return grouped;
+    if (current) groups.push(current);
+
+    groups.forEach(g => {
+      g.avgKm = Math.round(g.totalKm / g.weeks.length);
+    });
+
+    return groups;
   }, [weeks]);
 
-  // Available months sorted
-  const availableMonths = useMemo(() => {
-    const months = Object.keys(weeksByMonth).map(Number).sort((a, b) => a - b);
-    return months;
-  }, [weeksByMonth]);
+  // Find which phase group the current week belongs to
+  const currentPhaseIdx = useMemo(() => {
+    return phaseGroups.findIndex(g => g.weeks.some(w => w.week_number === currentWeek));
+  }, [phaseGroups, currentWeek]);
 
-  // Find month of current week
-  const currentMonth = useMemo(() => {
-    if (currentWeekData) {
-      return new Date(currentWeekData.start_date).getMonth();
-    }
-    return availableMonths[0] ?? 0;
-  }, [currentWeekData, availableMonths]);
+  const [activePhaseIdx, setActivePhaseIdx] = useState(Math.max(0, currentPhaseIdx));
 
-  const [month, setMonth] = useState(currentMonth);
-
-  const monthIdx = availableMonths.indexOf(month);
-  const canPrev = monthIdx > 0;
-  const canNext = monthIdx < availableMonths.length - 1;
+  const canPrev = activePhaseIdx > 0;
+  const canNext = activePhaseIdx < phaseGroups.length - 1;
 
   const go = (dir: number) => {
-    const newIdx = monthIdx + dir;
-    if (newIdx >= 0 && newIdx < availableMonths.length) {
-      setMonth(availableMonths[newIdx]);
+    const newIdx = activePhaseIdx + dir;
+    if (newIdx >= 0 && newIdx < phaseGroups.length) {
+      setActivePhaseIdx(newIdx);
     }
   };
 
-  const monthWeeks = weeksByMonth[month] || [];
-  const monthNames = MONTH_NAMES[lang] || MONTH_NAMES.ru;
+  const activeGroup = phaseGroups[activePhaseIdx];
   const phaseLabels = PHASE_LABELS[lang] || PHASE_LABELS.ru;
 
-  // Month stats
-  const monthTotalKm = monthWeeks.reduce((s, w) => s + w.target_volume_km, 0);
-  const monthTrainDays = monthWeeks.reduce((s, w) => s + (w.key_sessions_count || 0), 0);
-  const monthRestDays = monthWeeks.length * 7 - monthTrainDays;
+  if (!activeGroup) return null;
 
-  // Cumulative km up to weekId in this month
+  // Phase stats
+  const phaseTotalKm = activeGroup.totalKm;
+  const phaseAvgKm = activeGroup.avgKm;
+  const phaseWeeksCount = activeGroup.weeks.length;
+  const phaseTrainDays = activeGroup.weeks.reduce((s, w) => s + (w.key_sessions_count || 0), 0);
+
+  // Cumulative km within phase
   const cumulativeKm = (weekNum: number): number => {
-    return monthWeeks
+    return activeGroup.weeks
       .filter(w => w.week_number <= weekNum)
       .reduce((s, w) => s + w.target_volume_km, 0);
   };
@@ -162,9 +166,6 @@ const MacroPlanView: React.FC<MacroPlanViewProps> = ({ macroPlan, onBack }) => {
       return next;
     });
   };
-
-  // Get year from the first week in current month view
-  const displayYear = monthWeeks.length > 0 ? new Date(monthWeeks[0].start_date).getFullYear() : new Date().getFullYear();
 
   // Format date range for a week
   const formatWeekDate = (w: MacroPlanWeek): string => {
@@ -189,10 +190,26 @@ const MacroPlanView: React.FC<MacroPlanViewProps> = ({ macroPlan, onBack }) => {
     return 'future';
   };
 
-  // Check if week has workout details (key_session_types)
+  // Check if week has workout details
   const hasWorkoutDetails = (w: MacroPlanWeek): boolean => {
     return w.key_session_types && w.key_session_types.length > 0;
   };
+
+  // Detect month boundaries within this phase for month labels
+  const getMonthLabel = (w: MacroPlanWeek, prevWeek: MacroPlanWeek | null): string | null => {
+    const wMonth = new Date(w.start_date).getMonth();
+    const prevMonth = prevWeek ? new Date(prevWeek.start_date).getMonth() : -1;
+    if (wMonth !== prevMonth) {
+      const wYear = new Date(w.start_date).getFullYear();
+      return `${monthShort[wMonth]} ${wYear}`;
+    }
+    return null;
+  };
+
+  // Phase date range string
+  const phaseFirstDate = new Date(activeGroup.weeks[0].start_date);
+  const phaseLastDate = new Date(activeGroup.weeks[activeGroup.weeks.length - 1].start_date);
+  const phaseDateStr = `${monthShort[phaseFirstDate.getMonth()]} – ${monthShort[phaseLastDate.getMonth()]}`;
 
   return (
     <div className="mpv">
@@ -253,132 +270,131 @@ const MacroPlanView: React.FC<MacroPlanViewProps> = ({ macroPlan, onBack }) => {
         </div>
       </div>
 
-      {/* Month stats */}
+      {/* Phase stats (replaces month stats) */}
       <div className="mpv-mstats">
         <div className="mpv-ms-item">
-          <div className="mpv-ms-val">{monthTotalKm}<span className="mpv-ms-unit">{t('macroPlan.km')}</span></div>
-          <div className="mpv-ms-lbl">{t('macroPlanView.perMonth')}</div>
+          <div className="mpv-ms-val">{phaseTotalKm}<span className="mpv-ms-unit">{t('macroPlan.km')}</span></div>
+          <div className="mpv-ms-lbl">{t('macroPlanView.phaseTotal')}</div>
         </div>
         <div className="mpv-ms-item">
-          <div className="mpv-ms-val">{monthTrainDays}<span className="mpv-ms-unit">{t('macroPlanView.daysUnit')}</span></div>
-          <div className="mpv-ms-lbl">{t('macroPlanView.trainings')}</div>
+          <div className="mpv-ms-val">~{phaseAvgKm}<span className="mpv-ms-unit">{t('macroPlan.km')}</span></div>
+          <div className="mpv-ms-lbl">{t('macroPlanView.perWeekAvg')}</div>
         </div>
         <div className="mpv-ms-item">
-          <div className="mpv-ms-val">{monthRestDays}<span className="mpv-ms-unit">{t('macroPlanView.daysUnit')}</span></div>
-          <div className="mpv-ms-lbl">{t('macroPlanView.rest')}</div>
+          <div className="mpv-ms-val">{phaseWeeksCount}<span className="mpv-ms-unit"> {t('macroPlanView.weeksUnit')}</span></div>
+          <div className="mpv-ms-lbl">{phaseDateStr}</div>
         </div>
       </div>
 
-      {/* Month nav */}
+      {/* Phase nav (replaces month nav) */}
       <div className="mpv-mnav">
         <button className="mpv-mnav-btn" disabled={!canPrev} onClick={() => go(-1)}>&#8249;</button>
-        <div className="mpv-mnav-title">{monthNames[month]} {displayYear}</div>
+        <div className="mpv-mnav-title">
+          <span className={`mpv-mnav-phase-dot phase-${activeGroup.phase}`} />
+          {phaseLabels[activeGroup.phase] || activeGroup.phase}
+        </div>
         <button className="mpv-mnav-btn" disabled={!canNext} onClick={() => go(1)}>&#8250;</button>
       </div>
 
       {/* Week cards */}
       <div className="mpv-weeks">
-        {(() => {
-          let lastPhase: string | null = null;
-          return monthWeeks.map((w, i) => {
-            const status = getWeekStatus(w);
-            const cumKm = cumulativeKm(w.week_number);
-            const cumPct = monthTotalKm > 0 ? Math.round(cumKm / monthTotalKm * 100) : 0;
-            const volPct = monthTotalKm > 0 ? Math.round(w.target_volume_km / monthTotalKm * 100) : 0;
+        {activeGroup.weeks.map((w, i) => {
+          const status = getWeekStatus(w);
+          const cumKm = cumulativeKm(w.week_number);
+          const cumPct = phaseTotalKm > 0 ? Math.round(cumKm / phaseTotalKm * 100) : 0;
+          const volPct = phaseTotalKm > 0 ? Math.round(w.target_volume_km / phaseTotalKm * 100) : 0;
 
-            const showSep = w.phase !== lastPhase;
-            lastPhase = w.phase;
+          const prevWeek = i > 0 ? activeGroup.weeks[i - 1] : null;
+          const monthLabel = getMonthLabel(w, prevWeek);
 
-            const isOpen = openWorkouts.has(w.week_number);
-            const showWo = (status === 'now' || status === 'next') && hasWorkoutDetails(w);
+          const isOpen = openWorkouts.has(w.week_number);
+          const showWo = (status === 'now' || status === 'next') && hasWorkoutDetails(w);
 
-            return (
-              <React.Fragment key={w.week_number}>
-                {showSep && (
-                  <div className="mpv-ph-sep">
-                    <div className="mpv-ph-sep-line" />
-                    <span className={`mpv-ph-sep-label phase-${w.phase}`}>
-                      {phaseLabels[w.phase] || w.phase}
-                    </span>
-                    <div className="mpv-ph-sep-line" />
-                  </div>
-                )}
-
-                <div
-                  className={`mpv-wk${status === 'past' ? ' is-past' : ''}${status === 'now' ? ' is-now' : ''}${status === 'next' ? ' is-next' : ''}`}
-                  style={{ animationDelay: `${i * 0.045}s` }}
-                >
-                  <div className="mpv-wk-strip" />
-                  <div className="mpv-wk-nbg">{w.week_number}</div>
-                  <div className="mpv-wk-body">
-                    <div className="mpv-wk-head">
-                      <div>
-                        <div className="mpv-wk-id">
-                          {t('macroPlanView.weekN', { n: w.week_number })}
-                          {status === 'now' && (
-                            <span className="mpv-badge-now">
-                              <span className="mpv-badge-pulse" />
-                              {t('macroPlanView.now')}
-                            </span>
-                          )}
-                          {status === 'next' && (
-                            <span className="mpv-badge-next">{t('macroPlanView.next')}</span>
-                          )}
-                        </div>
-                        <div className="mpv-wk-date">{formatWeekDate(w)}</div>
-                      </div>
-                      <div className="mpv-wk-km">
-                        <div className="mpv-wk-km-val">
-                          {w.target_volume_km}<span className="mpv-wk-km-unit"> {t('macroPlan.km')}</span>
-                        </div>
-                        <div className="mpv-wk-month-pct">{volPct}% {t('macroPlanView.ofMonth')}</div>
-                      </div>
-                    </div>
-
-                    <div className="mpv-month-bar-wrap">
-                      <div className="mpv-month-bar-track">
-                        <div className="mpv-month-bar-fill" style={{ width: `${cumPct}%` }} />
-                      </div>
-                      <div className="mpv-month-bar-label">
-                        {cumKm} {t('macroPlanView.outOf')} {monthTotalKm} {t('macroPlan.km')}
-                      </div>
-                    </div>
-
-                    {w.notes && (
-                      <div className="mpv-wk-comment">{w.notes}</div>
-                    )}
-
-                    {showWo && (
-                      <>
-                        <button
-                          className={`mpv-wo-toggle${isOpen ? ' open' : ''}`}
-                          onClick={() => toggleWorkouts(w.week_number)}
-                        >
-                          {t('macroPlanView.weekWorkouts')}
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M6 9l6 6 6-6" />
-                          </svg>
-                        </button>
-                        <div className={`mpv-wo-wrap${isOpen ? ' open' : ''}`}>
-                          <div className="mpv-wo-list">
-                            {w.key_session_types.map((session, si) => (
-                              <div key={si} className="mpv-wo-row">
-                                <div className="mpv-wo-day">{si + 1}</div>
-                                <div className="mpv-wo-info">
-                                  <div className="mpv-wo-name">{session}</div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
+          return (
+            <React.Fragment key={w.week_number}>
+              {/* Month label when month changes */}
+              {monthLabel && (
+                <div className="mpv-month-label">
+                  <div className="mpv-month-label-line" />
+                  <span className="mpv-month-label-text">{monthLabel}</span>
+                  <div className="mpv-month-label-line" />
                 </div>
-              </React.Fragment>
-            );
-          });
-        })()}
+              )}
+
+              <div
+                className={`mpv-wk${status === 'past' ? ' is-past' : ''}${status === 'now' ? ' is-now' : ''}${status === 'next' ? ' is-next' : ''}`}
+                style={{ animationDelay: `${i * 0.045}s` }}
+              >
+                <div className="mpv-wk-strip" />
+                <div className="mpv-wk-nbg">{w.week_number}</div>
+                <div className="mpv-wk-body">
+                  <div className="mpv-wk-head">
+                    <div>
+                      <div className="mpv-wk-id">
+                        {t('macroPlanView.weekN', { n: w.week_number })}
+                        {status === 'now' && (
+                          <span className="mpv-badge-now">
+                            <span className="mpv-badge-pulse" />
+                            {t('macroPlanView.now')}
+                          </span>
+                        )}
+                        {status === 'next' && (
+                          <span className="mpv-badge-next">{t('macroPlanView.next')}</span>
+                        )}
+                      </div>
+                      <div className="mpv-wk-date">{formatWeekDate(w)}</div>
+                    </div>
+                    <div className="mpv-wk-km">
+                      <div className="mpv-wk-km-val">
+                        {w.target_volume_km}<span className="mpv-wk-km-unit"> {t('macroPlan.km')}</span>
+                      </div>
+                      <div className="mpv-wk-month-pct">{volPct}% {t('macroPlanView.ofPhase')}</div>
+                    </div>
+                  </div>
+
+                  <div className="mpv-month-bar-wrap">
+                    <div className="mpv-month-bar-track">
+                      <div className="mpv-month-bar-fill" style={{ width: `${cumPct}%` }} />
+                    </div>
+                    <div className="mpv-month-bar-label">
+                      {cumKm} {t('macroPlanView.outOf')} {phaseTotalKm} {t('macroPlan.km')}
+                    </div>
+                  </div>
+
+                  {w.notes && (
+                    <div className="mpv-wk-comment">{w.notes}</div>
+                  )}
+
+                  {showWo && (
+                    <>
+                      <button
+                        className={`mpv-wo-toggle${isOpen ? ' open' : ''}`}
+                        onClick={() => toggleWorkouts(w.week_number)}
+                      >
+                        {t('macroPlanView.weekWorkouts')}
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M6 9l6 6 6-6" />
+                        </svg>
+                      </button>
+                      <div className={`mpv-wo-wrap${isOpen ? ' open' : ''}`}>
+                        <div className="mpv-wo-list">
+                          {w.key_session_types.map((session, si) => (
+                            <div key={si} className="mpv-wo-row">
+                              <div className="mpv-wo-day">{si + 1}</div>
+                              <div className="mpv-wo-info">
+                                <div className="mpv-wo-name">{session}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </React.Fragment>
+          );
+        })}
       </div>
     </div>
   );

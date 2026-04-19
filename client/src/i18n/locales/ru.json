@@ -157,6 +157,9 @@
   "macroPlanView": {
     "backToWeek": "К неделе",
     "perMonth": "За месяц",
+    "phaseTotal": "За фазу",
+    "perWeekAvg": "В среднем/нед",
+    "weeksUnit": "нед",
     "daysUnit": "дн",
     "trainings": "Тренировок",
     "rest": "Отдыха",
@@ -164,6 +167,7 @@
     "now": "Сейчас",
     "next": "Следующая",
     "ofMonth": "от месяца",
+    "ofPhase": "от фазы",
     "outOf": "из",
     "weekWorkouts": "Тренировки недели",
     "viewProgram": "Программа"

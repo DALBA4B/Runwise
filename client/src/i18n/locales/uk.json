@@ -155,6 +155,21 @@
     "deleted": "Програму підготовки скасовано."
   },
   "macroPlanView": {
+    "backToWeek": "До тижня",
+    "perMonth": "За місяць",
+    "phaseTotal": "За фазу",
+    "perWeekAvg": "В середньому/тиж",
+    "weeksUnit": "тиж",
+    "daysUnit": "дн",
+    "trainings": "Тренувань",
+    "rest": "Відпочинку",
+    "weekN": "Тиждень {{n}}",
+    "now": "Зараз",
+    "next": "Наступний",
+    "ofMonth": "від місяця",
+    "ofPhase": "від фази",
+    "outOf": "з",
+    "weekWorkouts": "Тренування тижня",
     "viewProgram": "Програма"
   },
   "chat": {

@@ -155,6 +155,21 @@
     "deleted": "Training program cancelled."
   },
   "macroPlanView": {
+    "backToWeek": "Back to week",
+    "perMonth": "Per month",
+    "phaseTotal": "Phase total",
+    "perWeekAvg": "Avg/week",
+    "weeksUnit": "wks",
+    "daysUnit": "d",
+    "trainings": "Workouts",
+    "rest": "Rest",
+    "weekN": "Week {{n}}",
+    "now": "Now",
+    "next": "Next",
+    "ofMonth": "of month",
+    "ofPhase": "of phase",
+    "outOf": "of",
+    "weekWorkouts": "Week workouts",
     "viewProgram": "Program"
   },
   "chat": {
