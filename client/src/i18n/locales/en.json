@@ -176,6 +176,7 @@
     "title": "AI Coach",
     "welcome": "Hi! 👋 I'm your personal AI coach Runwise. Ask me about your workouts, get recommendations, or change your plan right in the chat.",
     "clearConfirm": "Clear chat history?",
+    "clearHistory": "Clear chat history",
     "placeholder": "Ask me about your workouts...",
     "planUpdated": "✅ Training plan updated! Go to the Plan tab to see the changes.",
     "macroPlanCreated": "📊 Training program created! Go to the Plan tab to see it.",

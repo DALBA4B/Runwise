@@ -34,9 +34,14 @@ const App: React.FC = () => {
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null);
   const [screenBeforeDetail, setScreenBeforeDetail] = useState<Screen>('history');
+  const [lastPlanScreen, setLastPlanScreen] = useState<Screen>('plan');
+  const [returnToVdotModal, setReturnToVdotModal] = useState(false);
+  const cameFromVdotRef = useRef(false);
   const [animating, setAnimating] = useState(false);
   const [animClass, setAnimClass] = useState('screen-enter');
   const prevScreenRef = useRef<Screen>('home');
+  const appContainerRef = useRef<HTMLDivElement>(null);
+  const scrollPositions = useRef<Record<string, number>>({});
 
   const [macroPlan, setMacroPlan] = useState<any>(() => {
     try { const raw = localStorage.getItem('rw_macro_plan_cache'); return raw ? JSON.parse(raw) : null; } catch { return null; }
@@ -97,6 +102,14 @@ const App: React.FC = () => {
 
   const handleWorkoutClick = (id: string) => {
     setScreenBeforeDetail(currentScreen);
+    cameFromVdotRef.current = false;
+    setSelectedWorkoutId(id);
+    navigateTo('workout-detail');
+  };
+
+  const handleVdotWorkoutClick = (id: string) => {
+    setScreenBeforeDetail('profile');
+    cameFromVdotRef.current = true;
     setSelectedWorkoutId(id);
     navigateTo('workout-detail');
   };
@@ -108,13 +121,28 @@ const App: React.FC = () => {
     const nextOrder = SCREEN_ORDER[screen] ?? 0;
     const direction = nextOrder > prevOrder ? 'slide-left' : 'slide-right';
 
+    // Save scroll position of current screen
+    if (appContainerRef.current) {
+      scrollPositions.current[currentScreen] = appContainerRef.current.scrollTop;
+    }
+
     setAnimClass(`screen-exit-${direction}`);
     setAnimating(true);
 
     setTimeout(() => {
       prevScreenRef.current = currentScreen;
       setCurrentScreen(screen);
+      if (screen === 'plan' || screen === 'macro-plan') {
+        setLastPlanScreen(screen);
+      }
       setAnimClass(`screen-enter-${direction}`);
+
+      // Restore scroll position of target screen
+      requestAnimationFrame(() => {
+        if (appContainerRef.current) {
+          appContainerRef.current.scrollTop = scrollPositions.current[screen] || 0;
+        }
+      });
 
       setTimeout(() => {
         setAnimClass('');
@@ -136,12 +164,16 @@ const App: React.FC = () => {
 
   const handleBackFromDetail = () => {
     setSelectedWorkoutId(null);
+    if (cameFromVdotRef.current) {
+      setReturnToVdotModal(true);
+      cameFromVdotRef.current = false;
+    }
     navigateTo(screenBeforeDetail);
   };
 
   return (
     <div className="app">
-      <div className={`app-container ${animClass}`}>
+      <div className={`app-container ${animClass}`} ref={appContainerRef}>
         <div style={{ display: currentScreen === 'home' ? 'block' : 'none', width: '100%', maxWidth: 420 }}>
           <Home onWorkoutClick={handleWorkoutClick} onNavigate={handleNavigate} isActive={currentScreen === 'home'} />
         </div>
@@ -155,10 +187,10 @@ const App: React.FC = () => {
           <AIChat onWorkoutClick={handleWorkoutClick} isActive={currentScreen === 'ai'} />
         </div>
         <div style={{ display: currentScreen === 'profile' ? 'block' : 'none', width: '100%', maxWidth: 420 }}>
-          <Profile onLogout={logout} onWorkoutClick={handleWorkoutClick} isActive={currentScreen === 'profile'} />
+          <Profile onLogout={logout} onWorkoutClick={handleWorkoutClick} onVdotWorkoutClick={handleVdotWorkoutClick} isActive={currentScreen === 'profile'} openVdotModal={returnToVdotModal} onVdotModalOpened={() => setReturnToVdotModal(false)} />
         </div>
-        {currentScreen === 'macro-plan' && macroPlan && (
-          <div style={{ width: '100%', maxWidth: 420 }}>
+        {macroPlan && (
+          <div style={{ display: currentScreen === 'macro-plan' ? 'block' : 'none', width: '100%', maxWidth: 420 }}>
             <MacroPlanView macroPlan={macroPlan} onBack={() => navigateTo('plan')} />
           </div>
         )}
@@ -184,7 +216,7 @@ const App: React.FC = () => {
         </button>
         <button
           className={`nav-item ${currentScreen === 'plan' || currentScreen === 'macro-plan' ? 'active' : ''}`}
-          onClick={() => navigateTo('plan')}
+          onClick={() => handleNavigate(lastPlanScreen)}
         >
           <span className="nav-icon">📋</span>
           <span className="nav-label">{t('nav.plan')}</span>

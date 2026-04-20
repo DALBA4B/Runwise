@@ -30,7 +30,10 @@ interface Goal {
 interface ProfileProps {
   onLogout: () => void;
   onWorkoutClick?: (id: string) => void;
+  onVdotWorkoutClick?: (id: string) => void;
   isActive?: boolean;
+  openVdotModal?: boolean;
+  onVdotModalOpened?: () => void;
 }
 
 function readCache<T>(key: string): T | null {
@@ -40,7 +43,7 @@ function writeCache(key: string, data: any) {
   try { localStorage.setItem(key, JSON.stringify(data)); } catch {}
 }
 
-const Profile: React.FC<ProfileProps> = ({ onLogout, onWorkoutClick, isActive }) => {
+const Profile: React.FC<ProfileProps> = ({ onLogout, onWorkoutClick, onVdotWorkoutClick, isActive, openVdotModal, onVdotModalOpened }) => {
   const { t } = useTranslation();
   const cached = readCache<{ stats: any; goals: Goal[]; predictions: any[]; syncStatus: any; profile: any; records: PersonalRecord[] }>('rw_profile_cache');
   const [allTimeStats, setAllTimeStats] = useState<any>(cached?.stats || null);
@@ -342,7 +345,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout, onWorkoutClick, isActive })
         </button>
       </div>
 
-      <PaceZonesSection onWorkoutClick={onWorkoutClick} />
+      <PaceZonesSection onWorkoutClick={onVdotWorkoutClick || onWorkoutClick} openModal={openVdotModal} onModalOpened={onVdotModalOpened} />
 
       <RecordsSection records={records} setRecords={setRecords} />
 

@@ -52,9 +52,11 @@ interface PaceZonesData {
 
 interface PaceZonesProps {
   onWorkoutClick?: (id: string) => void;
+  openModal?: boolean;
+  onModalOpened?: () => void;
 }
 
-const PaceZonesSection: React.FC<PaceZonesProps> = ({ onWorkoutClick }) => {
+const PaceZonesSection: React.FC<PaceZonesProps> = ({ onWorkoutClick, openModal, onModalOpened }) => {
   const { t } = useTranslation();
   const [data, setData] = useState<PaceZonesData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -67,6 +69,14 @@ const PaceZonesSection: React.FC<PaceZonesProps> = ({ onWorkoutClick }) => {
       .catch(() => setData(null))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (openModal && !loading && data?.vdot) {
+      setModalClosing(false);
+      setShowModal(true);
+      onModalOpened?.();
+    }
+  }, [openModal, loading, data]);
 
   const closeModal = () => {
     setModalClosing(true);

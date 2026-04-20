@@ -318,17 +318,12 @@ const AIChat: React.FC<AIChatProps> = ({ onWorkoutClick, isActive }) => {
     <div className="screen ai-chat-screen">
       <div className="chat-header">
         <h2 className="screen-title">🤖 {t('chat.title')}</h2>
-        <div className="chat-header-actions">
-          <button className="chat-settings-btn" onClick={() => setShowAiSettings(true)} title={t('chat.aiSettings')}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-            </svg>
-          </button>
-          {messages.length > 1 && (
-            <button className="clear-chat-btn" onClick={handleClearHistory}>{t('common.clear')}</button>
-          )}
-        </div>
+        <button className="chat-settings-btn" onClick={() => setShowAiSettings(true)} title={t('chat.aiSettings')}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
       </div>
 
       <div className="chat-container">
@@ -366,22 +361,6 @@ const AIChat: React.FC<AIChatProps> = ({ onWorkoutClick, isActive }) => {
             </div>
           )}
           <div ref={messagesEndRef} />
-        </div>
-
-        <div className="quick-questions">
-          <p className="quick-questions-label">{t('chat.quickQuestions')}</p>
-          <div className="quick-questions-grid">
-            {QUICK_QUESTIONS.map((question, index) => (
-              <button
-                key={index}
-                className="quick-btn"
-                onClick={() => handleSendMessage(question)}
-                disabled={loading || (messageLimit !== null && messageLimit.remaining <= 0)}
-              >
-                {question}
-              </button>
-            ))}
-          </div>
         </div>
 
         <div className="chat-input-area">
@@ -501,11 +480,17 @@ const AIChat: React.FC<AIChatProps> = ({ onWorkoutClick, isActive }) => {
               </div>
             )}
 
+            <div className="ai-settings-section ai-limit-section">
+              <button className="btn btn-danger-outline btn-full" onClick={handleClearHistory}>
+                🗑 {t('chat.clearHistory')}
+              </button>
+            </div>
+
             <button
               className="btn btn-accent btn-full"
               onClick={handleSaveAiPrefs}
               disabled={savingPrefs}
-              style={{ marginTop: '16px' }}
+              style={{ marginTop: '8px' }}
             >
               {savingPrefs ? t('common.saving') : t('common.save')}
             </button>
