@@ -56,6 +56,12 @@ export const ALL_METRICS: MetricConfig[] = [
     icon: '⛰️',
     getValue: (s) => s.totalElevation ? `${s.totalElevation} ${i18n.t('units.m')}` : `0 ${i18n.t('units.m')}`,
   },
+  {
+    id: 'cardiac_efficiency',
+    labelKey: 'metrics.cardiacEfficiency',
+    icon: '💓',
+    getValue: (s) => s.avgHeartrate && s.avgPace ? (s.avgPace / s.avgHeartrate).toFixed(2) : '—',
+  },
 ];
 
 const STORAGE_KEY = 'runwise_dashboard_widgets';

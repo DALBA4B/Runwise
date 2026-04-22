@@ -180,3 +180,37 @@
   font-size: 11px;
   color: var(--color-text-secondary);
 }
+
+/* Aerobic Decoupling */
+.decoupling-section {
+  margin-top: var(--spacing-md);
+}
+
+.decoupling-card {
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.decoupling-drift {
+  font-size: 22px;
+  font-weight: 700;
+  min-width: 60px;
+}
+
+.decoupling-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.decoupling-status {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+}

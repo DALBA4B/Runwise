@@ -58,6 +58,8 @@ const Profile: React.FC<ProfileProps> = ({ onLogout, onWorkoutClick, onVdotWorko
   const [age, setAge] = useState(cached?.profile?.age?.toString() || '');
   const [height, setHeight] = useState(cached?.profile?.height_cm?.toString() || '');
   const [weight, setWeight] = useState(cached?.profile?.weight_kg?.toString() || '');
+  const [maxHR, setMaxHR] = useState(cached?.profile?.max_heartrate_user?.toString() || '');
+  const [restingHR, setRestingHR] = useState(cached?.profile?.resting_heartrate?.toString() || '');
   const [savingProfile, setSavingProfile] = useState(false);
   const [showParamsModal, setShowParamsModal] = useState(false);
   const [paramsModalClosing, setParamsModalClosing] = useState(false);
@@ -220,6 +222,8 @@ const Profile: React.FC<ProfileProps> = ({ onLogout, onWorkoutClick, onVdotWorko
         if (profileData.value.age) setAge(profileData.value.age.toString());
         if (profileData.value.height_cm) setHeight(profileData.value.height_cm.toString());
         if (profileData.value.weight_kg) setWeight(profileData.value.weight_kg.toString());
+        if (profileData.value.max_heartrate_user) setMaxHR(profileData.value.max_heartrate_user.toString());
+        if (profileData.value.resting_heartrate) setRestingHR(profileData.value.resting_heartrate.toString());
         cacheObj.profile = profileData.value;
       }
       if (recordsData.status === 'fulfilled') {
@@ -244,7 +248,9 @@ const Profile: React.FC<ProfileProps> = ({ onLogout, onWorkoutClick, onVdotWorko
         gender: gender || null,
         age: age ? parseInt(age) : null,
         height_cm: height ? parseFloat(height) : null,
-        weight_kg: weight ? parseFloat(weight) : null
+        weight_kg: weight ? parseFloat(weight) : null,
+        max_heartrate_user: maxHR ? parseInt(maxHR) : null,
+        resting_heartrate: restingHR ? parseInt(restingHR) : null
       });
       closeParamsModal();
     } catch (err) {
@@ -345,7 +351,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout, onWorkoutClick, onVdotWorko
         </button>
       </div>
 
-      <PaceZonesSection onWorkoutClick={onVdotWorkoutClick || onWorkoutClick} openModal={openVdotModal} onModalOpened={onVdotModalOpened} />
+      <PaceZonesSection onWorkoutClick={onVdotWorkoutClick || onWorkoutClick} openModal={openVdotModal} onModalOpened={onVdotModalOpened} maxHR={maxHR ? parseInt(maxHR) : (age ? 220 - parseInt(age) : null)} />
 
       <RecordsSection records={records} setRecords={setRecords} />
 
@@ -402,6 +408,23 @@ const Profile: React.FC<ProfileProps> = ({ onLogout, onWorkoutClick, onVdotWorko
               <div className="param-input-wrap">
                 <input type="number" className="input-field" placeholder="70" value={weight} onChange={e => setWeight(e.target.value)} min="30" max="250" step="0.1" />
                 <span className="param-unit">{t('units.kg')}</span>
+              </div>
+            </div>
+
+            <div className="modal-field">
+              <label className="param-label">{t('profile.maxHeartRate')}</label>
+              <div className="param-input-wrap">
+                <input type="number" className="input-field" placeholder={age ? (220 - parseInt(age)).toString() : '185'} value={maxHR} onChange={e => setMaxHR(e.target.value)} min="100" max="230" />
+                <span className="param-unit">{t('units.bpm')}</span>
+              </div>
+              {!maxHR && age && <span className="param-hint">{t('profile.estimatedMaxHr', { value: 220 - parseInt(age) })}</span>}
+            </div>
+
+            <div className="modal-field">
+              <label className="param-label">{t('profile.restingHeartRate')}</label>
+              <div className="param-input-wrap">
+                <input type="number" className="input-field" placeholder="60" value={restingHR} onChange={e => setRestingHR(e.target.value)} min="30" max="100" />
+                <span className="param-unit">{t('units.bpm')}</span>
               </div>
             </div>
 

@@ -5,6 +5,18 @@ const state = require('./state');
 
 const router = express.Router();
 
+// HR correction factor for Riegel predictions
+// If a reference workout was run at low %HRmax, the runner has more potential
+function hrCorrectionFactor(avgHR, maxHR) {
+  if (!avgHR || !maxHR || maxHR <= 0) return 1.0;
+  const pctHRmax = avgHR / maxHR;
+  if (pctHRmax >= 0.95) return 1.0;    // near-maximal, no adjustment
+  if (pctHRmax >= 0.90) return 0.99;   // slight submaximal
+  if (pctHRmax >= 0.85) return 0.98;   // moderate
+  if (pctHRmax >= 0.80) return 0.97;   // clearly submaximal
+  return 0.96;                          // very easy effort
+}
+
 // GET /api/workouts/goals/predictions
 router.get('/goals/predictions', authMiddleware, async (req, res) => {
   try {
@@ -39,9 +51,17 @@ router.get('/goals/predictions', authMiddleware, async (req, res) => {
     fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
     const fetchFrom = monthStart < eightWeeksAgo ? monthStart : eightWeeksAgo;
 
+    // Fetch user's max HR for HR-adjusted predictions
+    const { data: userProfile } = await supabase
+      .from('users')
+      .select('max_heartrate_user, age')
+      .eq('id', req.user.id)
+      .single();
+    const userMaxHR = userProfile?.max_heartrate_user || (userProfile?.age ? 220 - userProfile.age : null);
+
     let { data: recentWorkouts, error: recentError } = await supabase
       .from('workouts')
-      .select('distance, moving_time, average_pace, date, best_efforts' + (state.hasAnomalyColumns ? ', is_suspicious, user_verified, manual_distance, manual_moving_time' : ''))
+      .select('distance, moving_time, average_pace, average_heartrate, date, best_efforts' + (state.hasAnomalyColumns ? ', is_suspicious, user_verified, manual_distance, manual_moving_time' : ''))
       .eq('user_id', req.user.id)
       .gte('date', fetchFrom.toISOString())
       .order('date', { ascending: true });
@@ -51,7 +71,7 @@ router.get('/goals/predictions', authMiddleware, async (req, res) => {
       state.hasAnomalyColumns = false;
       const fb = await supabase
         .from('workouts')
-        .select('distance, moving_time, average_pace, date, best_efforts')
+        .select('distance, moving_time, average_pace, average_heartrate, date, best_efforts')
         .eq('user_id', req.user.id)
         .gte('date', fetchFrom.toISOString())
         .order('date', { ascending: true });
@@ -195,7 +215,12 @@ router.get('/goals/predictions', authMiddleware, async (req, res) => {
           for (const e of efforts) {
             const eDist = bestEffortDistances[e.name];
             if (eDist && eDist >= 1000 && eDist < targetDistM * 0.95 && e.moving_time > 0) {
-              const rTime = e.moving_time * Math.pow(targetDistM / eDist, riegelExp);
+              let rTime = e.moving_time * Math.pow(targetDistM / eDist, riegelExp);
+              // Apply HR correction: submaximal efforts get a faster prediction
+              const hrCorr = userMaxHR && w.average_heartrate ? hrCorrectionFactor(w.average_heartrate, userMaxHR) : 1.0;
+              rTime = rTime * hrCorr;
+              const hrAdjusted = hrCorr < 1.0;
+              const pctHRmax = userMaxHR && w.average_heartrate ? Math.round(w.average_heartrate / userMaxHR * 100) : null;
               allRiegelResults.push({
                 time: rTime,
                 timeFormatted: fmtTime(Math.round(rTime)),
@@ -207,6 +232,8 @@ router.get('/goals/predictions', authMiddleware, async (req, res) => {
                 movingTimeFormatted: fmtTime(e.moving_time),
                 source: 'best_effort_riegel',
                 freshness: calcFreshness(w.date),
+                hrAdjusted,
+                pctHRmax,
               });
             }
           }
@@ -220,6 +247,8 @@ router.get('/goals/predictions', authMiddleware, async (req, res) => {
           dist: (r.effortName || r.distKm + ' км'),
           actualTime: r.movingTimeFormatted,
           riegelTime: r.timeFormatted,
+          hrAdjusted: r.hrAdjusted || false,
+          pctHRmax: r.pctHRmax || null,
         }));
         breakdown.riegelExponent = riegelExp;
         breakdown.avgPace = Math.floor(avgPace) + ':' + String(Math.round((avgPace % 1) * 60)).padStart(2, '0') + '/км';

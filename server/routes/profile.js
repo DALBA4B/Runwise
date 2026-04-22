@@ -9,7 +9,7 @@ router.get('/', authMiddleware, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('users')
-      .select('age, height_cm, weight_kg, gender, ai_preferences')
+      .select('age, height_cm, weight_kg, gender, ai_preferences, max_heartrate_user, resting_heartrate')
       .eq('id', req.user.id)
       .single();
 
@@ -23,7 +23,7 @@ router.get('/', authMiddleware, async (req, res) => {
 // PUT /api/profile — update user profile data
 router.put('/', authMiddleware, async (req, res) => {
   try {
-    const { age, height_cm, weight_kg, gender, ai_preferences } = req.body;
+    const { age, height_cm, weight_kg, gender, ai_preferences, max_heartrate_user, resting_heartrate } = req.body;
 
     const updateFields = {};
     if (age !== undefined) updateFields.age = age;
@@ -31,12 +31,14 @@ router.put('/', authMiddleware, async (req, res) => {
     if (weight_kg !== undefined) updateFields.weight_kg = weight_kg;
     if (gender !== undefined) updateFields.gender = gender;
     if (ai_preferences !== undefined) updateFields.ai_preferences = ai_preferences;
+    if (max_heartrate_user !== undefined) updateFields.max_heartrate_user = max_heartrate_user;
+    if (resting_heartrate !== undefined) updateFields.resting_heartrate = resting_heartrate;
 
     const { data, error } = await supabase
       .from('users')
       .update(updateFields)
       .eq('id', req.user.id)
-      .select('age, height_cm, weight_kg, gender, ai_preferences')
+      .select('age, height_cm, weight_kg, gender, ai_preferences, max_heartrate_user, resting_heartrate')
       .single();
 
     if (error) throw error;

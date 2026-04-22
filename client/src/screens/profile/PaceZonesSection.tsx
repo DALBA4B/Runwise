@@ -54,9 +54,10 @@ interface PaceZonesProps {
   onWorkoutClick?: (id: string) => void;
   openModal?: boolean;
   onModalOpened?: () => void;
+  maxHR?: number | null;
 }
 
-const PaceZonesSection: React.FC<PaceZonesProps> = ({ onWorkoutClick, openModal, onModalOpened }) => {
+const PaceZonesSection: React.FC<PaceZonesProps> = ({ onWorkoutClick, openModal, onModalOpened, maxHR }) => {
   const { t } = useTranslation();
   const [data, setData] = useState<PaceZonesData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -101,13 +102,30 @@ const PaceZonesSection: React.FC<PaceZonesProps> = ({ onWorkoutClick, openModal,
 
   const zoneKeys = ['easy', 'marathon', 'threshold', 'interval', 'repetition'] as const;
 
-  const zones = zoneKeys.map(key => ({
-    key,
-    label: t(`paceZones.${key}`),
-    from: data.zones![key].from,
-    to: data.zones![key].to,
-    color: zoneColors[key]
-  }));
+  // HR zones mapped to VDOT pace zones (%HRmax ranges)
+  const hrZoneRanges: Record<string, { from: number; to: number }> = {
+    easy:       { from: 60, to: 74 },
+    marathon:   { from: 74, to: 84 },
+    threshold:  { from: 84, to: 90 },
+    interval:   { from: 90, to: 97 },
+    repetition: { from: 97, to: 100 }
+  };
+
+  const zones = zoneKeys.map(key => {
+    const hrRange = maxHR ? {
+      from: Math.round(maxHR * hrZoneRanges[key].from / 100),
+      to: Math.round(maxHR * hrZoneRanges[key].to / 100)
+    } : null;
+
+    return {
+      key,
+      label: t(`paceZones.${key}`),
+      from: data.zones![key].from,
+      to: data.zones![key].to,
+      color: zoneColors[key],
+      hr: hrRange
+    };
+  });
 
   const formatTime = (sec: number) => {
     const h = Math.floor(sec / 3600);
@@ -169,7 +187,10 @@ const PaceZonesSection: React.FC<PaceZonesProps> = ({ onWorkoutClick, openModal,
                 <div key={z.key} className="pace-zone-row">
                   <div className="pace-zone-indicator" style={{ backgroundColor: z.color }} />
                   <span className="pace-zone-label">{z.label}</span>
-                  <span className="pace-zone-value">{z.from} – {z.to}</span>
+                  <div className="pace-zone-values">
+                    <span className="pace-zone-value">{z.from} – {z.to}</span>
+                    {z.hr && <span className="pace-zone-hr">❤️ {z.hr.from}–{z.hr.to}</span>}
+                  </div>
                 </div>
               ))}
             </div>

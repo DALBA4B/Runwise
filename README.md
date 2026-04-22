@@ -152,7 +152,6 @@ REACT_APP_API_URL=http://localhost:3001
 
 ### 5. Запуск
 
-```bash
 # Терминал 1
 cd server
 npm run dev

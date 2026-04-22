@@ -250,11 +250,11 @@ async function getWeeklyVolumes(userId) {
   return { weeks, avg };
 }
 
-// Helper: get user physical params + gender + ai preferences
+// Helper: get user physical params + gender + ai preferences + HR settings
 async function getUserProfile(userId) {
   const { data } = await supabase
     .from('users')
-    .select('age, height_cm, weight_kg, gender, ai_preferences')
+    .select('age, height_cm, weight_kg, gender, ai_preferences, max_heartrate_user, resting_heartrate')
     .eq('id', userId)
     .single();
   return data || {};
@@ -604,6 +604,194 @@ function analyzeRecentCompliance(macroPlan) {
   };
 }
 
+// Helper: get HR trend over last 4 weeks (avg HR, avg pace, cardiac efficiency per week)
+async function getHRTrendContext(userId) {
+  const since = new Date();
+  since.setDate(since.getDate() - 28);
+
+  const { data } = await supabase
+    .from('workouts')
+    .select('distance, moving_time, average_pace, average_heartrate, max_heartrate, date, manual_distance, manual_moving_time')
+    .eq('user_id', userId)
+    .gte('date', since.toISOString())
+    .not('average_heartrate', 'is', null)
+    .order('date', { ascending: true });
+
+  const workouts = data || [];
+  if (workouts.length < 2) return null;
+
+  // Group by week (Mon-Sun)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const weeks = [];
+
+  for (let w = 0; w < 4; w++) {
+    const weekEnd = new Date(today);
+    weekEnd.setDate(weekEnd.getDate() - w * 7);
+    const weekStart = new Date(weekEnd);
+    weekStart.setDate(weekStart.getDate() - 7);
+
+    const weekWorkouts = workouts.filter(wr => {
+      const d = new Date(wr.date);
+      return d >= weekStart && d < weekEnd;
+    });
+
+    if (weekWorkouts.length === 0) continue;
+
+    const avgHR = Math.round(weekWorkouts.reduce((s, wr) => s + wr.average_heartrate, 0) / weekWorkouts.length);
+    const maxHRPeak = Math.max(...weekWorkouts.filter(wr => wr.max_heartrate).map(wr => wr.max_heartrate));
+    const paces = weekWorkouts.map(wr => effectivePace(wr)).filter(Boolean);
+    const avgPace = paces.length ? Math.round(paces.reduce((s, p) => s + p, 0) / paces.length) : null;
+    const ce = avgPace && avgHR ? Math.round((avgPace / avgHR) * 100) / 100 : null;
+
+    weeks.push({
+      weekAgo: w,
+      workouts: weekWorkouts.length,
+      avgHR,
+      maxHRPeak: maxHRPeak > 0 ? maxHRPeak : null,
+      avgPace: avgPace ? formatPace(avgPace) : null,
+      cardiacEfficiency: ce
+    });
+  }
+
+  if (weeks.length < 2) return null;
+  return weeks.reverse(); // oldest first
+}
+
+// Helper: get aerobic decoupling data for recent long runs
+async function getRecentDecouplingData(userId) {
+  const since = new Date();
+  since.setDate(since.getDate() - 30);
+
+  const { data } = await supabase
+    .from('workouts')
+    .select('name, distance, date, splits_500m, manual_distance')
+    .eq('user_id', userId)
+    .gte('date', since.toISOString())
+    .gte('distance', 10000)
+    .order('date', { ascending: false })
+    .limit(5);
+
+  if (!data || data.length === 0) return null;
+
+  const results = [];
+  for (const w of data) {
+    const splits = typeof w.splits_500m === 'string' ? JSON.parse(w.splits_500m) : w.splits_500m;
+    if (!splits || splits.length < 4) continue;
+
+    const splitsWithHR = splits.filter(s => s.heartrate && s.heartrate > 0);
+    if (splitsWithHR.length < 4) continue;
+
+    const mid = Math.floor(splitsWithHR.length / 2);
+    const avgHR1 = splitsWithHR.slice(0, mid).reduce((s, sp) => s + sp.heartrate, 0) / mid;
+    const avgHR2 = splitsWithHR.slice(mid).reduce((s, sp) => s + sp.heartrate, 0) / (splitsWithHR.length - mid);
+
+    if (avgHR1 === 0) continue;
+
+    const drift = Math.round(((avgHR2 - avgHR1) / avgHR1) * 1000) / 10;
+    results.push({
+      name: w.name,
+      date: w.date?.split('T')[0],
+      distance_km: +(effectiveDistance(w) / 1000).toFixed(1),
+      drift,
+      avgHR1: Math.round(avgHR1),
+      avgHR2: Math.round(avgHR2)
+    });
+  }
+
+  return results.length > 0 ? results : null;
+}
+
+// Helper: calculate TRIMP for a single workout
+function calcTRIMP(durationMin, avgHR, restingHR, maxHR, gender) {
+  if (!durationMin || !avgHR || durationMin <= 0 || avgHR <= 0) return null;
+
+  // Full Banister TRIMP when resting + max HR known
+  if (restingHR && maxHR && maxHR > restingHR) {
+    const hrr = (avgHR - restingHR) / (maxHR - restingHR);
+    const clampedHRR = Math.max(0, Math.min(1, hrr));
+    const genderFactor = gender === 'female' ? 1.67 : 1.92;
+    return Math.round(durationMin * clampedHRR * 0.64 * Math.exp(genderFactor * clampedHRR));
+  }
+
+  // Simplified TRIMP: duration * (HR / 180)
+  return Math.round(durationMin * (avgHR / 180));
+}
+
+// Helper: get weekly TRIMP load for last 4 weeks
+async function getWeeklyTRIMP(userId) {
+  const { data: profile } = await supabase
+    .from('users')
+    .select('max_heartrate_user, resting_heartrate, gender, age')
+    .eq('id', userId)
+    .single();
+
+  const maxHR = profile?.max_heartrate_user || (profile?.age ? 220 - profile.age : null);
+  const restingHR = profile?.resting_heartrate || null;
+  const gender = profile?.gender || null;
+
+  const since = new Date();
+  since.setDate(since.getDate() - 28);
+
+  const { data } = await supabase
+    .from('workouts')
+    .select('moving_time, average_heartrate, date, manual_moving_time')
+    .eq('user_id', userId)
+    .gte('date', since.toISOString())
+    .order('date', { ascending: true });
+
+  const workouts = data || [];
+  if (workouts.length === 0) return null;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const weeks = [];
+
+  for (let w = 0; w < 4; w++) {
+    const weekEnd = new Date(today);
+    weekEnd.setDate(weekEnd.getDate() - w * 7);
+    const weekStart = new Date(weekEnd);
+    weekStart.setDate(weekStart.getDate() - 7);
+
+    const weekWorkouts = workouts.filter(wr => {
+      const d = new Date(wr.date);
+      return d >= weekStart && d < weekEnd;
+    });
+
+    let trimp = 0;
+    let withHR = 0;
+    for (const wr of weekWorkouts) {
+      const dur = effectiveMovingTime(wr) / 60;
+      if (wr.average_heartrate) {
+        trimp += calcTRIMP(dur, wr.average_heartrate, restingHR, maxHR, gender) || 0;
+        withHR++;
+      }
+    }
+
+    weeks.push({
+      weekAgo: w,
+      trimp,
+      totalWorkouts: weekWorkouts.length,
+      workoutsWithHR: withHR
+    });
+  }
+
+  // Determine trend
+  const trimps = weeks.map(w => w.trimp).reverse();
+  let trend = 'stable';
+  if (trimps.length >= 2) {
+    const first = trimps.slice(0, 2).reduce((a, b) => a + b, 0) / 2;
+    const last = trimps.slice(-2).reduce((a, b) => a + b, 0) / 2;
+    if (first > 0) {
+      const change = (last - first) / first;
+      if (change > 0.15) trend = 'increasing';
+      else if (change < -0.15) trend = 'decreasing';
+    }
+  }
+
+  return { weeks: weeks.reverse(), trend };
+}
+
 module.exports = {
   toLocalDateStr,
   formatPace,
@@ -627,5 +815,9 @@ module.exports = {
   computeMacroPlanWithActuals,
   analyzeTrainingStability,
   assessMarathonGoalRealism,
-  analyzeRecentCompliance
+  analyzeRecentCompliance,
+  getHRTrendContext,
+  getRecentDecouplingData,
+  getWeeklyTRIMP,
+  calcTRIMP
 };

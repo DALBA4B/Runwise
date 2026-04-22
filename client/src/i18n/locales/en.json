@@ -40,7 +40,8 @@
     "workouts": "Workouts",
     "totalTime": "Total time",
     "bestPace": "Best pace",
-    "elevation": "Elevation"
+    "elevation": "Elevation",
+    "cardiacEfficiency": "Cardiac Eff."
   },
   "months": {
     "1": "January",
@@ -223,6 +224,10 @@
     "gender_female": "Female",
     "height": "Height",
     "weight": "Weight",
+    "maxHeartRate": "Max HR",
+    "restingHeartRate": "Resting HR",
+    "maxHrHint": "For HR zone calculation",
+    "estimatedMaxHr": "~{{value}} bpm",
     "noParams": "Parameters not set",
     "setParams": "Set parameters",
     "records": "My records",
@@ -332,7 +337,13 @@
     "editTime": "Time",
     "calculatedPace": "Calculated pace",
     "verified": "Verified",
-    "savingCorrection": "Saving..."
+    "savingCorrection": "Saving...",
+    "aerobicDecoupling": "HR Drift",
+    "firstHalf": "1st half",
+    "secondHalf": "2nd half",
+    "driftGood": "Excellent",
+    "driftModerate": "Moderate",
+    "driftHigh": "High"
   },
   "weekChart": {
     "title": "Weekly kilometers",
@@ -345,7 +356,8 @@
     "distance": "Distance",
     "workouts": "Workouts",
     "avgPace": "Avg pace",
-    "sec": "sec"
+    "sec": "sec",
+    "cardiacEfficiency": "Cardiac Eff."
   },
   "goalsMini": {
     "title": "Goals",
@@ -419,7 +431,7 @@
     "workoutDistance": "Distance",
     "workoutTime": "Time",
     "workoutType": "Type",
-    "formulaExplanation": "VDOT is calculated using the Daniels-Gilbert formula: workout distance and time are converted into a VO₂max estimate, which determines your pace zones.",
+    "formulaExplanation": "VDOT is calculated using the Daniels-Gilbert formula: workout distance and time are converted into a VO₂max estimate, which determines your pace zones. HR zones (❤️) are based on your max HR and show the approximate heart rate range for each zone.",
     "weeklyVolume": "Weekly volume",
     "week": "wk",
     "workoutsAnalyzed": "Workouts (12 wks)",

@@ -40,7 +40,8 @@
     "workouts": "Тренировки",
     "totalTime": "Общее время",
     "bestPace": "Лучший темп",
-    "elevation": "Набор высоты"
+    "elevation": "Набор высоты",
+    "cardiacEfficiency": "Кард. эффект."
   },
   "months": {
     "1": "Январь",
@@ -223,6 +224,10 @@
     "gender_female": "Женский",
     "height": "Рост",
     "weight": "Вес",
+    "maxHeartRate": "Макс. пульс",
+    "restingHeartRate": "Пульс покоя",
+    "maxHrHint": "Для расчёта пульсовых зон",
+    "estimatedMaxHr": "~{{value}} уд/мин",
     "noParams": "Параметры не указаны",
     "setParams": "Указать параметры",
     "records": "Мои рекорды",
@@ -332,7 +337,13 @@
     "editTime": "Время",
     "calculatedPace": "Расчётный темп",
     "verified": "Проверено",
-    "savingCorrection": "Сохраняю..."
+    "savingCorrection": "Сохраняю...",
+    "aerobicDecoupling": "Дрейф пульса",
+    "firstHalf": "1-я половина",
+    "secondHalf": "2-я половина",
+    "driftGood": "Отлично",
+    "driftModerate": "Умеренно",
+    "driftHigh": "Высокий"
   },
   "weekChart": {
     "title": "Километраж за неделю",
@@ -345,7 +356,8 @@
     "distance": "Дистанция",
     "workouts": "Тренировки",
     "avgPace": "Ср. темп",
-    "sec": "сек"
+    "sec": "сек",
+    "cardiacEfficiency": "Кард. эфф."
   },
   "goalsMini": {
     "title": "Цели",
@@ -419,7 +431,7 @@
     "workoutDistance": "Дистанция",
     "workoutTime": "Время",
     "workoutType": "Тип",
-    "formulaExplanation": "VDOT рассчитан по формуле Дэниелса-Гилберта: дистанция и время тренировки переводятся в показатель VO₂max, из которого определяются темповые зоны.",
+    "formulaExplanation": "VDOT рассчитан по формуле Дэниелса-Гилберта: дистанция и время тренировки переводятся в показатель VO₂max, из которого определяются темповые зоны. Пульсовые зоны (❤️) рассчитаны от макс. пульса и показывают ориентировочный диапазон ЧСС для каждой зоны.",
     "weeklyVolume": "Объём в неделю",
     "week": "нед",
     "workoutsAnalyzed": "Тренировок (12 нед.)",

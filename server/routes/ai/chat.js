@@ -18,7 +18,10 @@ const {
   computeMacroPlanWithActuals,
   analyzeTrainingStability,
   assessMarathonGoalRealism,
-  analyzeRecentCompliance
+  analyzeRecentCompliance,
+  getHRTrendContext,
+  getRecentDecouplingData,
+  getWeeklyTRIMP
 } = require('./context');
 
 const {
@@ -56,7 +59,7 @@ async function loadChatContext(userId, lang = 'ru') {
     content: m.content
   }));
 
-  const [monthlySummary, goals, currentPlan, userProfile, records, weeklyVolumes, predictions, rawMacroPlan] = await Promise.all([
+  const [monthlySummary, goals, currentPlan, userProfile, records, weeklyVolumes, predictions, rawMacroPlan, hrTrend, decouplingData, trimpData] = await Promise.all([
     getMonthlySummaryContext(userId),
     getUserGoals(userId),
     getCurrentPlan(userId),
@@ -64,7 +67,10 @@ async function loadChatContext(userId, lang = 'ru') {
     getUserRecords(userId),
     getWeeklyVolumes(userId),
     getRiegelPredictions(userId),
-    getActiveMacroPlan(userId)
+    getActiveMacroPlan(userId),
+    getHRTrendContext(userId),
+    getRecentDecouplingData(userId),
+    getWeeklyTRIMP(userId)
   ]);
 
   // Compute actuals for macro plan if it exists
@@ -127,7 +133,10 @@ async function loadChatContext(userId, lang = 'ru') {
     macroPlan,
     stabilityData,
     goalRealism,
-    complianceData
+    complianceData,
+    hrTrend,
+    decouplingData,
+    trimpData
   );
 
   return { chatHistory, systemPrompt, currentPlan };

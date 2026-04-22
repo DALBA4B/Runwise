@@ -69,10 +69,23 @@
   flex: 1;
 }
 
+.pace-zone-values {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+
 .pace-zone-value {
   font-size: 14px;
   font-weight: 500;
   color: var(--color-text-secondary);
+}
+
+.pace-zone-hr {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  opacity: 0.8;
 }
 
 .pace-zones-details {

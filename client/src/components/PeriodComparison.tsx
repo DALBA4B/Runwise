@@ -8,6 +8,7 @@ interface PeriodStats {
   distance: number;
   workoutCount: number;
   avgPace: number;
+  avgCE?: number | null;
 }
 
 interface PeriodComparisonProps {
@@ -49,7 +50,11 @@ const PeriodComparison: React.FC<PeriodComparisonProps> = ({ data, loading }) =>
     ? data.current.avgPace - data.previous.avgPace
     : 0;
 
-  const metrics = [
+  // Cardiac efficiency comparison (only when both months have CE data)
+  const hasCE = data.current.avgCE && data.previous.avgCE;
+  const ceDiff = hasCE ? Math.round((data.current.avgCE! - data.previous.avgCE!) * 100) / 100 : 0;
+
+  const metrics: Array<{ label: string; value: string; change: number; improved: boolean; format: (v: number) => string }> = [
     {
       label: t('comparison.distance'),
       value: formatDistance(data.current.distance),
@@ -80,6 +85,16 @@ const PeriodComparison: React.FC<PeriodComparisonProps> = ({ data, loading }) =>
       }
     }
   ];
+
+  if (hasCE) {
+    metrics.push({
+      label: t('comparison.cardiacEfficiency'),
+      value: data.current.avgCE!.toFixed(2),
+      change: ceDiff,
+      improved: ceDiff < 0, // lower CE = faster pace per heartbeat = better
+      format: (v: number) => Math.abs(v).toFixed(2)
+    });
+  }
 
   return (
     <div className="period-comparison">

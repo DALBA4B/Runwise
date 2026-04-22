@@ -417,6 +417,45 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
         );
       })()}
 
+      {/* Aerobic Decoupling — only for long runs (>10km) with 500m HR splits */}
+      {(() => {
+        const dist = workout.manual_distance || workout.distance || 0;
+        if (dist < 10000) return null;
+
+        const splitsSource = splits500m || (workout.splits_500m ? (typeof workout.splits_500m === 'string' ? JSON.parse(workout.splits_500m) : workout.splits_500m) : null);
+        if (!splitsSource || splitsSource.length < 4) return null;
+
+        const withHR = splitsSource.filter((s: Split) => s.heartrate && s.heartrate > 0);
+        if (withHR.length < 4) return null;
+
+        const mid = Math.floor(withHR.length / 2);
+        const avgHR1 = withHR.slice(0, mid).reduce((s: number, sp: Split) => s + (sp.heartrate || 0), 0) / mid;
+        const avgHR2 = withHR.slice(mid).reduce((s: number, sp: Split) => s + (sp.heartrate || 0), 0) / (withHR.length - mid);
+        if (avgHR1 === 0) return null;
+
+        const drift = Math.round(((avgHR2 - avgHR1) / avgHR1) * 1000) / 10;
+        const status = drift < 5 ? 'good' : drift < 10 ? 'moderate' : 'high';
+        const statusColor = drift < 5 ? '#10b981' : drift < 10 ? '#f59e0b' : '#ef4444';
+
+        return (
+          <div className="decoupling-section">
+            <h3 className="section-title">{t('workout.aerobicDecoupling')}</h3>
+            <div className="decoupling-card" style={{ borderLeft: `3px solid ${statusColor}` }}>
+              <div className="decoupling-drift" style={{ color: statusColor }}>
+                {drift > 0 ? '+' : ''}{drift}%
+              </div>
+              <div className="decoupling-details">
+                <span>{t('workout.firstHalf')}: {Math.round(avgHR1)} {t('units.bpm')}</span>
+                <span>{t('workout.secondHalf')}: {Math.round(avgHR2)} {t('units.bpm')}</span>
+              </div>
+              <div className="decoupling-status" style={{ color: statusColor }}>
+                {t(`workout.drift${status.charAt(0).toUpperCase() + status.slice(1)}`)}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       <div className="ai-block">
         <div className="ai-block-header">
           <span>🤖 {t('workout.aiAnalysis')}</span>

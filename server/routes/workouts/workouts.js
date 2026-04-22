@@ -221,7 +221,7 @@ router.get('/comparison', authMiddleware, async (req, res) => {
     const prevEnd = new Date(now.getFullYear(), now.getMonth() - 1, prevDay, 23, 59, 59).toISOString();
 
     const anomalyFields = state.hasAnomalyColumns ? ', is_suspicious, user_verified, manual_distance, manual_moving_time' : '';
-    const selectFields = 'distance, moving_time, average_pace' + anomalyFields;
+    const selectFields = 'distance, moving_time, average_pace, average_heartrate' + anomalyFields;
 
     let [curRes, prevRes] = await Promise.all([
       supabase.from('workouts').select(selectFields).eq('user_id', req.user.id).gte('date', curStart).lte('date', curEnd),
@@ -248,7 +248,12 @@ router.get('/comparison', authMiddleware, async (req, res) => {
       const workoutCount = data.length;
       const paces = data.filter(w => w.average_pace > 0).map(w => w.average_pace);
       const avgPace = paces.length > 0 ? Math.round(paces.reduce((a, b) => a + b, 0) / paces.length) : 0;
-      return { distance, workoutCount, avgPace };
+      // Cardiac Efficiency: avg(pace / HR) for workouts with both
+      const ceWorkouts = data.filter(w => w.average_pace > 0 && w.average_heartrate > 0);
+      const avgCE = ceWorkouts.length > 0
+        ? Math.round(ceWorkouts.reduce((s, w) => s + w.average_pace / w.average_heartrate, 0) / ceWorkouts.length * 100) / 100
+        : null;
+      return { distance, workoutCount, avgPace, avgCE };
     };
 
     const current = calcStats(curRes.data || []);

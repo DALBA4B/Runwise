@@ -243,8 +243,99 @@ function formatProfileForAI(profile, lang = 'ru') {
   if (profile.age) parts.push(`${l.age}: ${profile.age} ${l.years}`);
   if (profile.height_cm) parts.push(`${l.height}: ${profile.height_cm} ${l.cm}`);
   if (profile.weight_kg) parts.push(`${l.weight}: ${profile.weight_kg} ${l.kg}`);
+  if (profile.max_heartrate_user) parts.push(`Max HR: ${profile.max_heartrate_user}`);
+  if (profile.resting_heartrate) parts.push(`Resting HR: ${profile.resting_heartrate}`);
   if (parts.length === 0) return l.noParams;
   return parts.join(', ');
+}
+
+// Format HR trend block for AI context
+function formatHRTrendBlock(hrTrend, lang = 'ru') {
+  if (!hrTrend || hrTrend.length === 0) return '';
+
+  const headers = {
+    ru: 'ПУЛЬСОВОЙ ТРЕНД (последние 4 недели)',
+    uk: 'ПУЛЬСОВИЙ ТРЕНД (останні 4 тижні)',
+    en: 'HR TREND (last 4 weeks)'
+  };
+  const weekLabels = { ru: 'Неделя', uk: 'Тиждень', en: 'Week' };
+  const ago = { ru: 'назад', uk: 'тому', en: 'ago' };
+  const current = { ru: 'текущая', uk: 'поточний', en: 'current' };
+
+  const lines = [`${headers[lang] || headers.ru}:`];
+  for (const w of hrTrend) {
+    const label = w.weekAgo === 0 ? (current[lang] || current.ru) : `${w.weekAgo} ${ago[lang] || ago.ru}`;
+    let line = `${weekLabels[lang] || weekLabels.ru} ${label}: avg HR ${w.avgHR}`;
+    if (w.avgPace) line += `, pace ${w.avgPace}`;
+    if (w.cardiacEfficiency) line += `, CE ${w.cardiacEfficiency}`;
+    line += ` (${w.workouts} runs)`;
+    lines.push(line);
+  }
+
+  // Add CE interpretation
+  if (hrTrend.length >= 2) {
+    const first = hrTrend[0].cardiacEfficiency;
+    const last = hrTrend[hrTrend.length - 1].cardiacEfficiency;
+    if (first && last) {
+      const diff = last - first;
+      if (diff < -0.05) lines.push('CE trend: improving (lower = better fitness)');
+      else if (diff > 0.05) lines.push('CE trend: declining');
+      else lines.push('CE trend: stable');
+    }
+  }
+
+  return lines.join('\n');
+}
+
+// Format aerobic decoupling block for AI context
+function formatDecouplingBlock(decouplingData, lang = 'ru') {
+  if (!decouplingData || decouplingData.length === 0) return '';
+
+  const headers = {
+    ru: 'АЭРОБНЫЙ ДРЕЙФ ПУЛЬСА (длинные пробежки)',
+    uk: 'АЕРОБНИЙ ДРЕЙФ ПУЛЬСУ (довгі пробіжки)',
+    en: 'AEROBIC DECOUPLING (long runs)'
+  };
+
+  const lines = [`${headers[lang] || headers.ru}:`];
+  for (const r of decouplingData) {
+    let status = '';
+    if (r.drift < 5) status = 'good';
+    else if (r.drift < 10) status = 'moderate';
+    else status = 'high drift';
+    lines.push(`${r.date} ${r.name} (${r.distance_km}km): drift ${r.drift}% (HR ${r.avgHR1}→${r.avgHR2}) — ${status}`);
+  }
+
+  return lines.join('\n');
+}
+
+// Format TRIMP block for AI context
+function formatTRIMPBlock(trimpData, lang = 'ru') {
+  if (!trimpData || !trimpData.weeks) return '';
+
+  const hasAnyTrimp = trimpData.weeks.some(w => w.trimp > 0);
+  if (!hasAnyTrimp) return '';
+
+  const headers = {
+    ru: 'ТРЕНИРОВОЧНАЯ НАГРУЗКА (TRIMP)',
+    uk: 'ТРЕНУВАЛЬНЕ НАВАНТАЖЕННЯ (TRIMP)',
+    en: 'TRAINING LOAD (TRIMP)'
+  };
+  const trendLabels = {
+    ru: { increasing: 'растёт', decreasing: 'снижается', stable: 'стабильно' },
+    uk: { increasing: 'зростає', decreasing: 'знижується', stable: 'стабільно' },
+    en: { increasing: 'increasing', decreasing: 'decreasing', stable: 'stable' }
+  };
+
+  const lines = [`${headers[lang] || headers.ru}:`];
+  for (const w of trimpData.weeks) {
+    const label = w.weekAgo === 0 ? 'current' : `${w.weekAgo}w ago`;
+    lines.push(`${label}: TRIMP ${w.trimp} (${w.workoutsWithHR}/${w.totalWorkouts} with HR)`);
+  }
+  const tl = trendLabels[lang] || trendLabels.ru;
+  lines.push(`Trend: ${tl[trimpData.trend]}`);
+
+  return lines.join('\n');
 }
 
 // AI personality defaults
@@ -699,7 +790,7 @@ function getPhaseInstructions(phase, lang = 'ru') {
 }
 
 // Helper: build chat system prompt
-function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, records, lang = 'ru', aiPrefs = null, weeklyVolumes = null, predictions = null, paceZonesData = null, macroPlan = null, stabilityData = null, goalRealism = null, complianceData = null) {
+function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, records, lang = 'ru', aiPrefs = null, weeklyVolumes = null, predictions = null, paceZonesData = null, macroPlan = null, stabilityData = null, goalRealism = null, complianceData = null, hrTrend = null, decouplingData = null, trimpData = null) {
   const today = new Date();
   const dayNamesMap = {
     ru: ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'],
@@ -1208,7 +1299,7 @@ ${macroPlan ? formatMacroPlanForAI(macroPlan, lang) : ''}
 ${weeklyVolumes ? formatWeeklyVolumeBlock(weeklyVolumes, lang) : ''}
 
 ${stabilityData ? formatStabilityBlock(stabilityData, lang) + '\n' : ''}${goalRealism ? formatGoalRealismBlock(goalRealism, lang) + '\n' : ''}${complianceData ? formatComplianceBlock(complianceData, lang) + '\n' : ''}
-
+${hrTrend ? formatHRTrendBlock(hrTrend, lang) + '\n' : ''}${decouplingData ? formatDecouplingBlock(decouplingData, lang) + '\n' : ''}${trimpData ? formatTRIMPBlock(trimpData, lang) + '\n' : ''}
 ${p2.toolsSection}
 
 ${p2.planUpdate}
@@ -1539,5 +1630,8 @@ module.exports = {
   formatMacroPlanForAI,
   processMacroPlanUpdate,
   getPhaseInstructions,
-  formatComplianceBlock
+  formatComplianceBlock,
+  formatHRTrendBlock,
+  formatDecouplingBlock,
+  formatTRIMPBlock
 };
