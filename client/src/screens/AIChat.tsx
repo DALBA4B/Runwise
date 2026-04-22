@@ -362,33 +362,33 @@ const AIChat: React.FC<AIChatProps> = ({ onWorkoutClick, isActive }) => {
           )}
           <div ref={messagesEndRef} />
         </div>
+      </div>
 
-        <div className="chat-input-area">
-          {messageLimit && messageLimit.remaining <= 0 && (
-            <div className="chat-limit-banner">{t('chat.limitReached')}</div>
-          )}
-          <div className="chat-input-wrapper">
-            <input
-              type="text"
-              className="chat-input"
-              placeholder={messageLimit && messageLimit.remaining <= 0 ? t('chat.limitReached') : t('chat.placeholder')}
-              value={inputValue}
-              onChange={e => setInputValue(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && !loading && !(messageLimit && messageLimit.remaining <= 0)) {
-                  handleSendMessage(inputValue);
-                }
-              }}
-              disabled={loading || (messageLimit !== null && messageLimit.remaining <= 0)}
-            />
-            <button
-              className="chat-send-btn"
-              onClick={() => handleSendMessage(inputValue)}
-              disabled={loading || (messageLimit !== null && messageLimit.remaining <= 0)}
-            >
-              ➤
-            </button>
-          </div>
+      <div className="chat-input-area">
+        {messageLimit && messageLimit.remaining <= 0 && (
+          <div className="chat-limit-banner">{t('chat.limitReached')}</div>
+        )}
+        <div className="chat-input-wrapper">
+          <input
+            type="text"
+            className="chat-input"
+            placeholder={messageLimit && messageLimit.remaining <= 0 ? t('chat.limitReached') : t('chat.placeholder')}
+            value={inputValue}
+            onChange={e => setInputValue(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !loading && !(messageLimit && messageLimit.remaining <= 0)) {
+                handleSendMessage(inputValue);
+              }
+            }}
+            disabled={loading || (messageLimit !== null && messageLimit.remaining <= 0)}
+          />
+          <button
+            className="chat-send-btn"
+            onClick={() => handleSendMessage(inputValue)}
+            disabled={loading || (messageLimit !== null && messageLimit.remaining <= 0)}
+          >
+            ➤
+          </button>
         </div>
       </div>
 
