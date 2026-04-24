@@ -21,7 +21,11 @@ const {
   analyzeRecentCompliance,
   getHRTrendContext,
   getRecentDecouplingData,
-  getWeeklyTRIMP
+  getWeeklyTRIMP,
+  estimateMaxHR,
+  calculateHRZones,
+  detectAerobicThreshold,
+  autoCalibrateHRZones
 } = require('./context');
 
 const {
@@ -102,6 +106,28 @@ async function loadChatContext(userId, lang = 'ru') {
 
   const paceZonesData = currentVDOT ? { vdot: currentVDOT, source: vdotSource, zones: paceZones } : null;
 
+  // Calculate personalized HR zones
+  const maxHR = userProfile.max_heartrate_user || estimateMaxHR(userProfile.age);
+  const restingHR = userProfile.resting_heartrate || null;
+
+  const [aetData, calibrationData] = await Promise.all([
+    detectAerobicThreshold(userId),
+    paceZones ? autoCalibrateHRZones(userId, paceZones) : null
+  ]);
+
+  let hrZonesResult = null;
+  if (calibrationData && calibrationData.calibratedZones >= 3) {
+    const fallback = calculateHRZones(maxHR, restingHR);
+    const mergedZones = {};
+    for (const key of ['easy', 'marathon', 'threshold', 'interval', 'repetition']) {
+      mergedZones[key] = calibrationData.zones[key] || (fallback ? fallback.zones[key] : null);
+    }
+    hrZonesResult = { zones: mergedZones, method: 'calibrated', aet: aetData };
+  } else if (maxHR) {
+    const calculated = calculateHRZones(maxHR, restingHR);
+    hrZonesResult = calculated ? { zones: calculated.zones, method: calculated.method, aet: aetData } : null;
+  }
+
   // Analyze training stability (last 12 weeks)
   const stabilityData = await analyzeTrainingStability(userId, 12);
 
@@ -136,7 +162,8 @@ async function loadChatContext(userId, lang = 'ru') {
     complianceData,
     hrTrend,
     decouplingData,
-    trimpData
+    trimpData,
+    hrZonesResult
   );
 
   return { chatHistory, systemPrompt, currentPlan };

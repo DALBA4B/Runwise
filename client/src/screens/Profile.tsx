@@ -351,7 +351,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout, onWorkoutClick, onVdotWorko
         </button>
       </div>
 
-      <PaceZonesSection onWorkoutClick={onVdotWorkoutClick || onWorkoutClick} openModal={openVdotModal} onModalOpened={onVdotModalOpened} maxHR={maxHR ? parseInt(maxHR) : (age ? 220 - parseInt(age) : null)} />
+      <PaceZonesSection onWorkoutClick={onVdotWorkoutClick || onWorkoutClick} openModal={openVdotModal} onModalOpened={onVdotModalOpened} maxHR={maxHR ? parseInt(maxHR) : (age ? Math.round(208 - 0.7 * parseInt(age)) : null)} restingHR={restingHR ? parseInt(restingHR) : null} />
 
       <RecordsSection records={records} setRecords={setRecords} />
 
@@ -414,10 +414,10 @@ const Profile: React.FC<ProfileProps> = ({ onLogout, onWorkoutClick, onVdotWorko
             <div className="modal-field">
               <label className="param-label">{t('profile.maxHeartRate')}</label>
               <div className="param-input-wrap">
-                <input type="number" className="input-field" placeholder={age ? (220 - parseInt(age)).toString() : '185'} value={maxHR} onChange={e => setMaxHR(e.target.value)} min="100" max="230" />
+                <input type="number" className="input-field" placeholder={age ? Math.round(208 - 0.7 * parseInt(age)).toString() : '185'} value={maxHR} onChange={e => setMaxHR(e.target.value)} min="100" max="230" />
                 <span className="param-unit">{t('units.bpm')}</span>
               </div>
-              {!maxHR && age && <span className="param-hint">{t('profile.estimatedMaxHr', { value: 220 - parseInt(age) })}</span>}
+              {!maxHR && age && <span className="param-hint">{t('profile.estimatedMaxHr', { value: Math.round(208 - 0.7 * parseInt(age)) })}</span>}
             </div>
 
             <div className="modal-field">

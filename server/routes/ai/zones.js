@@ -8,7 +8,11 @@ const {
   effectivePace,
   getUserRecords,
   getUserProfile,
-  getRecentPaceStats
+  getRecentPaceStats,
+  estimateMaxHR,
+  calculateHRZones,
+  detectAerobicThreshold,
+  autoCalibrateHRZones
 } = require('./context');
 
 const {
@@ -95,6 +99,47 @@ router.get('/pace-zones', authMiddleware, async (req, res) => {
     const level = getRunnerLevel(weeklyKm);
     const paceStats = getRecentPaceStats(recentWorkouts);
 
+    // HR zones: auto-calibrate from real data, fall back to Karvonen/formula
+    const profile = await getUserProfile(req.user.id);
+    const maxHR = profile.max_heartrate_user || estimateMaxHR(profile.age);
+    const restingHR = profile.resting_heartrate || null;
+
+    // Run all HR analyses in parallel
+    const [aetData, calibrationData] = await Promise.all([
+      detectAerobicThreshold(req.user.id),
+      autoCalibrateHRZones(req.user.id, zones)
+    ]);
+
+    // Build HR zones with priority: calibrated > karvonen > %HRmax
+    let hrZones = null;
+    let hrMethod = null;
+
+    if (calibrationData && calibrationData.calibratedZones >= 3) {
+      hrZones = {};
+      const fallback = calculateHRZones(maxHR, restingHR);
+      const zoneKeys = ['easy', 'marathon', 'threshold', 'interval', 'repetition'];
+      for (const key of zoneKeys) {
+        if (calibrationData.zones[key]) {
+          hrZones[key] = { from: calibrationData.zones[key].from, to: calibrationData.zones[key].to };
+        } else if (fallback) {
+          hrZones[key] = fallback.zones[key];
+        }
+      }
+      hrMethod = 'calibrated';
+    } else if (maxHR) {
+      const calculated = calculateHRZones(maxHR, restingHR);
+      hrZones = calculated?.zones || null;
+      hrMethod = calculated?.method || null;
+    }
+
+    // Override easy zone upper bound with AeT if available
+    if (aetData && hrZones) {
+      hrZones.easy.to = aetData.aerobicThreshold;
+      if (hrZones.marathon.from < aetData.aerobicThreshold) {
+        hrZones.marathon.from = aetData.aerobicThreshold;
+      }
+    }
+
     const fmt = (sec) => {
       if (!sec) return null;
       const m = Math.floor(sec / 60);
@@ -112,6 +157,13 @@ router.get('/pace-zones', authMiddleware, async (req, res) => {
         interval:   { from: fmt(zones.threshold), to: fmt(zones.interval) },
         repetition: { from: fmt(zones.interval),  to: fmt(zones.repetition) }
       },
+      hrZones,
+      hrMethod,
+      aerobicThreshold: aetData ? {
+        hr: aetData.aerobicThreshold,
+        basedOn: aetData.basedOn,
+        bestRun: aetData.bestRun
+      } : null,
       details: {
         source: vdotSource,
         weeklyKm: Math.round(weeklyKm * 10) / 10,

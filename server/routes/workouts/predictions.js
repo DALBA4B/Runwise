@@ -2,6 +2,7 @@ const express = require('express');
 const supabase = require('../../supabase');
 const authMiddleware = require('../../middleware/authMiddleware');
 const state = require('./state');
+const { estimateMaxHR } = require('../ai/context');
 
 const router = express.Router();
 
@@ -57,7 +58,7 @@ router.get('/goals/predictions', authMiddleware, async (req, res) => {
       .select('max_heartrate_user, age')
       .eq('id', req.user.id)
       .single();
-    const userMaxHR = userProfile?.max_heartrate_user || (userProfile?.age ? 220 - userProfile.age : null);
+    const userMaxHR = userProfile?.max_heartrate_user || estimateMaxHR(userProfile?.age);
 
     let { data: recentWorkouts, error: recentError } = await supabase
       .from('workouts')

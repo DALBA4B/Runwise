@@ -23,6 +23,17 @@ interface SourceWorkout {
   ageDays?: number;
 }
 
+interface HRZoneRange {
+  from: number;
+  to: number;
+}
+
+interface AerobicThresholdData {
+  hr: number;
+  basedOn: number;
+  bestRun: { name: string; date: string; distance_km: number; drift: number; avgHR: number } | null;
+}
+
 interface PaceZonesData {
   vdot: number | null;
   level: string;
@@ -33,6 +44,15 @@ interface PaceZonesData {
     interval: ZoneRange;
     repetition: ZoneRange;
   } | null;
+  hrZones?: {
+    easy: HRZoneRange;
+    marathon: HRZoneRange;
+    threshold: HRZoneRange;
+    interval: HRZoneRange;
+    repetition: HRZoneRange;
+  } | null;
+  hrMethod?: 'karvonen' | 'pctHRmax' | 'calibrated' | null;
+  aerobicThreshold?: AerobicThresholdData | null;
   details: {
     source: 'records' | 'workouts' | 'decay' | null;
     weeklyKm: number;
@@ -55,9 +75,10 @@ interface PaceZonesProps {
   openModal?: boolean;
   onModalOpened?: () => void;
   maxHR?: number | null;
+  restingHR?: number | null;
 }
 
-const PaceZonesSection: React.FC<PaceZonesProps> = ({ onWorkoutClick, openModal, onModalOpened, maxHR }) => {
+const PaceZonesSection: React.FC<PaceZonesProps> = ({ onWorkoutClick, openModal, onModalOpened, maxHR, restingHR }) => {
   const { t } = useTranslation();
   const [data, setData] = useState<PaceZonesData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -102,20 +123,34 @@ const PaceZonesSection: React.FC<PaceZonesProps> = ({ onWorkoutClick, openModal,
 
   const zoneKeys = ['easy', 'marathon', 'threshold', 'interval', 'repetition'] as const;
 
-  // HR zones mapped to VDOT pace zones (%HRmax ranges)
-  const hrZoneRanges: Record<string, { from: number; to: number }> = {
-    easy:       { from: 60, to: 74 },
-    marathon:   { from: 74, to: 84 },
-    threshold:  { from: 84, to: 90 },
-    interval:   { from: 90, to: 97 },
-    repetition: { from: 97, to: 100 }
+  // HR zones: use server-provided zones (calibrated/karvonen) or fall back to client calculation
+  const hrZonePctHRR: Record<string, { from: number; to: number }> = {
+    easy:       { from: 55, to: 70 },
+    marathon:   { from: 70, to: 80 },
+    threshold:  { from: 80, to: 88 },
+    interval:   { from: 88, to: 95 },
+    repetition: { from: 95, to: 100 }
   };
 
   const zones = zoneKeys.map(key => {
-    const hrRange = maxHR ? {
-      from: Math.round(maxHR * hrZoneRanges[key].from / 100),
-      to: Math.round(maxHR * hrZoneRanges[key].to / 100)
-    } : null;
+    // Priority: server hrZones > client Karvonen > client %HRmax
+    let hrRange: { from: number; to: number } | null = null;
+
+    if (data.hrZones && data.hrZones[key]) {
+      hrRange = data.hrZones[key];
+    } else if (maxHR) {
+      const pct = hrZonePctHRR[key];
+      const useKarvonen = restingHR && restingHR > 0 && restingHR < maxHR;
+      hrRange = useKarvonen
+        ? {
+            from: Math.round(restingHR! + (maxHR - restingHR!) * pct.from / 100),
+            to: Math.round(restingHR! + (maxHR - restingHR!) * pct.to / 100)
+          }
+        : {
+            from: Math.round(maxHR * (pct.from + 5) / 100),
+            to: Math.round(maxHR * (pct.to + 5) / 100)
+          };
+    }
 
     return {
       key,
@@ -194,6 +229,30 @@ const PaceZonesSection: React.FC<PaceZonesProps> = ({ onWorkoutClick, openModal,
                 </div>
               ))}
             </div>
+
+            {/* HR method badge */}
+            {(data.hrMethod || data.aerobicThreshold) && (
+              <div className="hr-method-info">
+                {data.hrMethod === 'calibrated' && (
+                  <span className="hr-method-badge badge-calibrated">{t('paceZones.hrCalibrated')}</span>
+                )}
+                {data.hrMethod === 'karvonen' && (
+                  <span className="hr-method-badge badge-karvonen">{t('paceZones.hrKarvonen')}</span>
+                )}
+                {data.hrMethod === 'pctHRmax' && (
+                  <span className="hr-method-badge badge-formula">{t('paceZones.hrFormula')}</span>
+                )}
+                {data.aerobicThreshold && (
+                  <div className="aet-info">
+                    <span className="aet-label">{t('paceZones.aerobicThreshold')}</span>
+                    <span className="aet-value">{data.aerobicThreshold.hr} {t('units.bpm')}</span>
+                    <span className="aet-detail">
+                      {t('paceZones.aetBasedOn', { count: data.aerobicThreshold.basedOn })}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Source workout info */}
             {sw && (

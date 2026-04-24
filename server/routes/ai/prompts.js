@@ -338,6 +338,34 @@ function formatTRIMPBlock(trimpData, lang = 'ru') {
   return lines.join('\n');
 }
 
+// Format HR zones block for AI context
+function formatHRZonesBlock(hrZones, hrMethod, aetData, lang = 'ru') {
+  if (!hrZones) return '';
+
+  const headers = {
+    ru: 'ПУЛЬСОВЫЕ ЗОНЫ',
+    uk: 'ПУЛЬСОВІ ЗОНИ',
+    en: 'HR ZONES'
+  };
+  const methods = {
+    calibrated: { ru: 'калиброваны по тренировкам', uk: 'калібровані за тренуваннями', en: 'calibrated from workouts' },
+    karvonen:   { ru: 'метод Карвонена (HRR)', uk: 'метод Карвонена (HRR)', en: 'Karvonen method (HRR)' },
+    pctHRmax:   { ru: 'по % от макс. пульса', uk: 'за % від макс. пульсу', en: 'based on %HRmax' }
+  };
+
+  const lines = [`${headers[lang] || headers.ru} (${methods[hrMethod]?.[lang] || hrMethod}):`];
+  for (const [zone, range] of Object.entries(hrZones)) {
+    lines.push(`  ${zone}: ${range.from}–${range.to} bpm`);
+  }
+
+  if (aetData) {
+    const aetLabels = { ru: 'Аэробный порог', uk: 'Аеробний поріг', en: 'Aerobic threshold' };
+    lines.push(`${aetLabels[lang] || aetLabels.ru}: ${aetData.hr} bpm (based on ${aetData.basedOn} stable runs)`);
+  }
+
+  return lines.join('\n');
+}
+
 // AI personality defaults
 const AI_DEFAULTS = {
   coach_gender: 'male',
@@ -790,7 +818,7 @@ function getPhaseInstructions(phase, lang = 'ru') {
 }
 
 // Helper: build chat system prompt
-function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, records, lang = 'ru', aiPrefs = null, weeklyVolumes = null, predictions = null, paceZonesData = null, macroPlan = null, stabilityData = null, goalRealism = null, complianceData = null, hrTrend = null, decouplingData = null, trimpData = null) {
+function buildChatSystemPrompt(monthlySummary, goals, currentPlan, userProfile, records, lang = 'ru', aiPrefs = null, weeklyVolumes = null, predictions = null, paceZonesData = null, macroPlan = null, stabilityData = null, goalRealism = null, complianceData = null, hrTrend = null, decouplingData = null, trimpData = null, hrZonesData = null) {
   const today = new Date();
   const dayNamesMap = {
     ru: ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'],
@@ -1299,7 +1327,7 @@ ${macroPlan ? formatMacroPlanForAI(macroPlan, lang) : ''}
 ${weeklyVolumes ? formatWeeklyVolumeBlock(weeklyVolumes, lang) : ''}
 
 ${stabilityData ? formatStabilityBlock(stabilityData, lang) + '\n' : ''}${goalRealism ? formatGoalRealismBlock(goalRealism, lang) + '\n' : ''}${complianceData ? formatComplianceBlock(complianceData, lang) + '\n' : ''}
-${hrTrend ? formatHRTrendBlock(hrTrend, lang) + '\n' : ''}${decouplingData ? formatDecouplingBlock(decouplingData, lang) + '\n' : ''}${trimpData ? formatTRIMPBlock(trimpData, lang) + '\n' : ''}
+${hrTrend ? formatHRTrendBlock(hrTrend, lang) + '\n' : ''}${decouplingData ? formatDecouplingBlock(decouplingData, lang) + '\n' : ''}${trimpData ? formatTRIMPBlock(trimpData, lang) + '\n' : ''}${hrZonesData ? formatHRZonesBlock(hrZonesData.zones, hrZonesData.method, hrZonesData.aet, lang) + '\n' : ''}
 ${p2.toolsSection}
 
 ${p2.planUpdate}
@@ -1633,5 +1661,6 @@ module.exports = {
   formatComplianceBlock,
   formatHRTrendBlock,
   formatDecouplingBlock,
-  formatTRIMPBlock
+  formatTRIMPBlock,
+  formatHRZonesBlock
 };

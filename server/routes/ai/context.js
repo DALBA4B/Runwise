@@ -8,6 +8,13 @@ function toLocalDateStr(date) {
   return `${y}-${m}-${d}`;
 }
 
+// Tanaka formula for maxHR estimation (more accurate than 220-age)
+// Tanaka, Monahan & Seals, 2001, JACC — validated on 18,712 subjects
+function estimateMaxHR(age) {
+  if (!age || age <= 0) return null;
+  return Math.round(208 - 0.7 * age);
+}
+
 // Helper: format pace from sec/km to mm:ss
 function formatPace(secPerKm) {
   if (!secPerKm) return '—';
@@ -702,6 +709,185 @@ async function getRecentDecouplingData(userId) {
   return results.length > 0 ? results : null;
 }
 
+// Karvonen HR zones: restingHR + %HRR * (maxHR - restingHR)
+// Falls back to %HRmax when restingHR is unavailable
+function calculateHRZones(maxHR, restingHR) {
+  if (!maxHR) return null;
+
+  const pctHRR = {
+    easy:       { from: 55, to: 70 },
+    marathon:   { from: 70, to: 80 },
+    threshold:  { from: 80, to: 88 },
+    interval:   { from: 88, to: 95 },
+    repetition: { from: 95, to: 100 }
+  };
+
+  const useKarvonen = restingHR && restingHR > 0 && restingHR < maxHR;
+  const result = {};
+
+  for (const [zone, pct] of Object.entries(pctHRR)) {
+    if (useKarvonen) {
+      const reserve = maxHR - restingHR;
+      result[zone] = {
+        from: Math.round(restingHR + reserve * pct.from / 100),
+        to: Math.round(restingHR + reserve * pct.to / 100)
+      };
+    } else {
+      result[zone] = {
+        from: Math.round(maxHR * (pct.from + 5) / 100),
+        to: Math.round(maxHR * (pct.to + 5) / 100)
+      };
+    }
+  }
+
+  return { zones: result, method: useKarvonen ? 'karvonen' : 'pctHRmax' };
+}
+
+// Detect aerobic threshold (AeT) from stable long runs with low HR drift
+// Friel (2009), Maffetone (2010): AeT = max steady-state HR with drift <5%
+async function detectAerobicThreshold(userId) {
+  const since = new Date();
+  since.setDate(since.getDate() - 60);
+
+  const { data } = await supabase
+    .from('workouts')
+    .select('name, distance, date, splits_500m, manual_distance, average_heartrate, average_pace')
+    .eq('user_id', userId)
+    .gte('date', since.toISOString())
+    .gte('distance', 8000)
+    .order('date', { ascending: false })
+    .limit(10);
+
+  if (!data || data.length === 0) return null;
+
+  const stableRuns = [];
+
+  for (const w of data) {
+    const splits = typeof w.splits_500m === 'string' ? JSON.parse(w.splits_500m) : w.splits_500m;
+    if (!splits || splits.length < 6) continue;
+
+    const withHR = splits.filter(s => s.heartrate && s.heartrate > 0);
+    if (withHR.length < 6) continue;
+
+    const mid = Math.floor(withHR.length / 2);
+    const avgHR1 = withHR.slice(0, mid).reduce((s, sp) => s + sp.heartrate, 0) / mid;
+    const avgHR2 = withHR.slice(mid).reduce((s, sp) => s + sp.heartrate, 0) / (withHR.length - mid);
+    if (avgHR1 === 0) continue;
+
+    const drift = ((avgHR2 - avgHR1) / avgHR1) * 100;
+
+    // Stable run: drift < 5%
+    if (drift < 5) {
+      const overallAvgHR = withHR.reduce((s, sp) => s + sp.heartrate, 0) / withHR.length;
+      stableRuns.push({
+        name: w.name,
+        date: w.date?.split('T')[0],
+        distance_km: +(effectiveDistance(w) / 1000).toFixed(1),
+        drift: Math.round(drift * 10) / 10,
+        avgHR: Math.round(overallAvgHR),
+        avgHR1: Math.round(avgHR1),
+        pace: effectivePace(w)
+      });
+    }
+  }
+
+  if (stableRuns.length === 0) return null;
+
+  // AeT = highest stable HR from runs with drift < 5%
+  const aet = Math.max(...stableRuns.map(r => r.avgHR));
+  const aetRun = stableRuns.find(r => r.avgHR === aet);
+
+  return {
+    aerobicThreshold: aet,
+    basedOn: stableRuns.length,
+    bestRun: aetRun,
+    allStableRuns: stableRuns
+  };
+}
+
+// Auto-calibrate HR zones from real workout data (pace→HR mapping)
+// Matches VDOT pace zones to actual HR observed at those paces
+async function autoCalibrateHRZones(userId, paceZones) {
+  if (!paceZones) return null;
+
+  const since = new Date();
+  since.setDate(since.getDate() - 42); // 6 weeks
+
+  const { data } = await supabase
+    .from('workouts')
+    .select('splits, average_heartrate, average_pace, distance, manual_distance')
+    .eq('user_id', userId)
+    .gte('date', since.toISOString())
+    .not('average_heartrate', 'is', null)
+    .order('date', { ascending: false })
+    .limit(30);
+
+  if (!data || data.length < 3) return null;
+
+  // Collect all split data points: { pace (sec/km), hr }
+  const dataPoints = [];
+
+  for (const w of data) {
+    // Prefer 1km splits — HR stabilizes better over 1km than 500m (cardio lag ~30-60s)
+    const rawSplits = w.splits
+      ? (typeof w.splits === 'string' ? JSON.parse(w.splits) : w.splits)
+      : null;
+
+    if (!rawSplits || rawSplits.length === 0) continue;
+
+    for (const s of rawSplits) {
+      const hr = s.heartrate || s.average_heartrate;
+      let pace = s.pace;
+      if (!pace && s.time && s.distance) pace = s.time / (s.distance / 1000);
+      if (!pace && s.moving_time && s.distance) pace = s.moving_time / (s.distance / 1000);
+
+      if (hr && hr > 50 && pace && pace > 120 && pace < 600) {
+        dataPoints.push({ pace: Math.round(pace), hr: Math.round(hr) });
+      }
+    }
+  }
+
+  if (dataPoints.length < 10) return null;
+
+  // Map each VDOT pace zone to observed HR
+  // paceZones: { easyMin, easyMax, marathon, threshold, interval, repetition } in sec/km
+  const zoneBoundaries = {
+    easy:       { minPace: paceZones.easyMax, maxPace: paceZones.easyMin },
+    marathon:   { minPace: paceZones.marathon, maxPace: paceZones.easyMax },
+    threshold:  { minPace: paceZones.threshold, maxPace: paceZones.marathon },
+    interval:   { minPace: paceZones.interval, maxPace: paceZones.threshold },
+    repetition: { minPace: paceZones.repetition, maxPace: paceZones.interval }
+  };
+
+  const calibrated = {};
+  let calibratedZones = 0;
+
+  for (const [zone, bounds] of Object.entries(zoneBoundaries)) {
+    // Find data points where pace falls in this zone (±5% tolerance)
+    const tolerance = (bounds.maxPace - bounds.minPace) * 0.15;
+    const matching = dataPoints.filter(d =>
+      d.pace >= bounds.minPace - tolerance && d.pace <= bounds.maxPace + tolerance
+    );
+
+    if (matching.length >= 3) {
+      const hrs = matching.map(d => d.hr).sort((a, b) => a - b);
+      // Use 10th and 90th percentile for robustness
+      const p10 = hrs[Math.floor(hrs.length * 0.1)];
+      const p90 = hrs[Math.floor(hrs.length * 0.9)];
+      calibrated[zone] = { from: p10, to: p90, samples: matching.length };
+      calibratedZones++;
+    }
+  }
+
+  if (calibratedZones < 2) return null;
+
+  return {
+    zones: calibrated,
+    totalDataPoints: dataPoints.length,
+    calibratedZones
+  };
+}
+
 // Helper: calculate TRIMP for a single workout
 function calcTRIMP(durationMin, avgHR, restingHR, maxHR, gender) {
   if (!durationMin || !avgHR || durationMin <= 0 || avgHR <= 0) return null;
@@ -726,7 +912,7 @@ async function getWeeklyTRIMP(userId) {
     .eq('id', userId)
     .single();
 
-  const maxHR = profile?.max_heartrate_user || (profile?.age ? 220 - profile.age : null);
+  const maxHR = profile?.max_heartrate_user || estimateMaxHR(profile?.age);
   const restingHR = profile?.resting_heartrate || null;
   const gender = profile?.gender || null;
 
@@ -819,5 +1005,9 @@ module.exports = {
   getHRTrendContext,
   getRecentDecouplingData,
   getWeeklyTRIMP,
-  calcTRIMP
+  calcTRIMP,
+  estimateMaxHR,
+  calculateHRZones,
+  detectAerobicThreshold,
+  autoCalibrateHRZones
 };

@@ -208,6 +208,66 @@
   margin-top: 2px;
 }
 
+/* HR method info */
+.hr-method-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: var(--spacing-md);
+}
+
+.hr-method-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 10px;
+}
+
+.hr-method-badge.badge-calibrated {
+  background: rgba(76, 175, 80, 0.15);
+  color: #4CAF50;
+}
+
+.hr-method-badge.badge-karvonen {
+  background: rgba(33, 150, 243, 0.15);
+  color: #2196F3;
+}
+
+.hr-method-badge.badge-formula {
+  background: rgba(255, 152, 0, 0.15);
+  color: #FF9800;
+}
+
+.aet-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(244, 67, 54, 0.08);
+  border-radius: var(--radius-md);
+  width: 100%;
+}
+
+.aet-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f44336;
+}
+
+.aet-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f44336;
+}
+
+.aet-detail {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  margin-left: auto;
+}
+
 .pace-zones-formula {
   font-size: 12px;
   color: var(--color-text-secondary);

@@ -431,11 +431,16 @@
     "workoutDistance": "Distance",
     "workoutTime": "Time",
     "workoutType": "Type",
-    "formulaExplanation": "VDOT is calculated using the Daniels-Gilbert formula: workout distance and time are converted into a VO₂max estimate, which determines your pace zones. HR zones (❤️) are based on your max HR and show the approximate heart rate range for each zone.",
+    "formulaExplanation": "VDOT is calculated using the Daniels-Gilbert formula. HR zones (❤️) are personalized: calibrated from your real workouts when enough data is available, otherwise calculated using the Karvonen method (heart rate reserve).",
     "weeklyVolume": "Weekly volume",
     "week": "wk",
     "workoutsAnalyzed": "Workouts (12 wks)",
     "recordsVdot": "VDOT by records",
-    "otherGoodWorkouts": "Other good workouts"
+    "otherGoodWorkouts": "Other good workouts",
+    "hrCalibrated": "Calibrated from workouts",
+    "hrKarvonen": "Karvonen method",
+    "hrFormula": "Based on max HR",
+    "aerobicThreshold": "Aerobic threshold",
+    "aetBasedOn": "Based on {{count}} stable runs"
   }
 }
