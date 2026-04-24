@@ -347,7 +347,9 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
         const maxPace = paces.length > 0 ? Math.max(...paces) : 0;
         const range = maxPace - minPace || 1;
 
-        const renderSplitBars = (data: typeof splitsData) => (
+        const renderSplitBars = (data: typeof splitsData) => {
+          const hasAnyHR = data.some(s => s.heartrate && s.heartrate > 0);
+          return (
           <>
             <div className="splits-list">
               {data.map((s, i) => {
@@ -367,6 +369,11 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
                     <span className={`split-pace ${isFastest ? 'pace-fastest' : isSlowest ? 'pace-slowest' : ''}`}>
                       {formatPace(s.pace)}
                     </span>
+                    {hasAnyHR && (
+                      <span className="split-hr">
+                        {s.heartrate ? `${Math.round(s.heartrate)}` : '—'}
+                      </span>
+                    )}
                   </div>
                 );
               })}
@@ -378,6 +385,7 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
             </div>
           </>
         );
+        };
 
         return (
           <div className="splits-section">

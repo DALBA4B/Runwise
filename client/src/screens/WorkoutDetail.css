@@ -173,6 +173,15 @@
   color: #f59e0b;
 }
 
+.split-hr {
+  font-size: 11px;
+  color: #f87171;
+  width: 32px;
+  text-align: right;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
 .splits-summary {
   display: flex;
   justify-content: space-between;
