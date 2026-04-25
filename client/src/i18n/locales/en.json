@@ -442,5 +442,11 @@
     "hrFormula": "Based on max HR",
     "aerobicThreshold": "Aerobic threshold",
     "aetBasedOn": "Based on {{count}} stable runs"
+  },
+  "diagnostics": {
+    "title": "Calculation Diagnostics",
+    "link": "Calculation diagnostics",
+    "refresh": "Refresh diagnostics",
+    "generatedAt": "Updated"
   }
 }

@@ -1,0 +1,199 @@
+/* ============ DIAGNOSTICS SCREEN ============ */
+
+.diagnostics-screen {
+  padding: 16px;
+  padding-bottom: 40px;
+  height: 100vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
+}
+
+.diagnostics-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: var(--spacing-lg);
+}
+
+.diagnostics-header h2 {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.diagnostics-timestamp {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-md);
+}
+
+/* Section card */
+.diag-section {
+  margin-bottom: var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--color-bg-secondary);
+}
+
+.diag-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s ease;
+}
+
+.diag-section-header:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.diag-section-status {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.diag-status-ok { background: #22c55e; }
+.diag-status-warning { background: #f59e0b; }
+.diag-status-error { background: #ef4444; }
+.diag-status-info { background: #3b82f6; }
+
+.diag-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  flex: 1;
+}
+
+.diag-section-result {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+.diag-section-chevron {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  transition: transform 0.2s ease;
+}
+
+.diag-section.open .diag-section-chevron {
+  transform: rotate(90deg);
+}
+
+/* Steps timeline */
+.diag-steps {
+  padding: 0 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.diag-step {
+  display: flex;
+  gap: 12px;
+  padding: 8px 0;
+  position: relative;
+}
+
+/* Timeline line */
+.diag-step-timeline {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 16px;
+  flex-shrink: 0;
+}
+
+.diag-step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 5px;
+}
+
+.diag-step-line {
+  width: 1px;
+  flex: 1;
+  background: var(--color-border);
+  margin-top: 4px;
+}
+
+.diag-step:last-child .diag-step-line {
+  display: none;
+}
+
+.diag-step-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.diag-step-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 2px;
+}
+
+.diag-step-detail {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.diag-step-formula {
+  display: inline-block;
+  font-size: 11px;
+  font-family: monospace;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin-top: 4px;
+  color: var(--color-accent);
+}
+
+/* Refresh button */
+.diag-refresh {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 10px;
+  margin-bottom: var(--spacing-md);
+  background: none;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+.diag-refresh:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.diag-refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Back button */
+.diag-back {
+  background: none;
+  border: none;
+  color: var(--color-accent);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+}

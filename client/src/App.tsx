@@ -12,6 +12,7 @@ import Profile from './screens/Profile';
 import WorkoutDetail from './screens/WorkoutDetail';
 import MacroPlanView from './components/MacroPlanView';
 import AdminPanel from './screens/AdminPanel';
+import Diagnostics from './screens/Diagnostics';
 import './App.css';
 
 type Screen = 'home' | 'history' | 'plan' | 'ai' | 'profile' | 'workout-detail' | 'macro-plan';
@@ -70,6 +71,18 @@ const App: React.FC = () => {
   // Admin panel — accessible via /admin path, no auth required
   if (window.location.pathname === '/admin') {
     return <AdminPanel />;
+  }
+
+  // Diagnostics panel — accessible via /diagnostics path (requires auth)
+  if (window.location.pathname === '/diagnostics') {
+    if (!isAuthenticated) {
+      return (
+        <div className="screen" style={{ textAlign: 'center', paddingTop: 60 }}>
+          <p>Login required</p>
+        </div>
+      );
+    }
+    return <Diagnostics />;
   }
 
   if (loading) {

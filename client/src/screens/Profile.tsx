@@ -359,6 +359,7 @@ const Profile: React.FC<ProfileProps> = ({ onLogout, onWorkoutClick, onVdotWorko
 
       <div className="profile-footer">
         <p>{t('profile.version')}</p>
+        <a href="/diagnostics" className="diag-link">{t('diagnostics.link')}</a>
       </div>
 
       <SettingsModal

@@ -249,5 +249,6 @@ export const ai = {
     method: 'POST',
     body: JSON.stringify({ lang: getLang() })
   }),
-  getPaceZones: () => request('/api/ai/pace-zones')
+  getPaceZones: () => request('/api/ai/pace-zones'),
+  getDiagnostics: () => request('/api/ai/diagnostics')
 };
