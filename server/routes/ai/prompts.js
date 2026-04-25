@@ -1340,6 +1340,105 @@ ${p2.rules}
 ${personality.style}`;
 }
 
+// Helper: build prompt diagnostics snapshot (for /api/ai/diagnostics)
+function buildChatPromptDebugSnapshot({
+  monthlySummary,
+  goals,
+  currentPlan,
+  userProfile,
+  records,
+  lang = 'ru',
+  aiPrefs = null,
+  weeklyVolumes = null,
+  predictions = null,
+  paceZonesData = null,
+  macroPlan = null,
+  stabilityData = null,
+  goalRealism = null,
+  complianceData = null,
+  hrTrend = null,
+  decouplingData = null,
+  trimpData = null,
+  hrZonesData = null
+} = {}) {
+  const safeLang = ['ru', 'uk', 'en'].includes(lang) ? lang : 'ru';
+  const resolvedPrefs = aiPrefs || getAiPrefs(userProfile);
+
+  const prompt = buildChatSystemPrompt(
+    monthlySummary,
+    goals,
+    currentPlan,
+    userProfile,
+    records,
+    safeLang,
+    resolvedPrefs,
+    weeklyVolumes,
+    predictions,
+    paceZonesData,
+    macroPlan,
+    stabilityData,
+    goalRealism,
+    complianceData,
+    hrTrend,
+    decouplingData,
+    trimpData,
+    hrZonesData
+  );
+
+  const blocks = [];
+  const makeSafePreview = (text, maxChars = 420) => {
+    if (!text || text.length <= maxChars) return text || null;
+    const candidate = text.slice(0, maxChars);
+    const cutAt = Math.max(candidate.lastIndexOf('\n'), candidate.lastIndexOf(' '));
+    if (cutAt < 40) return `${candidate}...`;
+    return `${candidate.slice(0, cutAt)}...`;
+  };
+
+  const pushBlock = (key, title, content, required = false) => {
+    const text = (content || '').toString().trim();
+    if (!required && !text) return;
+    blocks.push({
+      key,
+      title,
+      included: text.length > 0,
+      chars: text.length,
+      preview: makeSafePreview(text)
+    });
+  };
+
+  pushBlock('profile', 'Профиль пользователя', formatProfileForAI(userProfile || {}, safeLang), true);
+  pushBlock('monthlySummary', 'Сводка за 30 дней', formatMonthlySummaryCompact(monthlySummary, safeLang), true);
+  pushBlock('goals', 'Цели пользователя', formatGoalsForAI(goals || [], safeLang), true);
+  pushBlock('predictions', 'Прогнозы Ригеля', predictions && predictions.length > 0 ? formatPredictionsForAI(predictions, safeLang) : '');
+  pushBlock('records', 'Личные рекорды', formatRecordsForAI(records || [], safeLang), true);
+  pushBlock('paceZones', 'Темповые зоны (VDOT)', paceZonesData ? formatPaceZonesBlock(paceZonesData, safeLang) : '');
+  pushBlock('planBrief', 'Краткий недельный план', formatPlanBrief(currentPlan, safeLang), true);
+  pushBlock('macroPlan', 'Макро-план', macroPlan ? formatMacroPlanForAI(macroPlan, safeLang) : '');
+  pushBlock('weeklyVolume', 'Недельные объемы', weeklyVolumes ? formatWeeklyVolumeBlock(weeklyVolumes, safeLang) : '');
+  pushBlock('stability', 'Стабильность тренировок', stabilityData ? formatStabilityBlock(stabilityData, safeLang) : '');
+  pushBlock('goalRealism', 'Реалистичность цели', goalRealism ? formatGoalRealismBlock(goalRealism, safeLang) : '');
+  pushBlock('compliance', 'Выполнение макро-плана', complianceData ? formatComplianceBlock(complianceData, safeLang) : '');
+  pushBlock('hrTrend', 'Пульсовой тренд', hrTrend ? formatHRTrendBlock(hrTrend, safeLang) : '');
+  pushBlock('decoupling', 'Аэробный дрейф', decouplingData ? formatDecouplingBlock(decouplingData, safeLang) : '');
+  pushBlock('trimp', 'TRIMP', trimpData ? formatTRIMPBlock(trimpData, safeLang) : '');
+  pushBlock('hrZones', 'Пульсовые зоны', hrZonesData ? formatHRZonesBlock(hrZonesData.zones, hrZonesData.method, hrZonesData.aet, safeLang) : '');
+
+  const includedBlocks = blocks.filter(b => b.included).length;
+  const approxTokens = Math.ceil(prompt.length / 4);
+
+  return {
+    prompt,
+    stats: {
+      lang: safeLang,
+      chars: prompt.length,
+      approxTokens,
+      blocksTotal: blocks.length,
+      blocksIncluded: includedBlocks
+    },
+    blocks
+  };
+}
+
 // Helper: process plan update from AI reply
 async function processPlanUpdate(reply, userId, currentPlan, savePlanUpdateFn) {
   let textReply = reply;
@@ -1654,6 +1753,7 @@ module.exports = {
   getAiPrefs,
   buildPersonalityBlock,
   buildChatSystemPrompt,
+  buildChatPromptDebugSnapshot,
   processPlanUpdate,
   formatMacroPlanForAI,
   processMacroPlanUpdate,

@@ -7,17 +7,25 @@ const {
   effectiveDistance,
   effectiveMovingTime,
   effectivePace,
+  getMonthlySummaryContext,
+  getUserGoals,
+  getCurrentPlan,
   getUserRecords,
+  getWeeklyVolumes,
+  getRiegelPredictions,
+  getActiveMacroPlan,
+  computeMacroPlanWithActuals,
+  analyzeTrainingStability,
+  assessMarathonGoalRealism,
+  analyzeRecentCompliance,
   getUserProfile,
-  getRecentPaceStats,
   estimateMaxHR,
   calculateHRZones,
   detectAerobicThreshold,
   autoCalibrateHRZones,
   getHRTrendContext,
   getRecentDecouplingData,
-  getWeeklyTRIMP,
-  calcTRIMP
+  getWeeklyTRIMP
 } = require('./context');
 
 const {
@@ -27,6 +35,12 @@ const {
   getRunnerLevel,
   QUALITY_TYPES
 } = require('./vdot');
+
+const {
+  getAiPrefs,
+  buildChatPromptDebugSnapshot
+} = require('./prompts');
+const { getAiToolCatalog } = require('./tools');
 
 const router = express.Router();
 
@@ -628,6 +642,216 @@ router.get('/diagnostics', authMiddleware, async (req, res) => {
       result: `${filledParams}/6 параметров`,
       status: filledParams >= 4 ? 'ok' : 'warning',
       steps: profileSteps
+    });
+
+    // ============================
+    // SECTION 10: AI Coach Prompt Snapshot
+    // ============================
+    const lang = (req.query.lang || 'ru').toString().toLowerCase();
+
+    const [monthlySummary, goals, currentPlan, records, weeklyVolumes, predictions, rawMacroPlan] = await Promise.all([
+      getMonthlySummaryContext(userId),
+      getUserGoals(userId),
+      getCurrentPlan(userId),
+      getUserRecords(userId),
+      getWeeklyVolumes(userId),
+      getRiegelPredictions(userId),
+      getActiveMacroPlan(userId)
+    ]);
+
+    const macroPlan = rawMacroPlan ? await computeMacroPlanWithActuals(userId, rawMacroPlan) : null;
+    const stabilityData = await analyzeTrainingStability(userId, 12);
+
+    let goalRealism = null;
+    const marathonGoal = (goals || []).find(g => g.type === 'pb_42k');
+    if (marathonGoal && estimate.vdot && marathonGoal.deadline) {
+      const weeksUntilRace = Math.ceil((new Date(marathonGoal.deadline) - new Date()) / (1000 * 60 * 60 * 24 * 7));
+      if (weeksUntilRace > 0) {
+        goalRealism = assessMarathonGoalRealism(estimate.vdot, marathonGoal.target_value, weeksUntilRace);
+      }
+    }
+
+    const complianceData = macroPlan ? analyzeRecentCompliance(macroPlan) : null;
+    const vdotSource = estimate.source === 'recent' ? 'workouts' : estimate.source === 'decay' ? 'decay' : null;
+    const paceZonesData = estimate.vdot ? { vdot: estimate.vdot, source: vdotSource, zones: paceZones } : null;
+    const hrZonesData = hrZonesCalc ? { zones: hrZonesCalc.zones, method: hrZonesCalc.method, aet: null } : null;
+
+    const promptSnapshot = buildChatPromptDebugSnapshot({
+      monthlySummary,
+      goals,
+      currentPlan,
+      userProfile: profile,
+      records,
+      lang: ['ru', 'uk', 'en'].includes(lang) ? lang : 'ru',
+      aiPrefs: getAiPrefs(profile),
+      weeklyVolumes,
+      predictions,
+      paceZonesData,
+      macroPlan,
+      stabilityData,
+      goalRealism,
+      complianceData,
+      hrTrend,
+      decouplingData,
+      trimpData,
+      hrZonesData
+    });
+
+    const promptTexts = {
+      ru: {
+        promptSize: 'Размер system prompt',
+        blocksCollected: 'Собрано блоков контекста',
+        promptSizeDetail: (chars, tokens, langCode) => `${chars} символов (~${tokens} токенов), язык: ${langCode}.`,
+        blocksCollectedDetail: (included, total) => `${included} из ${total} блоков включены в промпт.`,
+        blockIncluded: (chars) => `Включён, ${chars} симв.`,
+        blockMissing: 'Данных нет, блок не добавлен.',
+        preview: 'Превью',
+        promptStart: 'Первые символы итогового prompt',
+        sectionTitle: 'Промпт AI-тренера',
+        sectionResult: (tokens) => `~${tokens} токенов`
+      },
+      uk: {
+        promptSize: 'Розмір system prompt',
+        blocksCollected: 'Зібрано блоків контексту',
+        promptSizeDetail: (chars, tokens, langCode) => `${chars} символів (~${tokens} токенів), мова: ${langCode}.`,
+        blocksCollectedDetail: (included, total) => `${included} із ${total} блоків включено в prompt.`,
+        blockIncluded: (chars) => `Включено, ${chars} симв.`,
+        blockMissing: 'Даних немає, блок не додано.',
+        preview: 'Превʼю',
+        promptStart: 'Перші символи підсумкового prompt',
+        sectionTitle: 'Промпт AI-тренера',
+        sectionResult: (tokens) => `~${tokens} токенів`
+      },
+      en: {
+        promptSize: 'System prompt size',
+        blocksCollected: 'Context blocks collected',
+        promptSizeDetail: (chars, tokens, langCode) => `${chars} chars (~${tokens} tokens), language: ${langCode}.`,
+        blocksCollectedDetail: (included, total) => `${included} of ${total} blocks were included in the prompt.`,
+        blockIncluded: (chars) => `Included, ${chars} chars.`,
+        blockMissing: 'No data, block was not added.',
+        preview: 'Preview',
+        promptStart: 'First symbols of final prompt',
+        sectionTitle: 'AI coach prompt',
+        sectionResult: (tokens) => `~${tokens} tokens`
+      }
+    };
+    const pt = promptTexts[lang] || promptTexts.ru;
+
+    const promptSteps = [];
+    promptSteps.push({
+      title: pt.promptSize,
+      detail: pt.promptSizeDetail(promptSnapshot.stats.chars, promptSnapshot.stats.approxTokens, promptSnapshot.stats.lang),
+      formula: 'tokens ≈ chars / 4',
+      status: promptSnapshot.stats.approxTokens > 6000 ? 'warning' : 'ok'
+    });
+    promptSteps.push({
+      title: pt.blocksCollected,
+      detail: pt.blocksCollectedDetail(promptSnapshot.stats.blocksIncluded, promptSnapshot.stats.blocksTotal),
+      status: 'ok'
+    });
+
+    for (const block of promptSnapshot.blocks) {
+      const preview = block.preview || '—';
+      promptSteps.push({
+        title: `${block.title}${block.included ? '' : ' (пропущен)'}`,
+        detail: `${block.included ? pt.blockIncluded(block.chars) : pt.blockMissing} ${pt.preview}: ${preview}`,
+        status: block.included ? 'ok' : 'info'
+      });
+    }
+
+    const toolCatalog = getAiToolCatalog();
+    const toolTexts = {
+      ru: {
+        sectionTitle: 'Инструменты AI (вне system prompt)',
+        sectionDetail: (count) => `Доступно ${count} инструментов. Эти данные не вшиваются в prompt, а подтягиваются моделью по необходимости.`,
+        toolTitle: (name) => `Инструмент: ${name}`,
+        argsLabel: 'обязательные аргументы',
+        noArgs: 'обязательных аргументов нет'
+      },
+      uk: {
+        sectionTitle: 'Інструменти AI (поза system prompt)',
+        sectionDetail: (count) => `Доступно ${count} інструментів. Ці дані не вшиваються у prompt, а підтягуються моделлю за потреби.`,
+        toolTitle: (name) => `Інструмент: ${name}`,
+        argsLabel: 'обовʼязкові аргументи',
+        noArgs: 'обовʼязкових аргументів немає'
+      },
+      en: {
+        sectionTitle: 'AI tools (outside system prompt)',
+        sectionDetail: (count) => `There are ${count} tools available. This data is not embedded into the prompt and is fetched by the model only when needed.`,
+        toolTitle: (name) => `Tool: ${name}`,
+        argsLabel: 'required arguments',
+        noArgs: 'no required arguments'
+      }
+    };
+    const toolDescriptions = {
+      get_workouts_by_date_range: {
+        ru: 'Список тренировок за выбранный период (неделя, месяц, квартал).',
+        uk: 'Список тренувань за вибраний період (тиждень, місяць, квартал).',
+        en: 'Workouts list for a selected period (week, month, quarter).'
+      },
+      get_workout_details: {
+        ru: 'Полные детали конкретной тренировки: сплиты, best efforts, метаданные.',
+        uk: 'Повні деталі конкретного тренування: спліти, best efforts, метадані.',
+        en: 'Full details of a specific workout: splits, best efforts, metadata.'
+      },
+      search_workouts: {
+        ru: 'Поиск тренировок по фильтрам (дистанция, темп, пульс, тип).',
+        uk: 'Пошук тренувань за фільтрами (дистанція, темп, пульс, тип).',
+        en: 'Workout search by filters (distance, pace, heart rate, type).'
+      },
+      get_period_stats: {
+        ru: 'Агрегированная статистика за период: объём, время, темп, пульс, набор.',
+        uk: 'Агрегована статистика за період: обʼєм, час, темп, пульс, набір.',
+        en: 'Aggregated period stats: volume, time, pace, heart rate, elevation.'
+      },
+      get_personal_records_history: {
+        ru: 'История личных рекордов на стандартных дистанциях.',
+        uk: 'Історія особистих рекордів на стандартних дистанціях.',
+        en: 'Personal records history for standard distances.'
+      },
+      get_current_plan: {
+        ru: 'Текущий недельный план (все 7 дней с деталями).',
+        uk: 'Поточний тижневий план (усі 7 днів з деталями).',
+        en: 'Current weekly plan (all 7 days with details).'
+      },
+      get_macro_plan: {
+        ru: 'Долгосрочный макро-план с фазами и фактическим выполнением.',
+        uk: 'Довгостроковий макро-план з фазами та фактичним виконанням.',
+        en: 'Long-term macro plan with phases and compliance details.'
+      },
+      update_macro_plan: {
+        ru: 'Обновление будущих недель макро-плана по решению AI/пользователя.',
+        uk: 'Оновлення майбутніх тижнів макро-плану за рішенням AI/користувача.',
+        en: 'Update future macro-plan weeks based on AI/user decision.'
+      }
+    };
+    const tt = toolTexts[lang] || toolTexts.ru;
+    promptSteps.push({
+      title: tt.sectionTitle,
+      detail: tt.sectionDetail(toolCatalog.length),
+      status: toolCatalog.length > 0 ? 'ok' : 'warning'
+    });
+    for (const tool of toolCatalog) {
+      const localizedDescription = toolDescriptions[tool.name]?.[lang] || toolDescriptions[tool.name]?.ru || tool.description;
+      promptSteps.push({
+        title: tt.toolTitle(tool.name),
+        detail: `${localizedDescription}${tool.hasRequiredArgs ? ` | ${tt.argsLabel}: ${tool.requiredArgs.join(', ')}` : ` | ${tt.noArgs}`}`,
+        status: 'info'
+      });
+    }
+
+    promptSteps.push({
+      title: pt.promptStart,
+      detail: promptSnapshot.prompt.slice(0, 800),
+      status: 'info'
+    });
+
+    sections.push({
+      id: 'aiPrompt',
+      title: pt.sectionTitle,
+      result: pt.sectionResult(promptSnapshot.stats.approxTokens),
+      status: promptSnapshot.stats.approxTokens > 6000 ? 'warning' : 'ok',
+      steps: promptSteps
     });
 
     res.json({ sections, generatedAt: new Date().toISOString() });

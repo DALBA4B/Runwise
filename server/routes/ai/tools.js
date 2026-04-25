@@ -135,6 +135,20 @@ const AI_TOOLS = [
   }
 ];
 
+function getAiToolCatalog() {
+  return AI_TOOLS.map((entry) => {
+    const fn = entry?.function || {};
+    const params = fn.parameters || {};
+    const required = Array.isArray(params.required) ? params.required : [];
+    return {
+      name: fn.name || 'unknown_tool',
+      description: fn.description || '',
+      requiredArgs: required,
+      hasRequiredArgs: required.length > 0
+    };
+  });
+}
+
 // Helper: parse pace string "mm:ss" to seconds per km
 function parsePaceToSeconds(paceStr) {
   const parts = paceStr.split(':');
@@ -492,5 +506,6 @@ async function executeTool(userId, toolName, args) {
 
 module.exports = {
   AI_TOOLS,
+  getAiToolCatalog,
   executeTool
 };
