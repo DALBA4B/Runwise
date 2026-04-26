@@ -1081,31 +1081,146 @@ router.get('/diagnostics', authMiddleware, async (req, res) => {
     // Single fetch for the last 28 days with HR + manual overrides
     const since28 = new Date();
     since28.setDate(since28.getDate() - 28);
-    const baseSel = 'date, distance, moving_time, average_heartrate';
-    const fullSel = baseSel + (workoutsState.hasAnomalyColumns ? ', is_suspicious, manual_distance, manual_moving_time' : '');
+    const baseSel = 'id, name, date, distance, moving_time, average_heartrate, splits, best_efforts';
+    const fullSel = baseSel + (workoutsState.hasAnomalyColumns ? ', is_suspicious, suspicious_reasons, manual_distance, manual_moving_time' : '');
 
-    let { data: w28, error: w28err } = await supabase
+    let { data: w28all, error: w28err } = await supabase
       .from('workouts')
       .select(fullSel)
       .eq('user_id', userId)
       .gte('date', since28.toISOString());
 
-    if (w28err && w28err.message && /(is_suspicious|manual_)/.test(w28err.message)) {
+    if (w28err && w28err.message && /(is_suspicious|suspicious_reasons|manual_)/.test(w28err.message)) {
       workoutsState.hasAnomalyColumns = false;
       const fb = await supabase
         .from('workouts')
-        .select(baseSel)
+        .select('id, name, date, distance, moving_time, average_pace, average_heartrate, splits, best_efforts')
         .eq('user_id', userId)
         .gte('date', since28.toISOString());
-      w28 = fb.data || [];
+      w28all = fb.data || [];
     }
-    w28 = (w28 || []).filter(w => !(workoutsState.hasAnomalyColumns && w.is_suspicious));
+    w28all = w28all || [];
+    const w28 = w28all.filter(w => !(workoutsState.hasAnomalyColumns && w.is_suspicious));
     const effDist = (w) => (workoutsState.hasAnomalyColumns && w.manual_distance) ? w.manual_distance : (w.distance || 0);
     const effTime = (w) => (workoutsState.hasAnomalyColumns && w.manual_moving_time) ? w.manual_moving_time : (w.moving_time || 0);
 
     const now28 = new Date();
     const acuteCutoff = new Date(now28); acuteCutoff.setDate(acuteCutoff.getDate() - 7);
     const w7 = w28.filter(w => new Date(w.date) >= acuteCutoff);
+
+    // ----------------------------
+    // SECTION 13.5: Data Quality & GPS Anomalies
+    // ----------------------------
+    const dqSteps = [];
+    const totalCount = w28all.length;
+
+    if (totalCount === 0) {
+      dqSteps.push({
+        title: 'Нет тренировок за 30 дней',
+        detail: 'Синхронизируй данные со Strava.',
+        status: 'warning'
+      });
+    } else {
+      const withHR = w28all.filter(w => w.average_heartrate).length;
+      const withSplits = w28all.filter(w => w.splits).length;
+      const withBE = w28all.filter(w => w.best_efforts).length;
+      const suspicious = workoutsState.hasAnomalyColumns
+        ? w28all.filter(w => w.is_suspicious)
+        : [];
+
+      const pctHR = Math.round(withHR / totalCount * 100);
+      const pctSplits = Math.round(withSplits / totalCount * 100);
+      const pctBE = Math.round(withBE / totalCount * 100);
+
+      dqSteps.push({
+        title: `Всего тренировок за 30 дней: ${totalCount}`,
+        detail: `Анализируется окно из последних 30 дней.`,
+        status: 'ok'
+      });
+      dqSteps.push({
+        title: `С пульсом: ${withHR} (${pctHR}%)`,
+        detail: `Пульс нужен для TRIMP, HR-зон, дрейфа, monotony, 80/20. Без него часть расчётов недоступна.`,
+        status: pctHR >= 80 ? 'ok' : pctHR >= 50 ? 'warning' : 'error'
+      });
+      dqSteps.push({
+        title: `Со сплитами (1 км): ${withSplits} (${pctSplits}%)`,
+        detail: `Сплиты нужны для детектора аномалий и аэробного дрейфа на длительных.`,
+        status: pctSplits >= 70 ? 'ok' : 'warning'
+      });
+      dqSteps.push({
+        title: `С best_efforts (Strava): ${withBE} (${pctBE}%)`,
+        detail: `best_efforts (1K, 5K, 10K, HM, M) — основа Riegel-прогноза. Без них прогноз времени на дистанцию недоступен.`,
+        status: pctBE >= 50 ? 'ok' : 'warning'
+      });
+
+      if (!workoutsState.hasAnomalyColumns) {
+        dqSteps.push({
+          title: 'Колонки аномалий в БД отсутствуют',
+          detail: 'Поля is_suspicious / suspicious_reasons не созданы. Детектор не работает, все тренировки попадают в расчёты.',
+          status: 'warning'
+        });
+      } else {
+        dqSteps.push({
+          title: `Помечено подозрительными: ${suspicious.length} из ${totalCount}`,
+          detail: suspicious.length === 0
+            ? 'Все тренировки прошли проверку GPS.'
+            : 'Suspicious-тренировки исключаются из VDOT, Riegel, объёмов и большинства расчётов (если только пользователь не подтвердил вручную).',
+          formula: 'split <2:30/км ИЛИ split >12:00/км ИЛИ |avg_pace − median_pace|/median > 30%',
+          status: suspicious.length === 0 ? 'ok' : suspicious.length / totalCount < 0.1 ? 'warning' : 'error'
+        });
+
+        // Per-anomaly detail (up to 8)
+        const reasonLabels = {
+          split_too_fast: (km, pace) => `сплит ${km}км слишком быстрый (${Math.floor(pace / 60)}:${String(pace % 60).padStart(2, '0')}/км)`,
+          split_too_slow: (km, pace) => `сплит ${km}км слишком медленный (${Math.floor(pace / 60)}:${String(pace % 60).padStart(2, '0')}/км)`,
+          avg_median_drift: (pct) => `avg vs median разошлись на ${pct}%`,
+        };
+        const fmtReason = (r) => {
+          const [type, ...args] = r.split(':');
+          if (type === 'split_too_fast' || type === 'split_too_slow') {
+            return reasonLabels[type] ? reasonLabels[type](args[0], parseInt(args[1], 10)) : r;
+          }
+          if (type === 'avg_median_drift') {
+            return reasonLabels[type] ? reasonLabels[type](args[0]) : r;
+          }
+          return r;
+        };
+
+        for (const w of suspicious.slice(0, 8)) {
+          let reasons = [];
+          try {
+            reasons = typeof w.suspicious_reasons === 'string'
+              ? JSON.parse(w.suspicious_reasons)
+              : (w.suspicious_reasons || []);
+          } catch { reasons = []; }
+          const reasonText = reasons.length > 0
+            ? reasons.map(fmtReason).join('; ')
+            : 'причины не сохранены';
+          const dateLabel = w.date ? new Date(w.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '?';
+          dqSteps.push({
+            title: `"${w.name || 'Без названия'}" (${dateLabel})`,
+            detail: reasonText,
+            status: 'warning'
+          });
+        }
+        if (suspicious.length > 8) {
+          dqSteps.push({
+            title: `… и ещё ${suspicious.length - 8} подозрительных`,
+            detail: 'Показаны только первые 8.',
+            status: 'info'
+          });
+        }
+      }
+    }
+    sections.push({
+      id: 'dataQuality',
+      title: 'Качество данных и GPS-аномалии',
+      result: totalCount > 0
+        ? `${totalCount} трен., ${workoutsState.hasAnomalyColumns ? w28all.filter(w => w.is_suspicious).length : '?'} suspicious`
+        : 'Нет данных',
+      status: totalCount === 0 ? 'warning' : 'ok',
+      steps: dqSteps
+    });
 
     // ----------------------------
     // SECTION 14: ACWR (Acute:Chronic Workload Ratio)
@@ -1347,6 +1462,202 @@ router.get('/diagnostics', authMiddleware, async (req, res) => {
       result: zonesUsed ? 'Рассчитано' : 'Нет HR-зон',
       status: zonesUsed ? 'ok' : 'warning',
       steps: distSteps
+    });
+
+    // ============================
+    // SECTION 17: Personal Records (PB-tracker)
+    // ============================
+    const pbSteps = [];
+    const { data: prRows } = await supabase
+      .from('personal_records')
+      .select('distance_type, time_seconds, record_date')
+      .eq('user_id', userId);
+
+    const prList = prRows || [];
+    if (prList.length === 0) {
+      pbSteps.push({
+        title: 'Нет сохранённых рекордов',
+        detail: 'Личные рекорды (5K, 10K, HM, M) обновляются автоматически на основе best_efforts из Strava.',
+        status: 'info'
+      });
+    } else {
+      const distOrder = ['5K', '10K', 'Half-Marathon', '21K', 'Marathon', '42K', '1K', '1 Mile', '2 Mile'];
+      const sorted = [...prList].sort((a, b) => {
+        const ai = distOrder.indexOf(a.distance_type);
+        const bi = distOrder.indexOf(b.distance_type);
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+      });
+
+      pbSteps.push({
+        title: `Сохранено рекордов: ${prList.length}`,
+        detail: 'Источник: таблица personal_records. Используются AI как исторический показатель потенциала (но не текущей формы).',
+        status: 'ok'
+      });
+
+      const today = new Date();
+      for (const r of sorted) {
+        const recDate = r.record_date ? new Date(r.record_date) : null;
+        const daysAgo = recDate ? Math.floor((today - recDate) / (1000 * 60 * 60 * 24)) : null;
+        const dateLabel = recDate ? recDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }) : '?';
+        const ageNote = daysAgo !== null
+          ? (daysAgo < 90 ? `${daysAgo} дн. назад` : daysAgo < 365 ? `${Math.floor(daysAgo / 30)} мес. назад` : `${Math.floor(daysAgo / 365)} г. ${Math.floor((daysAgo % 365) / 30)} мес. назад`)
+          : '';
+        const stale = daysAgo !== null && daysAgo > 365;
+        pbSteps.push({
+          title: `${r.distance_type}: ${fmtTime(r.time_seconds)}`,
+          detail: `Дата: ${dateLabel}${ageNote ? ` (${ageNote})` : ''}.${stale ? ' Старше года — текущая форма может быть другой.' : ''}`,
+          status: stale ? 'warning' : 'ok'
+        });
+      }
+    }
+    sections.push({
+      id: 'personalRecords',
+      title: 'Личные рекорды (PR)',
+      result: prList.length > 0 ? `${prList.length} рекордов` : 'Нет данных',
+      status: prList.length > 0 ? 'ok' : 'info',
+      steps: pbSteps
+    });
+
+    // ============================
+    // SECTION 18: Weekly Plan Generation Logic
+    // ============================
+    // Replicates the volume-base calculation from plan.js
+    const planSteps = [];
+
+    // Find anchor — Monday after last workout (same logic as plan.js)
+    const { data: lastW } = await supabase
+      .from('workouts')
+      .select('date')
+      .eq('user_id', userId)
+      .order('date', { ascending: false })
+      .limit(1);
+
+    let anchor;
+    if (lastW && lastW.length > 0) {
+      const lastDate = new Date(lastW[0].date);
+      const dow = lastDate.getDay();
+      const daysUntilNextMonday = dow === 0 ? 1 : 8 - dow;
+      anchor = new Date(lastDate);
+      anchor.setHours(0, 0, 0, 0);
+      anchor.setDate(anchor.getDate() + daysUntilNextMonday);
+    } else {
+      anchor = new Date();
+      anchor.setHours(0, 0, 0, 0);
+    }
+
+    // Compute weekly distances exactly like plan.js
+    const fourWeeksBeforeAnchor = new Date(anchor);
+    fourWeeksBeforeAnchor.setDate(fourWeeksBeforeAnchor.getDate() - 28);
+
+    const planWeekly = []; // fresh → old
+    if (recentWorkouts && recentWorkouts.length > 0) {
+      for (let w = 0; w < 4; w++) {
+        const weekEnd = new Date(anchor);
+        weekEnd.setDate(weekEnd.getDate() - w * 7);
+        const weekStart = new Date(weekEnd);
+        weekStart.setDate(weekStart.getDate() - 7);
+        const weekWorkouts = recentWorkouts.filter(wr => {
+          const d = new Date(wr.date);
+          return d >= weekStart && d < weekEnd;
+        });
+        const totalKm = weekWorkouts.reduce((s, wr) => s + effectiveDistance(wr) / 1000, 0);
+        planWeekly.push(Math.round(totalKm * 10) / 10);
+      }
+    }
+
+    const planAvgKm = planWeekly.length > 0
+      ? Math.round(planWeekly.reduce((a, b) => a + b, 0) / planWeekly.length * 10) / 10
+      : 0;
+    const planLastWeek = planWeekly[0] || 0;
+    const planPrevNonZero = planWeekly.find(w => w > 0) || 0;
+    const planBase = planLastWeek > 0 && planLastWeek >= planAvgKm * 0.3
+      ? planLastWeek
+      : Math.round(planPrevNonZero * 0.6 * 10) / 10;
+    const planMax = Math.round(planBase * 1.15);
+    const lowWeek = planLastWeek === 0 || planLastWeek < planAvgKm * 0.3;
+
+    const planLevel = getRunnerLevel(planAvgKm);
+
+    if (planWeekly.length === 0 || planAvgKm === 0) {
+      planSteps.push({
+        title: 'Нет тренировок для расчёта',
+        detail: 'Логика плана опирается на последние 4 недели. Без них AI запрашивает базовый план.',
+        status: 'warning'
+      });
+    } else {
+      planSteps.push({
+        title: `Anchor (отправная точка): ${anchor.toLocaleDateString('ru-RU')}`,
+        detail: lastW && lastW.length > 0
+          ? `Понедельник после последней тренировки (${new Date(lastW[0].date).toLocaleDateString('ru-RU')}). Окно анализа: 4 недели до anchor.`
+          : `Нет тренировок — anchor = сегодня.`,
+        status: 'ok'
+      });
+      planSteps.push({
+        title: `Недельные объёмы (свежие → старые): ${planWeekly.join(', ')} км`,
+        detail: `4 календарные недели (Пн-Вс) до anchor. Используется effectiveDistance (manual_distance > distance).`,
+        status: 'ok'
+      });
+      planSteps.push({
+        title: `Средний объём: ${planAvgKm} км/нед`,
+        detail: `Σ объёмов / 4 = ${planAvgKm}.`,
+        formula: 'avg = Σ weekly / 4',
+        status: 'ok'
+      });
+      planSteps.push({
+        title: `Последняя неделя: ${planLastWeek} км`,
+        detail: lowWeek
+          ? `Меньше 30% от среднего → AI считает это пропуском (болезнь/отдых). База берётся как 60% от предпоследней нормальной недели.`
+          : `≥30% от среднего → нормальная неделя, берётся за базу напрямую.`,
+        status: lowWeek ? 'warning' : 'ok'
+      });
+      planSteps.push({
+        title: `База плана: ${planBase} км`,
+        detail: lowWeek
+          ? `prevNonZero × 0.6 = ${planPrevNonZero} × 0.6 = ${planBase}. Мягкое возвращение после провала.`
+          : `lastWeek = ${planLastWeek} → база ${planBase}.`,
+        formula: 'base = lastWeek (если ≥30% от avg) иначе prevNonZero × 0.6',
+        status: 'ok'
+      });
+      planSteps.push({
+        title: `Жёсткий потолок плана: ${planMax} км`,
+        detail: `База + 10–15% максимум. AI обязан удержать суммарный километраж недели в этих рамках.`,
+        formula: 'maxPlan = base × 1.15',
+        status: 'ok'
+      });
+      planSteps.push({
+        title: `Уровень бегуна: ${planLevel}`,
+        detail: `<20 км/нед → beginner (3-4 трен., max 1 ключевая), 20-50 → intermediate (4-5 трен., max 2), 50+ → advanced (5-6 трен., 2-3 ключевых).`,
+        status: 'ok'
+      });
+      if (estimate.vdot && paceZones) {
+        planSteps.push({
+          title: `VDOT для зон: ${estimate.vdot} (источник: ${estimate.source})`,
+          detail: `AI получит готовые темповые зоны: Easy ${formatPace(paceZones.easyMin)}–${formatPace(paceZones.easyMax)}, M ${formatPace(paceZones.marathon)}, T ${formatPace(paceZones.threshold)}, I ${formatPace(paceZones.interval)}, R ${formatPace(paceZones.repetition)}.`,
+          status: 'ok'
+        });
+      } else {
+        planSteps.push({
+          title: 'VDOT не определён',
+          detail: 'AI получит fallback-инструкции: Easy = текущий avg + 60-90 сек/км, Tempo = avg − 10-20 сек/км и т.п.',
+          status: 'warning'
+        });
+      }
+      if (macroPlan && macroPlan.weeks?.[macroPlan.current_week - 1]) {
+        const cw = macroPlan.weeks[macroPlan.current_week - 1];
+        planSteps.push({
+          title: `Из макро-плана: фаза "${cw.phase}", цель ${cw.target_volume_km} км`,
+          detail: `AI получит фазу как ориентир (база/build/peak/taper) и целевой объём как guideline. Реальный объём адаптируется под compliance последних недель.`,
+          status: 'ok'
+        });
+      }
+    }
+
+    sections.push({
+      id: 'planLogic',
+      title: 'Логика генерации недельного плана',
+      result: planAvgKm > 0 ? `база ${planBase} км, max ${planMax} км` : 'Нет данных',
+      status: planAvgKm > 0 ? 'ok' : 'warning',
+      steps: planSteps
     });
 
     const vdotSource = estimate.source === 'recent' ? 'workouts' : estimate.source === 'decay' ? 'decay' : null;
