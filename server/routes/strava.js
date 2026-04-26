@@ -632,67 +632,91 @@ router.post('/sync-splits-500/:workoutId', authMiddleware, async (req, res) => {
   try {
     const { workoutId } = req.params;
 
-    // 1. Get workout from DB
-    const { data: workout, error: wErr } = await supabase
-      .from('workouts')
-      .select('id, strava_id, splits_500m, user_id')
-      .eq('id', workoutId)
-      .eq('user_id', req.user.id)
-      .single();
+    // 1. Get workout from DB (include streams_data cache)
+    const streamsCol = missingColumns.has('streams_data') ? '' : ', streams_data';
+    let workout, wErr;
+    {
+      const r = await supabase
+        .from('workouts')
+        .select(`id, strava_id, splits_500m, user_id${streamsCol}`)
+        .eq('id', workoutId)
+        .eq('user_id', req.user.id)
+        .single();
+      workout = r.data;
+      wErr = r.error;
+      if (wErr && /streams_data/.test(wErr.message || '')) {
+        missingColumns.add('streams_data');
+        const r2 = await supabase
+          .from('workouts')
+          .select('id, strava_id, splits_500m, user_id')
+          .eq('id', workoutId)
+          .eq('user_id', req.user.id)
+          .single();
+        workout = r2.data;
+        wErr = r2.error;
+      }
+    }
 
     if (wErr || !workout) {
       return res.status(404).json({ error: 'Workout not found' });
     }
 
-    // 2. Return cached if available
+    // 2. Return cached splits if available
     if (workout.splits_500m) {
       const cached = typeof workout.splits_500m === 'string'
         ? JSON.parse(workout.splits_500m) : workout.splits_500m;
       return res.json({ splits_500m: cached, cached: true });
     }
 
-    // 3. Fetch streams from Strava
-    const fullUser = await loadUserWithTokens(req.user.id);
-    const token = await getValidToken(fullUser);
-
-    let streamsData;
-    try {
-      const streamsResp = await stravaGet(
-        `https://www.strava.com/api/v3/activities/${workout.strava_id}/streams`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-          params: { keys: 'distance,time,heartrate', key_type: 'value' }
-        },
-        req.user.id
-      );
-      streamsData = streamsResp.data;
-    } catch (streamErr) {
-      if (streamErr.response?.status === 429) {
-        return res.status(429).json({ error: 'Strava rate limit, try again later' });
-      }
-      if (streamErr.response?.status === 404) {
-        return res.status(404).json({ error: 'GPS data not available for this workout' });
-      }
-      throw streamErr;
+    // 2b. Try to use cached streams_data (no Strava call)
+    let packed = null;
+    if (workout.streams_data) {
+      packed = typeof workout.streams_data === 'string'
+        ? JSON.parse(workout.streams_data) : workout.streams_data;
     }
 
-    // 4. Parse streams
-    const distStream = streamsData.find(s => s.type === 'distance');
-    const timeStream = streamsData.find(s => s.type === 'time');
-    const hrStream = streamsData.find(s => s.type === 'heartrate');
+    // 3. Fetch streams from Strava if not cached
+    if (!packed) {
+      const fullUser = await loadUserWithTokens(req.user.id);
+      const token = await getValidToken(fullUser);
 
-    if (!distStream || !timeStream) {
+      try {
+        const streamsResp = await stravaGet(
+          `https://www.strava.com/api/v3/activities/${workout.strava_id}/streams`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+            params: { keys: 'time,distance,heartrate', key_type: 'value' }
+          },
+          req.user.id
+        );
+        packed = packStreams(streamsResp.data);
+      } catch (streamErr) {
+        if (streamErr.response?.status === 429) {
+          return res.status(429).json({ error: 'Strava rate limit, try again later' });
+        }
+        if (streamErr.response?.status === 404) {
+          return res.status(404).json({ error: 'GPS data not available for this workout' });
+        }
+        throw streamErr;
+      }
+
+      // Cache full streams for future use
+      await saveStreamsData(workoutId, packed);
+    }
+
+    // 4. Validate
+    if (!packed.distance || !packed.time) {
       return res.status(404).json({ error: 'GPS data not available for this workout' });
     }
 
     // 5. Calculate 500m splits
     const splits500m = calculate500mSplits(
-      distStream.data,
-      timeStream.data,
-      hrStream ? hrStream.data : null
+      packed.distance,
+      packed.time,
+      packed.heartrate || null
     );
 
-    // 6. Cache in DB
+    // 6. Cache splits in DB
     await supabase
       .from('workouts')
       .update({ splits_500m: JSON.stringify(splits500m) })
@@ -705,8 +729,115 @@ router.post('/sync-splits-500/:workoutId', authMiddleware, async (req, res) => {
   }
 });
 
-// Helper: fire-and-forget 500m splits calculation for a workout
-async function fetchAndSave500mSplits(workoutId, stravaId, userId) {
+// POST /api/strava/sync-streams/:workoutId — fetch raw streams (HR/distance/time) and cache.
+// Used by HR chart on workout detail. Idempotent: returns cached on subsequent calls.
+router.post('/sync-streams/:workoutId', authMiddleware, async (req, res) => {
+  try {
+    const { workoutId } = req.params;
+
+    const streamsCol = missingColumns.has('streams_data') ? '' : ', streams_data';
+    let workout, wErr;
+    {
+      const r = await supabase
+        .from('workouts')
+        .select(`id, strava_id, user_id${streamsCol}`)
+        .eq('id', workoutId)
+        .eq('user_id', req.user.id)
+        .single();
+      workout = r.data;
+      wErr = r.error;
+      if (wErr && /streams_data/.test(wErr.message || '')) {
+        missingColumns.add('streams_data');
+        const r2 = await supabase
+          .from('workouts')
+          .select('id, strava_id, user_id')
+          .eq('id', workoutId)
+          .eq('user_id', req.user.id)
+          .single();
+        workout = r2.data;
+        wErr = r2.error;
+      }
+    }
+
+    if (wErr || !workout) {
+      return res.status(404).json({ error: 'Workout not found' });
+    }
+
+    // Return cached streams if available
+    if (workout.streams_data) {
+      const cached = typeof workout.streams_data === 'string'
+        ? JSON.parse(workout.streams_data) : workout.streams_data;
+      return res.json({ streams: cached, cached: true });
+    }
+
+    // Fetch from Strava
+    const fullUser = await loadUserWithTokens(req.user.id);
+    const token = await getValidToken(fullUser);
+
+    let packed;
+    try {
+      const streamsResp = await stravaGet(
+        `https://www.strava.com/api/v3/activities/${workout.strava_id}/streams`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          params: { keys: 'time,distance,heartrate', key_type: 'value' }
+        },
+        req.user.id
+      );
+      packed = packStreams(streamsResp.data);
+    } catch (streamErr) {
+      if (streamErr.response?.status === 429) {
+        return res.status(429).json({ error: 'Strava rate limit, try again later' });
+      }
+      if (streamErr.response?.status === 404) {
+        return res.status(404).json({ error: 'Streams not available for this workout' });
+      }
+      throw streamErr;
+    }
+
+    if (!packed.time || !packed.heartrate) {
+      return res.status(404).json({ error: 'No HR data in streams' });
+    }
+
+    await saveStreamsData(workoutId, packed);
+    res.json({ streams: packed, cached: false });
+  } catch (err) {
+    console.error('Sync-streams error:', err.response?.data || err.message);
+    res.status(500).json({ error: 'Failed to fetch streams' });
+  }
+});
+
+// Pack Strava streams response into a single object: { time: [...], heartrate: [...], ... }
+function packStreams(streamsData) {
+  const packed = {};
+  for (const s of streamsData) {
+    if (s && s.type && Array.isArray(s.data)) {
+      packed[s.type] = s.data;
+    }
+  }
+  return packed;
+}
+
+// Save streams_data to DB. Graceful if column doesn't exist yet.
+async function saveStreamsData(workoutId, packedStreams) {
+  try {
+    const { error } = await supabase
+      .from('workouts')
+      .update({ streams_data: packedStreams })
+      .eq('id', workoutId);
+    if (error && /streams_data/.test(error.message || '')) {
+      missingColumns.add('streams_data');
+      return false;
+    }
+    return !error;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Helper: fire-and-forget — fetch full streams (HR, cadence, altitude, velocity, latlng + base)
+// and compute 500m splits. Called from webhook on new workout creation.
+async function fetchAndSaveStreamsAndSplits(workoutId, stravaId, userId) {
   try {
     const fullUser = await loadUserWithTokens(userId);
     const token = await getValidToken(fullUser);
@@ -715,21 +846,27 @@ async function fetchAndSave500mSplits(workoutId, stravaId, userId) {
       `https://www.strava.com/api/v3/activities/${stravaId}/streams`,
       {
         headers: { Authorization: `Bearer ${token}` },
-        params: { keys: 'distance,time,heartrate', key_type: 'value' }
+        params: { keys: 'time,distance,heartrate', key_type: 'value' }
       },
       userId
     );
 
-    const distStream = streamsResp.data.find(s => s.type === 'distance');
-    const timeStream = streamsResp.data.find(s => s.type === 'time');
-    const hrStream = streamsResp.data.find(s => s.type === 'heartrate');
+    const packed = packStreams(streamsResp.data);
 
-    if (!distStream || !timeStream) return;
+    // Need at least distance + time to do anything useful
+    if (!packed.distance || !packed.time) {
+      console.log(`No GPS streams for workout ${workoutId} — skipping`);
+      return;
+    }
 
+    // Save full streams to DB cache (one-shot, no extra Strava request later)
+    await saveStreamsData(workoutId, packed);
+
+    // Compute 500m splits from cached streams (no extra Strava call)
     const splits500m = calculate500mSplits(
-      distStream.data,
-      timeStream.data,
-      hrStream ? hrStream.data : null
+      packed.distance,
+      packed.time,
+      packed.heartrate || null
     );
 
     await supabase
@@ -737,12 +874,14 @@ async function fetchAndSave500mSplits(workoutId, stravaId, userId) {
       .update({ splits_500m: JSON.stringify(splits500m) })
       .eq('id', workoutId);
 
-    console.log(`500m splits saved for workout ${workoutId}`);
+    console.log(`Streams + 500m splits saved for workout ${workoutId}`);
   } catch (err) {
-    // Silently fail — will be computed on-demand later
-    console.error(`Failed to pre-compute 500m splits for ${workoutId}:`, err.message);
+    console.error(`Failed to pre-fetch streams for ${workoutId}:`, err.message);
   }
 }
+
+// Backwards-compat alias (still referenced from webhook)
+const fetchAndSave500mSplits = fetchAndSaveStreamsAndSplits;
 
 // ============ Webhook event log (in-memory, last 50 events) ============
 const webhookLog = [];

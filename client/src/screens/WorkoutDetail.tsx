@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import './WorkoutDetail.css';
 import { workouts, ai, strava } from '../api/api';
 import { formatPace, formatDistance, formatTime, formatDateFull, getTypeLabel, getTypeBadge } from '../utils';
+import HrChart from '../components/HrChart';
 
 // Helper: localize suspicious reason code
 function localizeReason(reason: string, t: any): string {
@@ -58,6 +59,11 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
   const [splits500mLoading, setSplits500mLoading] = useState(false);
   const [splits500mError, setSplits500mError] = useState<string | null>(null);
   const [splitsLoading, setSplitsLoading] = useState(false);
+
+  // HR chart states
+  const [streams, setStreams] = useState<{ time: number[]; heartrate: number[]; distance?: number[] } | null>(null);
+  const [hrZones, setHrZones] = useState<any>(null);
+  const [hrMethod, setHrMethod] = useState<'karvonen' | 'pctHRmax' | 'calibrated' | null>(null);
 
   // GPS anomaly states
   const [showExplainModal, setShowExplainModal] = useState(false);
@@ -160,6 +166,38 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
     };
     fetchWorkout();
   }, [workoutId]);
+
+  // Fetch HR streams + personal HR zones (in parallel) for the chart
+  useEffect(() => {
+    if (!workout || !workout.average_heartrate) return;
+
+    // Use cached streams_data from workout if present, otherwise fetch
+    if (workout.streams_data) {
+      const cached = typeof workout.streams_data === 'string'
+        ? JSON.parse(workout.streams_data) : workout.streams_data;
+      if (cached?.time && cached?.heartrate) setStreams(cached);
+    } else if (!streams) {
+      strava.syncStreams(workoutId)
+        .then((res: any) => {
+          if (res?.streams?.time && res?.streams?.heartrate) {
+            setStreams(res.streams);
+          }
+        })
+        .catch(() => {
+          // Streams not available — chart simply won't render
+        });
+    }
+
+    // Fetch personal HR zones once
+    if (!hrZones) {
+      ai.getPaceZones()
+        .then((res: any) => {
+          if (res?.hrZones) setHrZones(res.hrZones);
+          if (res?.hrMethod) setHrMethod(res.hrMethod);
+        })
+        .catch(() => {});
+    }
+  }, [workout, workoutId]);
 
   const handleAnalyze = async () => {
     setAnalysisLoading(true);
@@ -328,6 +366,10 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
         <div className="workout-description">
           <p>{workout.description}</p>
         </div>
+      )}
+
+      {streams && streams.time && streams.heartrate && (
+        <HrChart streams={streams} hrZones={hrZones} hrMethod={hrMethod} />
       )}
 
       {splitsLoading && (

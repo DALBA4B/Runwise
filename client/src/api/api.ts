@@ -67,6 +67,7 @@ export const strava = {
   syncAll: () => request('/api/strava/sync-all', { method: 'POST' }),
   syncSplits: (workoutId: string) => request(`/api/strava/sync-splits/${workoutId}`, { method: 'POST' }),
   syncSplits500: (workoutId: string) => request(`/api/strava/sync-splits-500/${workoutId}`, { method: 'POST' }),
+  syncStreams: (workoutId: string) => request(`/api/strava/sync-streams/${workoutId}`, { method: 'POST' }),
   syncStatus: () => request('/api/strava/sync-status'),
   rateLimit: () => request('/api/strava/rate-limit'),
   adminRateLimit: (secret: string) => request('/api/strava/rate-limit/global', {

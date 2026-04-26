@@ -339,6 +339,8 @@
     "verified": "Verified",
     "savingCorrection": "Saving...",
     "aerobicDecoupling": "HR Drift",
+    "hrChart": "Heart Rate Chart",
+    "noHrData": "No heart rate data for this workout",
     "firstHalf": "1st half",
     "secondHalf": "2nd half",
     "driftGood": "Excellent",

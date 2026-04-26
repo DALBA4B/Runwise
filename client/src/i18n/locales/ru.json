@@ -339,6 +339,8 @@
     "verified": "Проверено",
     "savingCorrection": "Сохраняю...",
     "aerobicDecoupling": "Дрейф пульса",
+    "hrChart": "График пульса",
+    "noHrData": "Нет данных пульса для этой тренировки",
     "firstHalf": "1-я половина",
     "secondHalf": "2-я половина",
     "driftGood": "Отлично",
