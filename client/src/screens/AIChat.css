@@ -215,6 +215,23 @@
   flex-direction: column;
   background-color: var(--color-bg);
   z-index: 50;
+  transition: bottom 0.18s ease;
+}
+
+/* Mobile only: hide bottom nav and slide input to the bottom edge while typing */
+@media (max-width: 768px) {
+  body.chat-input-focused .bottom-nav {
+    transform: translate(-50%, 100%);
+    pointer-events: none;
+  }
+  body.chat-input-focused .chat-input-area {
+    bottom: 0;
+    padding-bottom: max(6px, env(safe-area-inset-bottom));
+  }
+}
+
+.bottom-nav {
+  transition: transform 0.18s ease;
 }
 
 .chat-input-wrapper {

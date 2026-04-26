@@ -101,6 +101,21 @@ const AIChat: React.FC<AIChatProps> = ({ onWorkoutClick, isActive }) => {
     }
   }, [isActive]);
 
+  // Cleanup: ensure body class is removed if user leaves the screen with input focused
+  useEffect(() => {
+    return () => {
+      document.body.classList.remove('chat-input-focused');
+    };
+  }, []);
+
+  const handleInputFocus = () => {
+    document.body.classList.add('chat-input-focused');
+  };
+
+  const handleInputBlur = () => {
+    document.body.classList.remove('chat-input-focused');
+  };
+
   // Load chat history and AI prefs on mount
   useEffect(() => {
     const loadHistory = async () => {
@@ -375,6 +390,8 @@ const AIChat: React.FC<AIChatProps> = ({ onWorkoutClick, isActive }) => {
             placeholder={messageLimit && messageLimit.remaining <= 0 ? t('chat.limitReached') : t('chat.placeholder')}
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
+            onFocus={handleInputFocus}
+            onBlur={handleInputBlur}
             onKeyDown={e => {
               if (e.key === 'Enter' && !loading && !(messageLimit && messageLimit.remaining <= 0)) {
                 handleSendMessage(inputValue);
