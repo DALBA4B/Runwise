@@ -874,8 +874,12 @@ async function autoCalibrateHRZones(userId, paceZones) {
       // Use 10th and 90th percentile for robustness
       const p10 = hrs[Math.floor(hrs.length * 0.1)];
       const p90 = hrs[Math.floor(hrs.length * 0.9)];
-      calibrated[zone] = { from: p10, to: p90, samples: matching.length };
-      calibratedZones++;
+      // Reject degenerate zones (HR too stable across samples → unreliable calibration).
+      // Such zones must fall back to the formula-based ranges instead.
+      if (p90 - p10 >= 3) {
+        calibrated[zone] = { from: p10, to: p90, samples: matching.length };
+        calibratedZones++;
+      }
     }
   }
 

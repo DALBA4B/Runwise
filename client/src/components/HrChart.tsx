@@ -23,6 +23,7 @@ interface HrChartProps {
   };
   hrZones?: HrZones | null;
   hrMethod?: 'karvonen' | 'pctHRmax' | 'calibrated' | null;
+  showChart?: boolean;
 }
 
 const ZONE_KEYS = ['easy', 'marathon', 'threshold', 'interval', 'repetition'] as const;
@@ -64,7 +65,29 @@ function fmtTime(sec: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-const HrChart: React.FC<HrChartProps> = ({ streams, hrZones, hrMethod }) => {
+// Robust zone classification: each zone covers [from, nextZoneFrom),
+// last zone covers [from, +∞). HR below the lowest zone counts as the lowest.
+function classifyHrToZone(hr: number, hrZones: HrZones): ZoneKey | null {
+  const sorted = ZONE_KEYS
+    .map(key => ({ key, from: hrZones[key].from }))
+    .sort((a, b) => a.from - b.from);
+
+  if (sorted.length === 0) return null;
+  if (hr < sorted[0].from) return sorted[0].key;
+
+  for (let i = 0; i < sorted.length; i++) {
+    const cur = sorted[i];
+    const next = sorted[i + 1];
+    if (next) {
+      if (hr >= cur.from && hr < next.from) return cur.key;
+    } else {
+      if (hr >= cur.from) return cur.key;
+    }
+  }
+  return null;
+}
+
+const HrChart: React.FC<HrChartProps> = ({ streams, hrZones, showChart = false }) => {
   const { t } = useTranslation();
 
   // Filter out invalid HR samples (some watches put 0 between segments)
@@ -92,25 +115,25 @@ const HrChart: React.FC<HrChartProps> = ({ streams, hrZones, hrMethod }) => {
     for (let i = 0; i < times.length - 1; i++) {
       const dt = times[i + 1] - times[i];
       if (dt <= 0 || dt > 30) continue; // skip pauses
-      const hr = hrs[i];
-      // Find which zone this HR belongs to (use upper bound)
-      for (const key of ZONE_KEYS) {
-        const z = hrZones[key];
-        if (hr >= z.from && hr < z.to) {
-          seconds[key] += dt;
-          break;
-        }
-        // If HR is above the highest zone, count it as repetition
-        if (key === 'repetition' && hr >= z.from) {
-          seconds.repetition += dt;
-          break;
-        }
-      }
+      const zone = classifyHrToZone(hrs[i], hrZones);
+      if (zone) seconds[zone] += dt;
     }
     return seconds;
   }, [times, hrs, hrZones]);
 
   const totalZoneSec = ZONE_KEYS.reduce((s, k) => s + zoneSeconds[k], 0);
+
+  // HR stats: min / avg / max (from full unfiltered samples)
+  const hrStats = useMemo(() => {
+    if (hrs.length === 0) return null;
+    let mn = hrs[0], mx = hrs[0], sum = 0;
+    for (const v of hrs) {
+      if (v < mn) mn = v;
+      if (v > mx) mx = v;
+      sum += v;
+    }
+    return { min: mn, max: mx, avg: Math.round(sum / hrs.length) };
+  }, [hrs]);
 
   // Decimate for rendering — max 500 points
   const decimated = useMemo(() => {
@@ -131,8 +154,8 @@ const HrChart: React.FC<HrChartProps> = ({ streams, hrZones, hrMethod }) => {
 
   // Chart geometry
   const W = 600; // viewBox width
-  const H = 220; // viewBox height
-  const padding = { top: 10, right: 12, bottom: 28, left: 36 };
+  const H = 340; // viewBox height
+  const padding = { top: 14, right: 16, bottom: 36, left: 48 };
   const chartW = W - padding.left - padding.right;
   const chartH = H - padding.top - padding.bottom;
 
@@ -143,9 +166,24 @@ const HrChart: React.FC<HrChartProps> = ({ streams, hrZones, hrMethod }) => {
   // HR range with padding
   let hrMin = Math.min(...decimated.hr);
   let hrMax = Math.max(...decimated.hr);
-  const hrPad = Math.max(5, Math.round((hrMax - hrMin) * 0.1));
+  const hrPad = Math.max(8, Math.round((hrMax - hrMin) * 0.18));
   hrMin = Math.max(40, hrMin - hrPad);
   hrMax = Math.min(220, hrMax + hrPad);
+
+  // Extend range to include any HR zone that overlaps even slightly (so user sees the band)
+  if (hrZones) {
+    for (const key of ZONE_KEYS) {
+      const z = hrZones[key];
+      // If zone touches visible range → include the whole zone
+      if (z.to >= hrMin - 5 && z.from <= hrMax + 5) {
+        hrMin = Math.min(hrMin, z.from);
+        hrMax = Math.max(hrMax, z.to);
+      }
+    }
+    hrMin = Math.max(40, hrMin);
+    hrMax = Math.min(220, hrMax);
+  }
+
   const hrRange = Math.max(1, hrMax - hrMin);
 
   const xFor = (t: number) => padding.left + ((t - minTime) / timeSpan) * chartW;
@@ -190,14 +228,27 @@ const HrChart: React.FC<HrChartProps> = ({ streams, hrZones, hrMethod }) => {
   return (
     <div className="hr-chart-container">
       <div className="hr-chart-header">
-        <h3 className="section-title">❤️ {t('workout.hrChart')}</h3>
-        {hrMethod && (
-          <span className={`hr-zone-method-badge method-${hrMethod}`}>
-            {t(`paceZones.hr${hrMethod.charAt(0).toUpperCase() + hrMethod.slice(1)}`)}
-          </span>
-        )}
+        <h3 className="section-title">❤️ {showChart ? t('workout.hrChart') : t('workout.timeInZones')}</h3>
       </div>
 
+      {hrStats && (
+        <div className="hr-chart-stats">
+          <div className="hr-chart-stat">
+            <span className="hr-chart-stat-label">{t('workout.hrMin')}</span>
+            <span className="hr-chart-stat-value">{hrStats.min}</span>
+          </div>
+          <div className="hr-chart-stat">
+            <span className="hr-chart-stat-label">{t('workout.hrAvg')}</span>
+            <span className="hr-chart-stat-value hr-chart-stat-avg">{hrStats.avg}</span>
+          </div>
+          <div className="hr-chart-stat">
+            <span className="hr-chart-stat-label">{t('workout.hrMax')}</span>
+            <span className="hr-chart-stat-value">{hrStats.max}</span>
+          </div>
+        </div>
+      )}
+
+      {showChart && (
       <svg
         className="hr-chart-svg"
         viewBox={`0 0 ${W} ${H}`}
@@ -231,10 +282,10 @@ const HrChart: React.FC<HrChartProps> = ({ streams, hrZones, hrMethod }) => {
               opacity={0.5}
             />
             <text
-              x={padding.left - 6}
-              y={yFor(v) + 3}
+              x={padding.left - 8}
+              y={yFor(v) + 4}
               textAnchor="end"
-              fontSize="10"
+              fontSize="13"
               fill="var(--color-text-secondary)"
             >
               {v}
@@ -247,9 +298,9 @@ const HrChart: React.FC<HrChartProps> = ({ streams, hrZones, hrMethod }) => {
           <text
             key={`x-${i}`}
             x={xFor(tm)}
-            y={H - padding.bottom + 14}
+            y={H - padding.bottom + 20}
             textAnchor={i === 0 ? 'start' : i === timeTicks.length - 1 ? 'end' : 'middle'}
-            fontSize="10"
+            fontSize="13"
             fill="var(--color-text-secondary)"
           >
             {fmtTime(tm)}
@@ -261,11 +312,12 @@ const HrChart: React.FC<HrChartProps> = ({ streams, hrZones, hrMethod }) => {
           points={linePoints}
           fill="none"
           stroke="#ef4444"
-          strokeWidth="1.6"
+          strokeWidth="2.2"
           strokeLinejoin="round"
           strokeLinecap="round"
         />
       </svg>
+      )}
 
       {/* Time-in-zones bar */}
       {hrZones && totalZoneSec > 0 && (

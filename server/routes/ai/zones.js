@@ -132,11 +132,36 @@ router.get('/pace-zones', authMiddleware, async (req, res) => {
       hrMethod = calculated?.method || null;
     }
 
-    // Override easy zone upper bound with AeT if available
+    // Override easy zone upper bound with AeT — but only if it doesn't collapse marathon zone.
+    // If AeT lies above the marathon's natural top, applying it would push marathon.from past
+    // marathon.to and produce a zero-width zone. In that case skip the override.
     if (aetData && hrZones) {
-      hrZones.easy.to = aetData.aerobicThreshold;
-      if (hrZones.marathon.from < aetData.aerobicThreshold) {
-        hrZones.marathon.from = aetData.aerobicThreshold;
+      const aet = aetData.aerobicThreshold;
+      const canApply = hrZones.marathon.to - aet >= 3; // marathon needs ≥3 bpm of breathing room
+      if (canApply) {
+        hrZones.easy.to = aet;
+        if (hrZones.marathon.from < aet) {
+          hrZones.marathon.from = aet;
+        }
+      }
+    }
+
+    // Final sanitize: ensure every zone has minimum width and adjacency.
+    // If a zone is too narrow, expand it by pushing the next zone's `from` upward.
+    if (hrZones) {
+      const order = ['easy', 'marathon', 'threshold', 'interval', 'repetition'];
+      const MIN_WIDTH = 3;
+      for (let i = 0; i < order.length - 1; i++) {
+        const cur = hrZones[order[i]];
+        const next = hrZones[order[i + 1]];
+        if (!cur || !next) continue;
+        if (cur.to - cur.from < MIN_WIDTH) {
+          cur.to = cur.from + MIN_WIDTH;
+        }
+        if (next.from < cur.to) next.from = cur.to;
+        if (next.to - next.from < MIN_WIDTH) {
+          next.to = next.from + MIN_WIDTH;
+        }
       }
     }
 

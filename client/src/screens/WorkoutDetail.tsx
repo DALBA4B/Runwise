@@ -357,7 +357,6 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
           <div className="metric-info">
             <span className="metric-value">{workout.average_heartrate ? Math.round(workout.average_heartrate) : '—'}</span>
             <span className="metric-label">{t('workout.heartrate')}</span>
-            {workout.max_heartrate && <span className="metric-sub">{t('workout.maxHr', { value: Math.round(workout.max_heartrate) })}</span>}
           </div>
         </div>
       </div>
@@ -366,10 +365,6 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
         <div className="workout-description">
           <p>{workout.description}</p>
         </div>
-      )}
-
-      {streams && streams.time && streams.heartrate && (
-        <HrChart streams={streams} hrZones={hrZones} hrMethod={hrMethod} />
       )}
 
       {splitsLoading && (
@@ -467,6 +462,10 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
         );
       })()}
 
+      {streams && streams.time && streams.heartrate && (
+        <HrChart streams={streams} hrZones={hrZones} hrMethod={hrMethod} />
+      )}
+
       {/* Aerobic Decoupling — only for long runs (>10km) with 500m HR splits */}
       {(() => {
         const dist = workout.manual_distance || workout.distance || 0;
@@ -489,14 +488,15 @@ const WorkoutDetail: React.FC<WorkoutDetailProps> = ({ workoutId, onBack }) => {
 
         return (
           <div className="decoupling-section">
-            <h3 className="section-title">{t('workout.aerobicDecoupling')}</h3>
-            <div className="decoupling-card" style={{ borderLeft: `3px solid ${statusColor}` }}>
+            <h3 className="section-title">📈 {t('workout.aerobicDecoupling')}</h3>
+            <p className="decoupling-description">{t('workout.driftDescription')}</p>
+            <div className="decoupling-card" style={{ borderLeft: `4px solid ${statusColor}` }}>
               <div className="decoupling-drift" style={{ color: statusColor }}>
                 {drift > 0 ? '+' : ''}{drift}%
               </div>
               <div className="decoupling-details">
-                <span>{t('workout.firstHalf')}: {Math.round(avgHR1)} {t('units.bpm')}</span>
-                <span>{t('workout.secondHalf')}: {Math.round(avgHR2)} {t('units.bpm')}</span>
+                <span>{t('workout.firstHalf')}: <strong>{Math.round(avgHR1)} {t('units.bpm')}</strong></span>
+                <span>{t('workout.secondHalf')}: <strong>{Math.round(avgHR2)} {t('units.bpm')}</strong></span>
               </div>
               <div className="decoupling-status" style={{ color: statusColor }}>
                 {t(`workout.drift${status.charAt(0).toUpperCase() + status.slice(1)}`)}

@@ -192,34 +192,62 @@
 
 /* Aerobic Decoupling */
 .decoupling-section {
-  margin-top: var(--spacing-md);
+  margin: var(--spacing-lg) 0;
+  padding: var(--spacing-md);
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.decoupling-section .section-title {
+  margin: 0 0 var(--spacing-xs) 0;
+}
+
+.decoupling-description {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+  margin: 0 0 var(--spacing-md) 0;
 }
 
 .decoupling-card {
-  background: var(--color-bg-secondary);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: var(--spacing-md);
   display: flex;
   align-items: center;
   gap: var(--spacing-md);
+  flex-wrap: wrap;
 }
 
 .decoupling-drift {
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 700;
-  min-width: 60px;
+  min-width: 64px;
+  font-variant-numeric: tabular-nums;
 }
 
 .decoupling-details {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  font-size: 12px;
+  gap: 4px;
+  font-size: 13px;
   color: var(--color-text-secondary);
+}
+
+.decoupling-details strong {
+  color: var(--color-text);
+  font-weight: 600;
 }
 
 .decoupling-status {
   margin-left: auto;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
+}
+
+/* Bigger gap before AI analysis block */
+.ai-block {
+  margin-top: var(--spacing-xl);
 }
