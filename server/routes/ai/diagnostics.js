@@ -25,7 +25,8 @@ const {
   autoCalibrateHRZones,
   getHRTrendContext,
   getRecentDecouplingData,
-  getWeeklyTRIMP
+  getWeeklyTRIMP,
+  calcTRIMP
 } = require('./context');
 
 const {
@@ -851,6 +852,503 @@ router.get('/diagnostics', authMiddleware, async (req, res) => {
     }
 
     const complianceData = macroPlan ? analyzeRecentCompliance(macroPlan) : null;
+
+    // ============================
+    // SECTION 11: Training Stability (12 weeks)
+    // ============================
+    const stabilitySteps = [];
+    if (!stabilityData || stabilityData.weeklyVolumes.length === 0) {
+      stabilitySteps.push({
+        title: 'Нет данных',
+        detail: 'За 12 недель не нашли тренировок.',
+        status: 'warning'
+      });
+    } else {
+      const wv = stabilityData.weeklyVolumes;
+      stabilitySteps.push({
+        title: `Недельные объёмы за 12 нед (от старых к новым)`,
+        detail: wv.map(v => `${v} км`).join(' → '),
+        status: 'ok'
+      });
+      stabilitySteps.push({
+        title: `Средний объём: ${stabilityData.avgVolume} км/нед`,
+        detail: `Σ объёмов / 12 = ${stabilityData.avgVolume}.`,
+        formula: 'avg = Σ volumes / N',
+        status: 'ok'
+      });
+      stabilitySteps.push({
+        title: `Стандартное отклонение: ${stabilityData.volumeStdDev} км`,
+        detail: `Корень из ср. квадратов отклонений от среднего.`,
+        formula: 'σ = √(Σ(v − avg)² / N)',
+        status: 'ok'
+      });
+      stabilitySteps.push({
+        title: `Коэффициент вариации: ${stabilityData.coefficientOfVariation}`,
+        detail: `CV = σ / avg. <0.3 — стабильно, 0.3–0.5 — умеренно, >0.5 — нестабильно.`,
+        formula: 'CV = σ / avg',
+        status: stabilityData.coefficientOfVariation < 0.3 ? 'ok' : stabilityData.coefficientOfVariation < 0.5 ? 'warning' : 'error'
+      });
+      stabilitySteps.push({
+        title: `Пропущенные недели: ${stabilityData.gapWeeks} из 12`,
+        detail: `Недели с нулевым объёмом. >25% пропусков снижает consistency-скор.`,
+        status: stabilityData.gapWeeks === 0 ? 'ok' : stabilityData.gapWeeks < 3 ? 'warning' : 'error'
+      });
+      const cvScore = Math.max(0, 100 - stabilityData.coefficientOfVariation * 100);
+      const gapPenalty = (stabilityData.gapWeeks / 12) * 50;
+      stabilitySteps.push({
+        title: `Consistency-скор: ${stabilityData.consistency}/100`,
+        detail: `cvScore = max(0, 100 − CV×100) = ${Math.round(cvScore)}. gapPenalty = (${stabilityData.gapWeeks}/12)×50 = ${Math.round(gapPenalty)}. Итого = ${stabilityData.consistency}.`,
+        formula: 'consistency = max(0, cvScore − gapPenalty)',
+        status: stabilityData.consistency > 60 ? 'ok' : 'warning'
+      });
+      stabilitySteps.push({
+        title: `Вердикт: ${stabilityData.isStable ? 'стабильно' : 'нестабильно'}`,
+        detail: `Стабильно если consistency > 60 И пропусков < 25%.`,
+        status: stabilityData.isStable ? 'ok' : 'warning'
+      });
+    }
+    sections.push({
+      id: 'stability',
+      title: 'Стабильность тренировок (12 недель)',
+      result: stabilityData ? `${stabilityData.consistency}/100` : 'Нет данных',
+      status: stabilityData?.isStable ? 'ok' : 'warning',
+      steps: stabilitySteps
+    });
+
+    // ============================
+    // SECTION 12: Marathon Goal Realism
+    // ============================
+    const realismSteps = [];
+    if (!marathonGoal) {
+      realismSteps.push({
+        title: 'Нет цели на марафон',
+        detail: 'Добавь цель pb_42k с дедлайном, чтобы получить оценку реалистичности.',
+        status: 'info'
+      });
+    } else if (!marathonGoal.deadline) {
+      realismSteps.push({
+        title: 'У цели нет дедлайна',
+        detail: 'Без даты забега невозможно оценить, хватит ли времени на улучшение.',
+        status: 'warning'
+      });
+    } else if (!estimate.vdot) {
+      realismSteps.push({
+        title: 'VDOT не определён',
+        detail: 'Для прогноза нужен текущий VDOT (см. секцию VDOT).',
+        status: 'warning'
+      });
+    } else if (!goalRealism || goalRealism.isRealistic === null) {
+      realismSteps.push({
+        title: 'Не удалось рассчитать',
+        detail: 'Возможно, дедлайн уже прошёл или данных недостаточно.',
+        status: 'warning'
+      });
+    } else {
+      realismSteps.push({
+        title: `Цель: марафон за ${fmtTime(goalRealism.targetTime)}`,
+        detail: `Дедлайн: ${new Date(marathonGoal.deadline).toLocaleDateString('ru-RU')}, осталось ~${goalRealism.weeksAvailable} нед.`,
+        status: 'ok'
+      });
+      realismSteps.push({
+        title: `Текущий VDOT: ${goalRealism.currentVDOT} → прогноз ${fmtTime(goalRealism.currentPrediction)}`,
+        detail: `По формуле Дэниелса: marathon pace = zones.marathon × 42.195 км.`,
+        formula: 'T_pred = pace_marathon × 42.195',
+        status: 'ok'
+      });
+      realismSteps.push({
+        title: `Нужно срезать темп на ${goalRealism.paceImprovementNeeded} сек/км`,
+        detail: `Текущий темп − целевой = ${goalRealism.paceImprovementNeeded} сек/км. Это ~${(goalRealism.paceImprovementNeeded / 4).toFixed(1)} ед. VDOT (1 VDOT ≈ 4 сек/км).`,
+        status: 'ok'
+      });
+      realismSteps.push({
+        title: `Требуемый прогресс: ${goalRealism.requiredImprovement}%/мес VDOT`,
+        detail: `Реалистичный максимум: 2–3% в месяц. Если требуется >5%/мес — цель агрессивна.`,
+        status: goalRealism.requiredImprovement < 3 ? 'ok' : goalRealism.requiredImprovement < 5 ? 'warning' : 'error'
+      });
+      if (goalRealism.recommendedTime) {
+        realismSteps.push({
+          title: `Реалистичный прогноз: ${fmtTime(goalRealism.recommendedTime)}`,
+          detail: `При прогрессе 2%/мес × ${(goalRealism.weeksAvailable / 4.33).toFixed(1)} мес → VDOT ${goalRealism.recommendedVDOT}.`,
+          status: 'ok'
+        });
+      }
+      realismSteps.push({
+        title: `Вердикт: ${goalRealism.isRealistic ? 'цель достижима' : 'цель агрессивна'}`,
+        detail: goalRealism.isRealistic
+          ? `Требуемый темп прогресса <5%/мес — в рамках реалистичного.`
+          : `Нужен прогресс ≥5%/мес — выше типичного. Рассмотри ${fmtTime(goalRealism.recommendedTime)} как реалистичную цель.`,
+        status: goalRealism.isRealistic ? 'ok' : 'warning'
+      });
+    }
+    sections.push({
+      id: 'goalRealism',
+      title: 'Реалистичность цели на марафон',
+      result: goalRealism ? (goalRealism.isRealistic ? 'Реально' : 'Агрессивно') : '—',
+      status: goalRealism?.isRealistic ? 'ok' : (goalRealism ? 'warning' : 'info'),
+      steps: realismSteps
+    });
+
+    // ============================
+    // SECTION 13: Macro Plan Compliance
+    // ============================
+    const complianceSteps = [];
+    if (!macroPlan) {
+      complianceSteps.push({
+        title: 'Нет активного макро-плана',
+        detail: 'Создай макро-план, чтобы появилась статистика выполнения.',
+        status: 'info'
+      });
+    } else {
+      const currentWeekObj = macroPlan.weeks?.[macroPlan.current_week - 1];
+      const currentPhase = currentWeekObj?.phase || '—';
+      const phaseWeeks = (macroPlan.weeks || []).filter(w => w.phase === currentPhase);
+      const phaseIdx = phaseWeeks.findIndex(w => w === currentWeekObj) + 1;
+
+      complianceSteps.push({
+        title: `Текущая неделя: ${macroPlan.current_week} из ${macroPlan.weeks?.length || 0}`,
+        detail: `Фаза: ${currentPhase}${phaseIdx > 0 ? ` (${phaseIdx}/${phaseWeeks.length} в фазе)` : ''}. План на эту неделю: ${currentWeekObj?.target_volume_km || 0} км.`,
+        status: 'ok'
+      });
+
+      if (!complianceData) {
+        complianceSteps.push({
+          title: 'Нет завершённых недель',
+          detail: 'Compliance считается по уже прошедшим неделям. Дождись окончания первой недели.',
+          status: 'info'
+        });
+      } else {
+        complianceSteps.push({
+          title: `Завершено недель: ${complianceData.weeksCompleted} из ${complianceData.totalWeeks}`,
+          detail: `Compliance считается как actual_km / target_km × 100% по прошедшим неделям.`,
+          formula: 'compliance = actual / target × 100%',
+          status: 'ok'
+        });
+
+        const completedWeeks = (macroPlan.weeks || []).filter(w => w.compliance_pct !== undefined);
+        const recent = completedWeeks.slice(-4);
+        for (const w of recent) {
+          const status = w.compliance_pct >= 90 && w.compliance_pct <= 110 ? 'ok'
+            : w.compliance_pct >= 80 && w.compliance_pct <= 120 ? 'warning' : 'error';
+          complianceSteps.push({
+            title: `Неделя ${w.week_num || ''} (${w.phase}): ${w.compliance_pct}%`,
+            detail: `План ${w.target_volume_km} км → факт ${w.actual_volume_km} км (${w.actual_sessions} тренировок).`,
+            status
+          });
+        }
+
+        complianceSteps.push({
+          title: `Средний compliance за 4 нед: ${complianceData.avgCompliance}%`,
+          detail: `Тренд: ${complianceData.trend > 5 ? 'растёт' : complianceData.trend < -5 ? 'падает' : 'стабилен'} (${complianceData.trend > 0 ? '+' : ''}${complianceData.trend}% от первой к последней).`,
+          status: complianceData.avgCompliance >= 80 && complianceData.avgCompliance <= 120 ? 'ok' : 'warning'
+        });
+
+        if (complianceData.consecutiveLow >= 2) {
+          complianceSteps.push({
+            title: `${complianceData.consecutiveLow} нед. подряд недовыполнения (<80%)`,
+            detail: 'План завышен или есть проблемы с тренировками. Стоит снизить целевой объём.',
+            status: 'warning'
+          });
+        }
+        if (complianceData.consecutiveHigh >= 2) {
+          complianceSteps.push({
+            title: `${complianceData.consecutiveHigh} нед. подряд перевыполнения (>115%)`,
+            detail: 'План занижен — есть запас, можно увеличить.',
+            status: 'warning'
+          });
+        }
+        if (complianceData.needsAdjustment) {
+          complianceSteps.push({
+            title: 'Рекомендуется пересмотреть план',
+            detail: 'Стабильный перекос compliance — план не соответствует реальности.',
+            status: 'warning'
+          });
+        }
+      }
+    }
+    sections.push({
+      id: 'compliance',
+      title: 'Выполнение макро-плана',
+      result: complianceData ? `${complianceData.avgCompliance}% за 4 нед` : (macroPlan ? 'Нет завершённых нед' : 'Нет плана'),
+      status: complianceData
+        ? (complianceData.needsAdjustment ? 'warning' : 'ok')
+        : (macroPlan ? 'info' : 'info'),
+      steps: complianceSteps
+    });
+
+    // ============================
+    // SECTION 14-16: ACWR, Monotony/Strain, Intensity Distribution (80/20)
+    // ============================
+    // Single fetch for the last 28 days with HR + manual overrides
+    const since28 = new Date();
+    since28.setDate(since28.getDate() - 28);
+    const baseSel = 'date, distance, moving_time, average_heartrate';
+    const fullSel = baseSel + (workoutsState.hasAnomalyColumns ? ', is_suspicious, manual_distance, manual_moving_time' : '');
+
+    let { data: w28, error: w28err } = await supabase
+      .from('workouts')
+      .select(fullSel)
+      .eq('user_id', userId)
+      .gte('date', since28.toISOString());
+
+    if (w28err && w28err.message && /(is_suspicious|manual_)/.test(w28err.message)) {
+      workoutsState.hasAnomalyColumns = false;
+      const fb = await supabase
+        .from('workouts')
+        .select(baseSel)
+        .eq('user_id', userId)
+        .gte('date', since28.toISOString());
+      w28 = fb.data || [];
+    }
+    w28 = (w28 || []).filter(w => !(workoutsState.hasAnomalyColumns && w.is_suspicious));
+    const effDist = (w) => (workoutsState.hasAnomalyColumns && w.manual_distance) ? w.manual_distance : (w.distance || 0);
+    const effTime = (w) => (workoutsState.hasAnomalyColumns && w.manual_moving_time) ? w.manual_moving_time : (w.moving_time || 0);
+
+    const now28 = new Date();
+    const acuteCutoff = new Date(now28); acuteCutoff.setDate(acuteCutoff.getDate() - 7);
+    const w7 = w28.filter(w => new Date(w.date) >= acuteCutoff);
+
+    // ----------------------------
+    // SECTION 14: ACWR (Acute:Chronic Workload Ratio)
+    // ----------------------------
+    const acwrSteps = [];
+    const acuteKm = w7.reduce((s, w) => s + effDist(w) / 1000, 0);
+    const chronicKmTotal = w28.reduce((s, w) => s + effDist(w) / 1000, 0);
+    const chronicAvgWeek = chronicKmTotal / 4;
+
+    if (chronicAvgWeek <= 0) {
+      acwrSteps.push({
+        title: 'Недостаточно данных',
+        detail: 'За 28 дней не нашли тренировок с дистанцией.',
+        status: 'warning'
+      });
+    } else {
+      const acwr = acuteKm / chronicAvgWeek;
+      let acwrStatus = 'ok';
+      let acwrLabel = '';
+      if (acwr < 0.8) { acwrStatus = 'warning'; acwrLabel = 'detraining (недогруз)'; }
+      else if (acwr <= 1.3) { acwrStatus = 'ok'; acwrLabel = 'sweet spot (оптимум)'; }
+      else if (acwr <= 1.5) { acwrStatus = 'warning'; acwrLabel = 'caution (повышенный риск)'; }
+      else { acwrStatus = 'error'; acwrLabel = 'high risk (риск травмы)'; }
+
+      acwrSteps.push({
+        title: `Острая нагрузка (7 дней): ${Math.round(acuteKm * 10) / 10} км`,
+        detail: `Сумма дистанций за последние 7 дней (${w7.length} тренировок).`,
+        status: 'ok'
+      });
+      acwrSteps.push({
+        title: `Хроническая нагрузка (28 дней): ${Math.round(chronicKmTotal * 10) / 10} км → ${Math.round(chronicAvgWeek * 10) / 10} км/нед`,
+        detail: `Сумма за 28 дней / 4 = средний недельный объём (${w28.length} тренировок).`,
+        formula: 'chronic = total_28d / 4',
+        status: 'ok'
+      });
+      acwrSteps.push({
+        title: `ACWR = ${acwr.toFixed(2)} → ${acwrLabel}`,
+        detail: `${Math.round(acuteKm * 10) / 10} / ${Math.round(chronicAvgWeek * 10) / 10} = ${acwr.toFixed(2)}. Зоны: <0.8 detraining, 0.8–1.3 sweet spot, 1.3–1.5 caution, >1.5 risky.`,
+        formula: 'ACWR = acute / chronic',
+        status: acwrStatus
+      });
+    }
+    sections.push({
+      id: 'acwr',
+      title: 'Острая/хроническая нагрузка (ACWR)',
+      result: chronicAvgWeek > 0 ? `${(acuteKm / chronicAvgWeek).toFixed(2)}` : 'Нет данных',
+      status: chronicAvgWeek > 0 ? (() => {
+        const r = acuteKm / chronicAvgWeek;
+        return r < 0.8 || (r > 1.3 && r <= 1.5) ? 'warning' : r > 1.5 ? 'error' : 'ok';
+      })() : 'warning',
+      steps: acwrSteps
+    });
+
+    // ----------------------------
+    // SECTION 15: Monotony & Strain (Foster)
+    // ----------------------------
+    const monotonySteps = [];
+    // Daily TRIMP buckets for last 7 days
+    const dailyTRIMP = new Array(7).fill(0);
+    const restingHRForTrimp = profile.resting_heartrate || null;
+    const genderForTrimp = profile.gender || null;
+
+    let trimpWorkoutsCounted = 0;
+    for (const w of w7) {
+      const t = effTime(w);
+      if (!t || !w.average_heartrate) continue;
+      const trimp = calcTRIMP(t / 60, w.average_heartrate, restingHRForTrimp, maxHR, genderForTrimp);
+      if (!trimp) continue;
+      const daysAgo = Math.floor((now28 - new Date(w.date)) / (1000 * 60 * 60 * 24));
+      if (daysAgo >= 0 && daysAgo < 7) {
+        dailyTRIMP[daysAgo] += trimp;
+        trimpWorkoutsCounted++;
+      }
+    }
+
+    const sumTRIMP = dailyTRIMP.reduce((a, b) => a + b, 0);
+    const avgTRIMP = sumTRIMP / 7;
+    const variance = dailyTRIMP.reduce((s, v) => s + Math.pow(v - avgTRIMP, 2), 0) / 7;
+    const sdTRIMP = Math.sqrt(variance);
+    const monotony = sdTRIMP > 0 ? avgTRIMP / sdTRIMP : null;
+    const strain = monotony !== null ? Math.round(sumTRIMP * monotony) : null;
+
+    if (trimpWorkoutsCounted < 2) {
+      monotonySteps.push({
+        title: 'Недостаточно тренировок с пульсом',
+        detail: `За 7 дней нашли ${trimpWorkoutsCounted} тренировок с avg HR. Нужно ≥2 для расчёта.`,
+        status: 'warning'
+      });
+    } else {
+      monotonySteps.push({
+        title: `Дневной TRIMP (от вчера к 7 дням назад)`,
+        detail: dailyTRIMP.map(v => Math.round(v)).join(' → '),
+        status: 'ok'
+      });
+      monotonySteps.push({
+        title: `Недельный TRIMP: ${Math.round(sumTRIMP)}`,
+        detail: `Сумма дневных TRIMP за 7 дней.`,
+        status: 'ok'
+      });
+      monotonySteps.push({
+        title: `Среднее: ${Math.round(avgTRIMP)}, std: ${sdTRIMP.toFixed(1)}`,
+        detail: `Разброс нагрузки между днями недели.`,
+        status: 'ok'
+      });
+      let monoStatus = 'ok';
+      let monoLabel = '';
+      if (monotony !== null) {
+        if (monotony < 1.5) { monoStatus = 'ok'; monoLabel = 'разнообразно'; }
+        else if (monotony < 2) { monoStatus = 'warning'; monoLabel = 'однообразно'; }
+        else { monoStatus = 'error'; monoLabel = 'риск перетренированности'; }
+      }
+      monotonySteps.push({
+        title: `Monotony = ${monotony !== null ? monotony.toFixed(2) : '—'} → ${monoLabel}`,
+        detail: `Зоны: <1.5 разнообразно, 1.5–2 однообразно, >2 риск. Высокая monotony = одинаковая нагрузка каждый день, без отдыха.`,
+        formula: 'monotony = avgDailyTRIMP / stdDevDailyTRIMP',
+        status: monoStatus
+      });
+      let strainStatus = 'ok';
+      if (strain !== null) {
+        if (strain > 6000) strainStatus = 'error';
+        else if (strain > 4000) strainStatus = 'warning';
+      }
+      monotonySteps.push({
+        title: `Strain = ${strain !== null ? strain : '—'}`,
+        detail: `Недельный TRIMP × monotony. >4000 — высокая нагрузка, >6000 — зона риска (Foster).`,
+        formula: 'strain = weekly_TRIMP × monotony',
+        status: strainStatus
+      });
+    }
+    sections.push({
+      id: 'monotony',
+      title: 'Monotony & Strain (Foster)',
+      result: monotony !== null ? `M=${monotony.toFixed(2)}, S=${strain}` : 'Нет данных',
+      status: monotony === null ? 'warning'
+        : monotony >= 2 || (strain !== null && strain > 6000) ? 'error'
+        : monotony >= 1.5 || (strain !== null && strain > 4000) ? 'warning' : 'ok',
+      steps: monotonySteps
+    });
+
+    // ----------------------------
+    // SECTION 16: Intensity Distribution (80/20)
+    // ----------------------------
+    const distSteps = [];
+    const zonesUsed = hrZonesCalc?.zones || null;
+
+    if (!zonesUsed) {
+      distSteps.push({
+        title: 'Пульсовые зоны не определены',
+        detail: 'Без HR-зон нельзя классифицировать тренировки. См. секцию пульсовых зон.',
+        status: 'warning'
+      });
+    } else {
+      // Bucket workouts by HR zone using avg HR + duration
+      const buckets = { Easy: 0, Marathon: 0, Threshold: 0, Interval: 0, Repetition: 0 };
+      let classified = 0;
+      let totalSec = 0;
+      for (const w of w28) {
+        const hr = w.average_heartrate;
+        const t = effTime(w);
+        if (!hr || !t) continue;
+        let zone = null;
+        if (hr <= zonesUsed.Easy?.to) zone = 'Easy';
+        else if (hr <= zonesUsed.Marathon?.to) zone = 'Marathon';
+        else if (hr <= zonesUsed.Threshold?.to) zone = 'Threshold';
+        else if (hr <= zonesUsed.Interval?.to) zone = 'Interval';
+        else zone = 'Repetition';
+        buckets[zone] += t;
+        classified++;
+        totalSec += t;
+      }
+
+      if (totalSec === 0) {
+        distSteps.push({
+          title: 'Нет тренировок с пульсом за 28 дней',
+          detail: 'Нужны тренировки с avg HR и длительностью.',
+          status: 'warning'
+        });
+      } else {
+        const pct = (s) => Math.round((s / totalSec) * 1000) / 10;
+        const easyPct = pct(buckets.Easy);
+        const moderatePct = pct(buckets.Marathon);
+        const hardPct = pct(buckets.Threshold) + pct(buckets.Interval) + pct(buckets.Repetition);
+
+        distSteps.push({
+          title: `Классифицировано тренировок: ${classified}`,
+          detail: `Тренировка → зона по avg HR: Easy ≤ ${zonesUsed.Easy?.to}, Marathon ≤ ${zonesUsed.Marathon?.to}, Threshold ≤ ${zonesUsed.Threshold?.to}, выше → Interval/Repetition.`,
+          status: 'ok'
+        });
+
+        for (const [name, sec] of Object.entries(buckets)) {
+          if (sec === 0) continue;
+          distSteps.push({
+            title: `${name}: ${pct(sec)}%`,
+            detail: `${Math.round(sec / 60)} мин из ${Math.round(totalSec / 60)} мин общего времени.`,
+            status: 'ok'
+          });
+        }
+
+        // 80/20 verdict
+        const z1 = easyPct;
+        const z2 = moderatePct;
+        const z3 = Math.round(hardPct * 10) / 10;
+        let verdict = '';
+        let verdictStatus = 'ok';
+        if (z1 >= 78) {
+          verdict = 'отличное распределение (поляризованное)';
+          verdictStatus = 'ok';
+        } else if (z1 >= 65) {
+          verdict = 'умеренно поляризованное';
+          verdictStatus = 'warning';
+        } else {
+          verdict = 'слишком много среднеинтенсивных тренировок';
+          verdictStatus = 'error';
+        }
+
+        distSteps.push({
+          title: `Easy ${z1}% / Moderate ${z2}% / Hard ${z3}%`,
+          detail: `Принцип 80/20 (Сейлер): ≥80% времени должно быть в Easy, ≤20% в Threshold+. ${verdict}.`,
+          formula: 'goal: Easy ≥ 80%, Hard ≤ 20%',
+          status: verdictStatus
+        });
+
+        // Polarization Index (log-based)
+        const z1s = Math.max(buckets.Easy, 1);
+        const z2s = Math.max(buckets.Marathon, 1);
+        const z3s = Math.max(buckets.Threshold + buckets.Interval + buckets.Repetition, 1);
+        const pi = Math.log10((z1s / z2s) * z3s);
+        distSteps.push({
+          title: `Polarization Index: ${pi.toFixed(2)}`,
+          detail: `>2 — сильно поляризованные тренировки (классика elite endurance). <1 — пирамидальное распределение.`,
+          formula: 'PI = log10((Z1/Z2) × Z3)',
+          status: pi >= 2 ? 'ok' : pi >= 1 ? 'warning' : 'info'
+        });
+      }
+    }
+    sections.push({
+      id: 'intensity',
+      title: 'Распределение интенсивности (80/20)',
+      result: zonesUsed ? 'Рассчитано' : 'Нет HR-зон',
+      status: zonesUsed ? 'ok' : 'warning',
+      steps: distSteps
+    });
+
     const vdotSource = estimate.source === 'recent' ? 'workouts' : estimate.source === 'decay' ? 'decay' : null;
     const paceZonesData = estimate.vdot ? { vdot: estimate.vdot, source: vdotSource, zones: paceZones } : null;
     const hrZonesData = hrZonesCalc ? { zones: hrZonesCalc.zones, method: hrZonesCalc.method, aet: null } : null;
