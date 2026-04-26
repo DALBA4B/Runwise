@@ -1,99 +1,139 @@
 # Runwise — AI Тренер для Бегунов
 
-Веб-приложение для бегунов: синхронизация тренировок из Strava, AI-анализ, генерация планов и персональный чат с AI-тренером.
+Веб-приложение для бегунов: автосинхронизация тренировок из Strava, AI-анализ, генерация недельных и долгосрочных планов, персональный чат с AI-тренером и продвинутая аналитика (VDOT, темповые/пульсовые зоны, дрейф пульса, прогнозы на дистанции).
 
 ## Технологии
 
 | Фронтенд | Бэкенд | Сервисы |
 |----------|--------|---------|
 | React 18 + TypeScript | Node.js + Express | Supabase (PostgreSQL) |
-| React-i18next (RU/EN/UK) | JWT авторизация | Strava API (OAuth) |
-| Recharts (графики) | SSE стриминг | DeepSeek API (AI) |
-| PWA | Промокоды + Админка | |
+| react-i18next (RU/EN/UK) | JWT авторизация | Strava API (OAuth + Webhook) |
+| Recharts (графики) | SSE-стриминг | DeepSeek API (AI чат + tool-use) |
+| PWA (service worker) | express-rate-limit | |
 
 ## Возможности
 
-- **Strava интеграция** — OAuth авторизация, импорт тренировок и сплитов
-- **AI тренер** — персональный чат со стриминг-ответами, учитывает историю тренировок, цели, физические параметры
-- **Планы тренировок** — AI генерирует недельный план, можно менять прямо в чате
-- **Цели** — установка целей (объём, личные рекорды) с дедлайнами и прогнозами
-- **Личные рекорды** — ручные и из Strava (1км, 3км, 5км, 10км, полумарафон, марафон)
-- **Аналитика** — статистика за неделю/месяц/всё время, сравнение периодов, настраиваемые виджеты
-- **GPS-аномалии** — автоматическое обнаружение подозрительных данных тренировок
-- **Промокоды** — система премиум-доступа: безлимитный AI-чат, суммирование сроков, одноразовые/многоразовые коды
-- **Админ-панель** — создание/управление промокодами, история активаций (доступ по `/admin`)
-- **Локализация** — русский, английский, украинский (автовыбор по языку браузера)
-- **AI-персонализация** — пол тренера, длина ответов, характер, юмор, эмодзи
-- **Профиль** — возраст, рост, вес, пол для персонализации AI-рекомендаций
-- **PWA** — можно установить на телефон как приложение
+### Тренировки и синхронизация
+- **Strava OAuth** — вход через Strava, импорт всей истории тренировок
+- **Webhook авто-синхронизация** — новые тренировки появляются в приложении сразу после загрузки в Strava
+- **Сплиты** — поддержка стандартных 1 км и более точных 500 м (пересчёт из streams)
+- **HR streams** — посекундная запись пульса, кэшируется в БД для последующей аналитики
+- **GPS-аномалии** — автодетекция подозрительных тренировок (нереалистичный темп, разрывы), ручное подтверждение/исправление
+
+### AI тренер
+- **Чат со стриминг-ответами** (SSE), история сохраняется в БД
+- **Tool-use** — AI сам подгружает нужные данные через инструменты (поиск тренировок, статистика, прогнозы)
+- **Анализ конкретной тренировки** — AI комментарий по запросу
+- **Анализ недели** — общий вердикт по последним 7 дням
+- **Персонализация** — пол тренера, длина ответов, характер, юмор, эмодзи
+- **Лимит** — 15 сообщений/день для бесплатных юзеров, безлимит для премиум
+
+### Планирование
+- **Недельный план** — AI генерирует план на 7 дней с учётом последних тренировок
+- **Макро-план** (долгосрочная периодизация) — план на N недель к целевой гонке (марафон/полумарафон/10к), с фазами Base/Build/Peak/Taper
+- **Plan-vs-fact** — отслеживание выполнения макро-плана по неделям
+
+### Физиология и аналитика
+- **VDOT** — расчёт по личным рекордам (метод Daniels)
+- **Pace-зоны** — Easy/Marathon/Threshold/Interval/Repetition из VDOT
+- **HR-зоны** — три уровня точности:
+  1. **Калибровка по реальным данным** — сопоставление пульса со сплитами в pace-зонах за 6 недель
+  2. **Karvonen** (если есть пульс покоя)
+  3. **%HRmax** (fallback)
+- **Aerobic Threshold (AeT)** — детектор по дрейфу пульса в длительных
+- **HR-чарт тренировки** — время в каждой зоне с цветовой полоской, мин/средний/макс пульс
+- **Aerobic decoupling (дрейф пульса)** — насколько вырос пульс во второй половине тренировки при том же темпе
+- **Прогнозы** — Riegel с поправкой на пульс, свежесть, best efforts из Strava
+- **Reigel-страница диагностики** (`/diagnostics`) — пошаговая раскладка всех расчётов (VDOT, прогнозы, ACWR, monotony, 80/20, plan-vs-fact, training stability, marathon goal realism, weekly plan generation logic)
+
+### Цели и рекорды
+- **Цели** — объём (км/неделя), PB на дистанции (1/3/5/10/21/42 км) с дедлайнами и AI-прогнозом
+- **Личные рекорды** — ручные и автоимпорт best efforts из Strava
+
+### Прочее
+- **Промокоды** — премиум на N дней или навсегда, одно/многоразовые, суммирование сроков
+- **Админ-панель** (`/admin`) — управление промокодами, история активаций, мониторинг Strava API rate-limit и webhook лога
+- **Локализация** — RU/EN/UK с автовыбором по языку браузера
+- **PWA** — установка на телефон, оффлайн-кэш базовых ассетов
+- **Mobile-first UI** — тёмная тема, max-width 420px, нижняя навигация, анимации переходов
 
 ## Структура проекта
 
 ```
-├── client/                  # React фронтенд
-│   ├── public/              # PWA манифест, service worker
+├── client/                            # React фронтенд (TypeScript)
+│   ├── public/                        # PWA манифест и service-worker
 │   ├── src/
-│   │   ├── api/api.ts       # API клиент (REST + SSE стриминг)
-│   │   ├── components/      # UI компоненты
+│   │   ├── api/api.ts                 # API клиент (REST + SSE)
+│   │   ├── components/
 │   │   │   ├── ChatMessage.tsx
 │   │   │   ├── GoalProgressMini.tsx
+│   │   │   ├── HrChart.tsx            # График пульса с зонами + время в зонах
+│   │   │   ├── MacroPlanTimeline.tsx  # Визуализация макро-плана по неделям
+│   │   │   ├── MacroPlanView.tsx
 │   │   │   ├── MetricCard.tsx
 │   │   │   ├── PeriodComparison.tsx
 │   │   │   ├── PlanRow.tsx
 │   │   │   ├── WeekChart.tsx
 │   │   │   └── WorkoutRow.tsx
-│   │   ├── hooks/           # React хуки
+│   │   ├── hooks/
 │   │   │   ├── useAuth.ts
 │   │   │   └── useWorkouts.ts
-│   │   ├── config/
-│   │   │   └── metrics.ts   # Конфиг виджетов метрик
-│   │   ├── screens/         # Экраны приложения
-│   │   │   ├── Home.tsx         # Главная — метрики, график, AI-анализ
-│   │   │   ├── History.tsx      # История тренировок по месяцам
-│   │   │   ├── WorkoutDetail.tsx # Детали тренировки + сплиты
-│   │   │   ├── Plan.tsx         # Недельный план от AI
-│   │   │   ├── AIChat.tsx       # Чат с AI тренером
-│   │   │   ├── Profile.tsx      # Профиль: виджеты, физ. параметры, компоновка
-│   │   │   ├── profile/         # Подкомпоненты профиля
-│   │   │   │   ├── GoalsSection.tsx   # Цели: CRUD, прогресс, прогнозы
-│   │   │   │   ├── RecordsSection.tsx # Личные рекорды: CRUD
-│   │   │   │   └── SettingsModal.tsx  # Настройки, язык, промокод, logout
-│   │   │   ├── AdminPanel.tsx   # Админ-панель промокодов
-│   │   │   ├── Login.tsx        # Вход через Strava
-│   │   │   ├── ConsentScreen.tsx # Согласие на обработку данных
-│   │   │   └── PrivacyPolicy.tsx # Политика конфиденциальности
-│   │   ├── i18n/            # Локализация
-│   │   │   ├── index.ts
-│   │   │   └── locales/
-│   │   │       ├── ru.json
-│   │   │       ├── en.json
-│   │   │       └── uk.json
-│   │   ├── App.tsx          # Роутинг и навигация
-│   │   ├── App.css          # Все стили
-│   │   └── utils.ts         # Форматирование (темп, дистанция)
+│   │   ├── config/metrics.ts          # Конфиг виджетов метрик
+│   │   ├── screens/
+│   │   │   ├── Home.tsx               # Главная: метрики, график недели, AI-анализ
+│   │   │   ├── History.tsx            # История по месяцам
+│   │   │   ├── WorkoutDetail.tsx      # Детали тренировки: сплиты, HR-чарт, дрейф, AI-разбор
+│   │   │   ├── Plan.tsx               # Недельный план + переход к макро-плану
+│   │   │   ├── AIChat.tsx             # Чат с AI тренером (SSE-стриминг)
+│   │   │   ├── Profile.tsx            # Профиль, виджеты, физ. параметры, компоновка
+│   │   │   ├── profile/
+│   │   │   │   ├── GoalsSection.tsx
+│   │   │   │   ├── PaceZonesSection.tsx  # VDOT, pace-зоны, HR-зоны, AeT
+│   │   │   │   ├── RecordsSection.tsx
+│   │   │   │   └── SettingsModal.tsx
+│   │   │   ├── Diagnostics.tsx        # Полная диагностика расчётов
+│   │   │   ├── AdminPanel.tsx         # Админ-панель промокодов
+│   │   │   ├── Login.tsx
+│   │   │   ├── ConsentScreen.tsx
+│   │   │   └── PrivacyPolicy.tsx
+│   │   ├── i18n/locales/              # ru.json, en.json, uk.json
+│   │   ├── App.tsx                    # Корень: навигация, anim. переходы
+│   │   └── utils.ts
 │   └── .env.example
-├── server/                  # Express бэкенд
+├── server/                            # Express бэкенд (Node.js)
 │   ├── routes/
-│   │   ├── ai/              # AI модуль (чат, планы, анализ)
-│   │   │   ├── index.js     # Роуты: чат, план, анализ (лимит 15 сообщ/день)
-│   │   │   ├── context.js   # Загрузка данных из БД для AI контекста
-│   │   │   ├── prompts.js   # Системные промпты, персонажи, форматирование
-│   │   │   ├── tools.js     # AI-инструменты (поиск тренировок, статистика)
-│   │   │   └── deepseek.js  # Вызовы DeepSeek API (обычный + стриминг)
-│   │   ├── auth.js          # Strava OAuth + JWT
-│   │   ├── strava.js        # Синхронизация тренировок
-│   │   ├── workouts.js      # Тренировки, статистика, цели
-│   │   ├── profile.js       # Профиль и личные рекорды
-│   │   └── promo.js         # Промокоды и админ-эндпоинты
-│   ├── middleware/
-│   │   └── authMiddleware.js
-│   ├── index.js             # Точка входа сервера + rate limiting
-│   ├── supabase.js          # Клиент БД
+│   │   ├── ai/                        # AI модуль
+│   │   │   ├── index.js               # Сборка под-роутеров
+│   │   │   ├── chat.js                # /chat, /chat/stream, /chat/history, /chat/limit
+│   │   │   ├── workout.js             # /analyze-workout
+│   │   │   ├── plan.js                # /generate-plan, /plan, /weekly-analysis
+│   │   │   ├── zones.js               # /pace-zones (VDOT + HR-зоны + AeT)
+│   │   │   ├── macroPlan.js           # /macro-plan (GET/DELETE)
+│   │   │   ├── diagnostics.js         # /diagnostics (пошаговая раскладка всех расчётов)
+│   │   │   ├── context.js             # Загрузка данных юзера для AI/диагностики
+│   │   │   ├── prompts.js             # Системные промпты, персонажи
+│   │   │   ├── tools.js               # AI-инструменты (function calling)
+│   │   │   ├── vdot.js                # VDOT и pace-зоны (Daniels)
+│   │   │   └── deepseek.js            # Клиент DeepSeek (обычный + SSE)
+│   │   ├── workouts/                  # Тренировки/цели/прогнозы
+│   │   │   ├── index.js
+│   │   │   ├── workouts.js            # CRUD, stats, weekly, comparison, anomalies
+│   │   │   ├── goals.js               # /goals CRUD
+│   │   │   ├── predictions.js         # /goals/predictions (Riegel + HR + freshness)
+│   │   │   ├── riegelHelper.js        # Pure helper для расчётов прогнозов
+│   │   │   └── state.js               # Кэш доступности колонок БД
+│   │   ├── auth.js                    # Strava OAuth + JWT
+│   │   ├── strava.js                  # Синхронизация, webhook, splits, streams, rate-limit
+│   │   ├── profile.js                 # Профиль + личные рекорды
+│   │   └── promo.js                   # Промокоды + админ-эндпоинты
+│   ├── middleware/authMiddleware.js
+│   ├── index.js                       # Точка входа + rate-limiters
+│   ├── supabase.js
 │   └── .env.example
-├── supabase_schema.sql      # SQL схема базы данных
-├── netlify.toml             # Конфиг деплоя фронтенда
-├── railway.toml             # Конфиг деплоя бэкенда
-└── .gitignore
+├── supabase_schema.sql                # SQL схема БД
+├── netlify.toml                       # Деплой фронта
+├── railway.toml                       # Деплой бэка
+└── package.json                       # Корневые скрипты для Railway monorepo
 ```
 
 ## Быстрый старт
@@ -128,8 +168,11 @@ DEEPSEEK_API_KEY=your-api-key
 # JWT секрет (сгенерируй: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
 JWT_SECRET=your-secret
 
-# Админ-панель промокодов (любой пароль)
+# Админ-панель промокодов и админских эндпоинтов (любая случайная строка)
 ADMIN_SECRET=your-admin-secret
+
+# Strava webhook (любая случайная строка — должна совпадать с тем, что укажешь при регистрации webhook)
+STRAVA_WEBHOOK_VERIFY_TOKEN=your-webhook-verify-token
 ```
 
 **Клиент** — скопируй `client/.env.example` → `client/.env`:
@@ -193,28 +236,38 @@ npm start
 | Метод | Путь | Описание |
 |-------|------|----------|
 | POST | `/api/strava/sync` | Импорт последних 50 тренировок |
-| POST | `/api/strava/sync-all` | Импорт всей истории (фон) |
-| POST | `/api/strava/sync-splits-500/:id` | Загрузка 500м сплитов |
-| GET | `/api/strava/sync-status` | Статус синхронизации |
+| POST | `/api/strava/sync-all` | Импорт всей истории (фоновая задача) |
+| POST | `/api/strava/sync-splits/:id` | Загрузка 1 км сплитов и best_efforts для тренировки |
+| POST | `/api/strava/sync-splits-500/:id` | Расчёт 500 м сплитов из streams |
+| POST | `/api/strava/sync-streams/:id` | Загрузка/кэширование raw streams (HR/distance/time) |
+| GET | `/api/strava/sync-status` | Статус синхронизации (количество загруженных) |
+| GET | `/api/strava/rate-limit` | Текущая нагрузка на Strava API (для юзера) |
+| GET | `/api/strava/rate-limit/global` | Глобальная нагрузка по всем юзерам (admin) |
+| GET | `/api/strava/webhook-log` | Лог webhook-событий (admin) |
+| GET/POST | `/api/strava/webhook` | Strava webhook (verify + event) |
 
 ### AI
 | Метод | Путь | Описание |
 |-------|------|----------|
-| POST | `/api/ai/chat` | Чат (обычный) |
-| POST | `/api/ai/chat/stream` | Стриминг чат (SSE) |
-| GET | `/api/ai/chat/limit` | Лимит сообщений (isPremium) |
+| POST | `/api/ai/chat` | Чат (обычный режим) |
+| POST | `/api/ai/chat/stream` | Чат с SSE стримингом + tool-use |
+| GET | `/api/ai/chat/limit` | Лимит сообщений (`isPremium`) |
 | GET | `/api/ai/chat/history` | История чата |
 | DELETE | `/api/ai/chat/history` | Очистить историю |
-| POST | `/api/ai/analyze-workout` | Анализ тренировки |
-| POST | `/api/ai/generate-plan` | Генерация плана |
-| GET | `/api/ai/plan` | Текущий план |
-| POST | `/api/ai/weekly-analysis` | Анализ недели |
+| POST | `/api/ai/analyze-workout` | AI-разбор конкретной тренировки |
+| POST | `/api/ai/generate-plan` | Генерация недельного плана |
+| GET | `/api/ai/plan` | Текущий недельный план |
+| POST | `/api/ai/weekly-analysis` | Анализ последних 7 дней |
+| GET | `/api/ai/pace-zones` | VDOT + pace-зоны + HR-зоны + AeT |
+| GET | `/api/ai/macro-plan` | Активный макро-план + plan-vs-fact |
+| DELETE | `/api/ai/macro-plan` | Отменить активный макро-план |
+| GET | `/api/ai/diagnostics` | Полная пошаговая диагностика расчётов |
 
 ### Профиль
 | Метод | Путь | Описание |
 |-------|------|----------|
 | GET | `/api/profile` | Получить профиль |
-| PUT | `/api/profile` | Обновить (age, height_cm, weight_kg, gender, ai_preferences) |
+| PUT | `/api/profile` | Обновить (age, height_cm, weight_kg, gender, ai_preferences, max_heartrate_user, resting_heartrate) |
 | GET | `/api/profile/records` | Личные рекорды |
 | PUT | `/api/profile/records` | Добавить/обновить рекорд |
 | DELETE | `/api/profile/records/:type` | Удалить рекорд |
@@ -275,15 +328,44 @@ npm start
 
 | Таблица | Описание |
 |---------|----------|
-| `users` | Пользователи, Strava токены, физические параметры, AI настройки, премиум-статус |
-| `workouts` | Тренировки из Strava, сплиты, GPS-аномалии |
+| `users` | Пользователи, Strava токены, физ. параметры (age/height/weight/gender, max/resting HR), AI-настройки, премиум-статус (`premium_until`, `is_lifetime_premium`) |
+| `workouts` | Тренировки из Strava: дистанция, время, темп, пульс, сплиты (1 км и 500 м), best efforts, raw streams (HR/distance/time), GPS-аномалии, ручные правки (`manual_distance`, `manual_moving_time`) |
 | `plans` | Недельные тренировочные планы от AI |
-| `goals` | Цели пользователей с дедлайнами |
-| `personal_records` | Личные рекорды по дистанциям |
+| `macro_plans` | Долгосрочные периодизированные планы (12-24+ недель к гонке) с фазами Base/Build/Peak/Taper |
+| `goals` | Цели пользователей (объём, PB) с дедлайнами и кэшированным `predicted_time` |
+| `personal_records` | Личные рекорды по дистанциям (1/3/5/10/21/42 км), ручные или из Strava best efforts |
 | `chat_messages` | История чата с AI тренером |
-| `promo_codes` | Промокоды (код, длительность, лимит использований) |
-| `promo_activations` | Активации промокодов пользователями |
+| `promo_codes` | Промокоды (длительность, лимит использований, активность) |
+| `promo_activations` | Активации промокодов пользователями (с датой истечения) |
+
+## Rate-limits
+
+Применяются на бэке через `express-rate-limit` (per-IP, окно 1 минута):
+
+| Группа эндпоинтов | Лимит/мин |
+|-------------------|-----------|
+| Общий `/api/*` | 100 |
+| `/api/auth/*` | 10 |
+| `/api/ai/*` | 20 (DeepSeek платный) |
+| `/api/promo/*` | 15 (защита от brute-force) |
+
+Также трекается потребление Strava API (1000 запросов/15мин) с разбивкой по юзерам — доступно через `/api/strava/rate-limit/global`.
+
+## Strava Webhook
+
+Для автоматической синхронизации новых тренировок:
+
+1. Зарегистрируй подписку через Strava API (один раз):
+   ```bash
+   curl -X POST https://www.strava.com/api/v3/push_subscriptions \
+     -F client_id=YOUR_CLIENT_ID \
+     -F client_secret=YOUR_CLIENT_SECRET \
+     -F callback_url=https://your-backend.up.railway.app/api/strava/webhook \
+     -F verify_token=YOUR_STRAVA_WEBHOOK_VERIFY_TOKEN
+   ```
+2. После одобрения Strava будет слать события на `/api/strava/webhook` (POST), а сервер сам подтянет новую тренировку, сплиты, streams и сохранит в БД.
+3. Лог последних webhook-событий доступен админу через `/api/strava/webhook-log`.
 
 ---
 
-**Runwise v1.1**
+**Runwise** — open source, для личного использования и обучения.
