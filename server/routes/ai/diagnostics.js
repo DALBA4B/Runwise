@@ -41,6 +41,8 @@ const {
   buildChatPromptDebugSnapshot
 } = require('./prompts');
 const { getAiToolCatalog } = require('./tools');
+const { computeRiegelPrediction, fmtTime, fmtPace, PB_BE_NAME } = require('../workouts/riegelHelper');
+const workoutsState = require('../workouts/state');
 
 const router = express.Router();
 
@@ -642,6 +644,183 @@ router.get('/diagnostics', authMiddleware, async (req, res) => {
       result: `${filledParams}/6 параметров`,
       status: filledParams >= 4 ? 'ok' : 'warning',
       steps: profileSteps
+    });
+
+    // ============================
+    // SECTION 9.5: Riegel Race-Time Predictions
+    // ============================
+    const riegelSteps = [];
+
+    // Pull PB goals
+    const { data: pbGoals } = await supabase
+      .from('goals')
+      .select('id, type, target_value')
+      .eq('user_id', userId)
+      .in('type', ['pb_5k', 'pb_10k', 'pb_21k', 'pb_42k']);
+
+    if (!pbGoals || pbGoals.length === 0) {
+      riegelSteps.push({
+        title: 'Нет PB-целей',
+        detail: 'Добавь цель на 5K / 10K / полумарафон / марафон, чтобы появился прогноз.',
+        status: 'info'
+      });
+    } else {
+      // Fetch workouts for last 4 weeks with best_efforts + HR
+      const fourWeeksAgo = new Date();
+      fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
+
+      const baseSelect = 'distance, moving_time, average_heartrate, date, best_efforts';
+      const fullSelect = baseSelect + (workoutsState.hasAnomalyColumns
+        ? ', is_suspicious, user_verified, manual_distance, manual_moving_time'
+        : '');
+
+      let { data: pbWorkouts, error: pbErr } = await supabase
+        .from('workouts')
+        .select(fullSelect)
+        .eq('user_id', userId)
+        .gte('date', fourWeeksAgo.toISOString());
+
+      if (pbErr && pbErr.message && /(is_suspicious|user_verified|manual_)/.test(pbErr.message)) {
+        workoutsState.hasAnomalyColumns = false;
+        const fb = await supabase
+          .from('workouts')
+          .select(baseSelect)
+          .eq('user_id', userId)
+          .gte('date', fourWeeksAgo.toISOString());
+        pbWorkouts = fb.data || [];
+      }
+
+      const summary = [];
+
+      for (const goal of pbGoals) {
+        const goalLabel = `${PB_BE_NAME[goal.type]} (цель ${fmtTime(goal.target_value)})`;
+
+        const result = computeRiegelPrediction({
+          workouts: pbWorkouts || [],
+          goalType: goal.type,
+          targetTimeSec: goal.target_value,
+          userMaxHR: maxHR,
+          hasAnomalyColumns: workoutsState.hasAnomalyColumns
+        });
+
+        // Header step per goal
+        riegelSteps.push({
+          title: `▼ ${goalLabel}`,
+          detail: result.ok
+            ? `Прогноз ~${fmtTime(result.finalTime)} (источник: ${result.source === 'best_effort' ? 'Strava-сплит' : 'формула Ригеля'})`
+            : 'Прогноз не рассчитан — недостаточно данных за 4 недели.',
+          status: result.ok ? 'ok' : 'warning'
+        });
+
+        // Adaptive Riegel exponent
+        riegelSteps.push({
+          title: 'Адаптивная экспонента Ригеля',
+          detail: `Средний темп за 4 недели: ${fmtPace(result.avgPaceSec || 0)} (по ${result.paceSamples} тренировкам). Темп <4:30 → 1.06, <5:30 → 1.08, <6:30 → 1.10, иначе 1.12. Выбрано: ${result.riegelExp}.`,
+          formula: 'T_target = T_ref × (D_target / D_ref)^k',
+          status: result.paceSamples > 0 ? 'ok' : 'warning'
+        });
+
+        // Candidates
+        if (result.candidates.length === 0) {
+          riegelSteps.push({
+            title: 'Кандидатов нет',
+            detail: `Ищем сплиты best_efforts от 1 км до ${(result.targetDistM * 0.95 / 1000).toFixed(1)} км в тренировках за 4 недели. Не найдено ни одного.`,
+            status: 'warning'
+          });
+        } else {
+          riegelSteps.push({
+            title: `Найдено кандидатов: ${result.candidates.length}`,
+            detail: 'Каждый сплит из best_efforts (1K, 1 Mile, 2 Mile, 5K, 10K, HM) пересчитан в целевую дистанцию по формуле Ригеля. Ниже — топ-3 по freshness-взвешенному времени.',
+            status: 'ok'
+          });
+
+          for (const c of result.top3) {
+            const baseTime = c.time / c.hrCorr;
+            const hrPart = c.hrAdjusted
+              ? ` × ${c.hrCorr.toFixed(2)} (HR ${c.avgHR}, ${c.pctHRmax}% от макс.) = ${fmtTime(c.time)}`
+              : '';
+            riegelSteps.push({
+              title: `${c.effortName} от ${c.dateFormatted} → ${c.timeFormatted}`,
+              detail: `${c.movingTimeFormatted} × (${(result.targetDistM / c.effortDistM).toFixed(3)})^${result.riegelExp} = ${fmtTime(baseTime)}${hrPart}. Freshness: ${c.freshness.toFixed(2)}.`,
+              status: 'ok'
+            });
+          }
+
+          // Weighted median
+          const top3Lines = result.top3
+            .map(c => `${c.timeFormatted}×${c.freshness.toFixed(2)}`)
+            .join(' + ');
+          riegelSteps.push({
+            title: `Взвешенная медиана топ-3: ${fmtTime(result.riegelEstimate)}`,
+            detail: `(${top3Lines}) / Σfreshness = ${fmtTime(result.riegelEstimate)}.`,
+            formula: 'Σ(time × freshness) / Σ(freshness)',
+            status: 'ok'
+          });
+        }
+
+        // Strava best_effort at target distance
+        if (result.bestEffort) {
+          riegelSteps.push({
+            title: `Strava-сплит ${PB_BE_NAME[goal.type]}: ${result.bestEffort.timeFormatted}`,
+            detail: `Лучший сплит на целевой дистанции из тренировки ${result.bestEffort.dateFormatted}.`,
+            status: 'ok'
+          });
+        } else if (result.discardedBE) {
+          riegelSteps.push({
+            title: `Strava-сплит отсечён: ${result.discardedBE.timeFormatted}`,
+            detail: `${result.discardedBE.reason}. Sanity-check: |BE| < 0.85 × Riegel.`,
+            status: 'warning'
+          });
+        } else {
+          riegelSteps.push({
+            title: `Strava-сплит ${PB_BE_NAME[goal.type]}: не найден`,
+            detail: 'Нет тренировки за 4 недели с best_effort на целевой дистанции.',
+            status: 'info'
+          });
+        }
+
+        // Final pick
+        if (result.ok) {
+          riegelSteps.push({
+            title: `Финальный выбор: ${fmtTime(result.finalTime)}`,
+            detail: result.chosenReason,
+            status: 'ok'
+          });
+
+          // Gap vs target
+          if (result.gap !== null) {
+            const gapAbs = Math.abs(result.gap);
+            const gapStatus = result.gap <= 0 ? 'ok' : result.gap <= goal.target_value * 0.05 ? 'warning' : 'error';
+            const gapText = result.gap <= 0
+              ? `Прогноз быстрее цели на ${fmtTime(gapAbs)} ✓`
+              : `Прогноз медленнее цели на ${fmtTime(gapAbs)} (${(result.gap / goal.target_value * 100).toFixed(1)}%).`;
+            riegelSteps.push({
+              title: 'Разрыв с целью',
+              detail: gapText,
+              status: gapStatus
+            });
+          }
+        }
+
+        summary.push(result.ok
+          ? `${PB_BE_NAME[goal.type]}: ${fmtTime(result.finalTime)}`
+          : `${PB_BE_NAME[goal.type]}: —`);
+      }
+
+      // Replace section header summary
+      riegelSteps.unshift({
+        title: 'Прогнозы по PB-целям',
+        detail: summary.join(' | '),
+        status: 'ok'
+      });
+    }
+
+    sections.push({
+      id: 'riegel',
+      title: 'Прогноз времени на дистанции (Ригель)',
+      result: pbGoals && pbGoals.length > 0 ? `${pbGoals.length} цел.` : 'Нет целей',
+      status: pbGoals && pbGoals.length > 0 ? 'ok' : 'info',
+      steps: riegelSteps
     });
 
     // ============================
