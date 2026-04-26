@@ -2,7 +2,11 @@
 .ai-chat-screen {
   display: flex;
   flex-direction: column;
+  /* Match `.app` viewport handling — use dvh so the screen never exceeds the
+     real visible viewport on mobile (otherwise the chat header gets pushed
+     off-screen when the mobile browser URL bar is showing). */
   height: calc(100vh - 68px);
+  height: calc(100dvh - 68px);
   overflow: hidden;
   padding: var(--spacing-sm) var(--spacing-lg) 0;
   width: 100%;
