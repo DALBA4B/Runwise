@@ -12,13 +12,39 @@
 .diagnostics-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   margin-bottom: var(--spacing-lg);
 }
 
 .diagnostics-header h2 {
+  flex: 1;
+  min-width: 0;
   font-size: 18px;
   font-weight: 700;
+}
+
+.diag-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.diag-back-btn:hover {
+  background: var(--color-border);
+}
+
+.diag-back-btn:active {
+  border-color: var(--color-accent);
 }
 
 .diagnostics-timestamp {
